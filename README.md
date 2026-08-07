@@ -6,20 +6,22 @@ A small screenshot tool for Windows and macOS that lives in your tray and opens 
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-## ⬇️ Download
+## ⬇️ Getting it
 
-Grab the latest Windows build from the [Releases page](../../releases):
+No prebuilt binaries are published yet, so for now you build it yourself. It takes two commands, see [Building from source](#️-building-from-source).
+
+`npm run dist:win` puts two Windows artifacts in `release/`:
 
 | File | What it is |
 | --- | --- |
 | `Capturo-Setup-0.6.0-x64.exe` | Normal installer. Lets you pick the install folder. |
 | `Capturo-Portable-0.6.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
 
-Every release ships a `BUILD-INFO.txt` with SHA-256 hashes so you can check what you downloaded.
+Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
-Windows will warn you that the publisher is unknown. That is expected: the builds are not code-signed, because a signing certificate costs money and this is a free tool. Click **More info** then **Run anyway** if you are comfortable with that. If you would rather not, build it yourself from source with the steps below.
+Windows will warn you that the publisher is unknown when you run either one. That is expected: the builds are not code-signed. Click **More info** then **Run anyway**.
 
-macOS builds are not published yet. See [Known issues](#-known-issues).
+macOS is not usable yet. See [Known issues](#-known-issues).
 
 ## ✨ Using it
 
@@ -66,7 +68,7 @@ Worth knowing before you rely on it:
 - **A selection cannot span two monitors.** Every display gets an overlay, but the first one you click owns the capture. Displays with different scale factors need a proper virtual desktop compositor to do this correctly.
 - **A drag has to start outside the taskbar.** Once a selection is under way it extends over the taskbar normally, so you can capture the taskbar by starting just above it and dragging down. You just cannot begin the drag by pressing on the taskbar itself.
 - **macOS is untested.** The code paths exist and the app is built for it, but nobody has run it on real macOS hardware yet, and the builds are not signed or notarized. Treat macOS as unsupported for now.
-- **Windows builds are unsigned**, so SmartScreen will complain. See [Download](#️-download).
+- **Windows builds are unsigned**, so SmartScreen will complain. See [Getting it](#️-getting-it).
 - **`npm run dist:win` can exit non-zero on the first run after deleting `release/`.** A file lock during Electron's extraction step. The artifacts are still built correctly and running the command again succeeds.
 
 ## 🛠️ Building from source
