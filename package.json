@@ -1,0 +1,75 @@
+{
+  "name": "capturo",
+  "version": "0.6.0",
+  "description": "A fast, minimal screenshot and annotation tool for Windows and macOS.",
+  "main": "./out/main/index.js",
+  "author": "Capturo contributors",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "node scripts/generate-icon.mjs",
+    "build": "npm run typecheck && npm run test && electron-vite build",
+    "manifest": "node scripts/build-manifest.mjs",
+    "dist": "npm run icons && npm run build && electron-builder && npm run manifest",
+    "dist:win": "npm run icons && npm run build && electron-builder --win && npm run manifest",
+    "dist:mac": "npm run icons && npm run build && electron-builder --mac && npm run manifest"
+  },
+  "build": {
+    "appId": "com.capturo.app",
+    "productName": "Capturo",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/tray",
+        "to": "tray",
+        "filter": ["*.png"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Capturo needs screen recording access to let you select and annotate screenshots."
+      }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "sharp": "^0.35.3",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo</title>
+  </head>
+  <body>
+    <canvas id="capture-canvas" aria-label="Screenshot selection area"></canvas>
+
+    <div id="hint" class="hint">Drag to select · Esc to cancel</div>
+    <div id="dimensions" class="dimensions" hidden></div>
+
+    <div id="editor-ui" class="editor-ui" hidden>
+      <div id="toolbar" class="toolbar" role="toolbar" aria-label="Screenshot tools">
+        <button class="tool selected" data-tool="select" aria-label="Select objects or move the capture region" title="Select objects / move crop (V)">
+          <svg viewBox="0 0 20 20"><path d="M5 3l10 7-5 1.4L8.5 16z"/></svg>
+        </button>
+        <button class="tool" data-tool="pen" aria-label="Freehand pen" title="Pen (P)">
+          <svg viewBox="0 0 20 20"><path d="M4 15.5l1-4L13.5 3l3.5 3.5L8.5 15zM5 17h10"/></svg>
+        </button>
+        <button class="tool" data-tool="line" aria-label="Line" title="Line (L)">
+          <svg viewBox="0 0 20 20"><path d="M4 16L16 4"/></svg>
+        </button>
+        <button class="tool" data-tool="arrow" aria-label="Arrow" title="Arrow (A)">
+          <svg viewBox="0 0 20 20"><path d="M4 16L16 4M10 4h6v6"/></svg>
+        </button>
+        <button class="tool" data-tool="rectangle" aria-label="Rectangle" title="Rectangle (R)">
+          <svg viewBox="0 0 20 20"><rect x="4" y="5" width="12" height="10" rx="1"/></svg>
+        </button>
+        <button class="tool" data-tool="ellipse" aria-label="Ellipse" title="Ellipse (E)">
+          <svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="6" ry="5"/></svg>
+        </button>
+        <button class="tool" data-tool="step" aria-label="Numbered step" title="Numbered step (N)">
+          <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M8.5 7.5h2v5M8.5 12.5h4"/></svg>
+        </button>
+        <button class="tool" data-tool="text" aria-label="Text" title="Text (T)">
+          <svg viewBox="0 0 20 20"><path d="M4 5h12M10 5v11M7 16h6"/></svg>
+        </button>
+        <button class="tool" data-tool="blur" aria-label="Blur" title="Blur (B)">
+          <svg viewBox="0 0 20 20"><path d="M10 3s5 5.2 5 9a5 5 0 01-10 0c0-3.8 5-9 5-9z"/><path d="M7 13c.5 1.2 1.5 2 3 2"/></svg>
+        </button>
+        <button class="tool" data-tool="pixelate" aria-label="Pixelate" title="Pixelate (X)">
+          <svg viewBox="0 0 20 20"><rect x="4" y="4" width="5" height="5"/><rect x="11" y="4" width="5" height="5"/><rect x="4" y="11" width="5" height="5"/><rect x="11" y="11" width="5" height="5"/></svg>
+        </button>
+        <span class="separator"></span>
+        <button id="undo" class="action" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)">
+          <svg viewBox="0 0 20 20"><path d="M7 6L3 10l4 4M4 10h7a5 5 0 015 5"/></svg>
+        </button>
+        <button id="copy" class="action primary" aria-label="Copy screenshot" title="Copy (Ctrl/Cmd+C)">
+          <svg viewBox="0 0 20 20"><rect x="7" y="6" width="9" height="10" rx="1"/><path d="M5 13H4V4h9v1"/></svg>
+        </button>
+        <button id="save" class="action" aria-label="Save screenshot" title="Save (Ctrl/Cmd+S)">
+          <svg viewBox="0 0 20 20"><path d="M4 4h10l2 2v10H4zM7 4v5h6V4M7 16v-4h6v4"/></svg>
+        </button>
+        <button id="cancel" class="action" aria-label="Cancel screenshot" title="Cancel (Esc)">
+          <svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></svg>
+        </button>
+      </div>
+
+      <div id="options-bar" class="options-bar" hidden>
+        <div id="color-options" class="option-group" aria-label="Color">
+          <button class="color selected" data-color="#ef4444" style="--swatch:#ef4444" aria-label="Red"></button>
+          <button class="color" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="Amber"></button>
+          <button class="color" data-color="#22c55e" style="--swatch:#22c55e" aria-label="Green"></button>
+          <button class="color" data-color="#1683ff" style="--swatch:#1683ff" aria-label="Blue"></button>
+          <button class="color" data-color="#8b5cf6" style="--swatch:#8b5cf6" aria-label="Violet"></button>
+          <button class="color" data-color="#ffffff" style="--swatch:#ffffff" aria-label="White"></button>
+          <button class="color" data-color="#111827" style="--swatch:#111827" aria-label="Black"></button>
+        </div>
+
+        <label id="line-width-option" class="slider-wrap">
+          <span>Size</span>
+          <input id="line-width" type="range" min="1" max="24" step="1" value="4" aria-label="Stroke size in pixels" />
+          <output id="line-width-value">4px</output>
+        </label>
+
+        <label id="smoothing-option" class="select-wrap">
+          <span>Smooth</span>
+          <select id="smoothing" aria-label="Pen smoothing">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+
+        <label id="step-size-option" class="slider-wrap" hidden>
+          <span>Size</span>
+          <input id="step-size" type="range" min="10" max="48" step="1" value="18" aria-label="Numbered step size in pixels" />
+          <output id="step-size-value">18px</output>
+        </label>
+
+        <div id="text-options" class="text-options" hidden>
+          <select id="font-family" aria-label="Font family">
+            <option value="system-ui, sans-serif">System</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="ui-monospace, monospace">Mono</option>
+          </select>
+          <select id="font-size" aria-label="Font size">
+            <option value="12">12px</option>
+            <option value="14">14px</option>
+            <option value="18" selected>18px</option>
+            <option value="24">24px</option>
+            <option value="32">32px</option>
+            <option value="48">48px</option>
+          </select>
+          <button id="font-bold" class="text-style" aria-label="Bold text"><strong>B</strong></button>
+          <button id="font-italic" class="text-style" aria-label="Italic text"><em>I</em></button>
+        </div>
+      </div>
+
+    </div>
+
+    <textarea id="text-editor" aria-label="Screenshot text" placeholder="Type text…" hidden></textarea>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./editor.ts"></script>
+  </body>
+</html>

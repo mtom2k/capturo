@@ -1,0 +1,10 @@
+node_modules/
+out/
+release/
+release-*/
+coverage/
+tmp-*
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
