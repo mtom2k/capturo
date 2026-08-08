@@ -95,3 +95,35 @@ Two consequences shape the renderer:
 Every overlay of a display receives the whole frozen desktop plus its own origin within it, and derives scale from the captured region rather than from its viewport. Deriving scale from the viewport would rescale the desktop to fit whichever slice the window happens to cover and skew every coordinate by the difference, which is the defect D-012 was written for.
 
 Only the editor handles input. Pointer capture keeps a drag that started in the editor alive over the fillers, so selections extend into the taskbar normally. Fillers are passive and repaint from scene updates the editor publishes, so the strips they cover shade and highlight in step; without that they would sit visibly undimmed while the rest of the screen darkened.
+
+## D-014: The frozen desktop is grabbed in the renderer, not handed over as an image
+
+**Status:** accepted, with one unresolved consequence
+
+`desktopCapturer` thumbnails are wrong on an HDR display. Windows composites the desktop in scRGB where 1.0 is 80 nits and ordinary windows sit above that, scaled by the SDR content brightness setting. The thumbnail conversion does not divide that back out, so the result is roughly 1.6x too bright and clips. Measured against a drawn pattern, greys of 32/64/96/128/160/192 came back as 59/109/160/210/255/255: everything above about 60% grey became flat white, and no correction after the fact can recover it.
+
+Chromium switches do not help. WGC capturer flags, `force-color-profile=srgb`, and HDR-disabling flags all produced byte-identical broken output, because they govern the stream pipeline rather than the one-shot thumbnail.
+
+A capture stream opened in the renderer does return correct pixels: the same pattern round-trips within 1/255, and a real capture matches a GDI reference exactly. Each overlay therefore opens a stream for its own display, takes one frame, and uses that as the frozen desktop. Main only resolves source identities, so no large image crosses the process boundary and the PNG encode and base64 round trip are gone.
+
+Verify against ground truth, not against Capturo's own rendering. Comparing an export with a grab of the overlay displaying it is self-consistent and passes even when the colour is wrong. Compare a static region against a GDI grab of the same pixels with no overlay running; a correct capture matches on every channel.
+
+**Superseded by D-015.** The stream was better than the thumbnail but still wrong: measured against Snipping Tool it was 2.5x too bright in linear light and clipped everything above roughly 180, because Chromium converts to 8 bit before any JavaScript sees the frame. It also composited the mouse pointer, which no amount of cursor hiding prevented. Both are fixed by capturing natively.
+
+## D-015: Windows captures through a native FP16 helper
+
+**Status:** accepted
+
+Chromium hands over an 8-bit frame that has already been converted, and on an HDR display that conversion is wrong. Windows composites in scRGB where 1.0 is 80 nits, then renders ordinary content at its own reference white, so SDR white sits well above 1.0 in the buffer. Converting without undoing that scale multiplies everything and clips the result. No option available inside the app avoids it: WGC and colour-profile switches changed nothing, `float16` canvas pixel formats are ignored, and the wide-gamut canvas colour spaces do not exist in this Chromium.
+
+Windows capture therefore runs through `native/capturo-capture`, a small executable invoked per capture. It duplicates the output in `DXGI_FORMAT_R16G16B16A16_FLOAT`, reads the live SDR white level through the display configuration APIs, divides by `sdrWhiteNits / 80`, tone maps in linear light, and encodes sRGB only at the end. Everything below SDR white passes through untouched, so ordinary window content is reproduced with the values it was authored with. Against a known pattern the round trip is exact, with zero error on every step from black to white.
+
+Three details are easy to get wrong:
+
+`DuplicateOutput1` returns `DXGI_ERROR_UNSUPPORTED` unless the process is per-monitor DPI aware. This is a documented requirement and gives no other clue as to the cause.
+
+DXGI enumerates outputs in its own order, which does not match the host's display list. Selecting by index captures the wrong monitor, silently and convincingly. Displays are matched by physical desktop origin instead, obtained with `screen.dipToScreenRect`.
+
+A rotated output duplicates into an unrotated surface. Rather than rotate the pixels back, the helper reports the rotation and the caller falls back to its previous path for that monitor.
+
+Do not benchmark this against a GDI screen grab. GDI is itself wrong on an HDR display, and an earlier fix was declared correct on exactly that basis while the captures were still visibly blown out. Compare against content whose values are known, or against Snipping Tool. Note that Snipping Tool is not pixel-exact either: it lifts shadows and renders white as about 225, reserving headroom for HDR highlights. Faithful reproduction of SDR content is the goal here, so exactness against the drawn values is the test that matters.

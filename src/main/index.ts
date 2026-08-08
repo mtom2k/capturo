@@ -14,7 +14,8 @@ import {
   systemPreferences,
   Tray
 } from 'electron'
-import { promises as fs } from 'node:fs'
+import { promises as fs, existsSync } from 'node:fs'
+import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CapturePayload, OverlayRole, Rect, SaveResult } from '../shared/types'
@@ -108,6 +109,54 @@ function sourceForDisplay(
   return sources.find((source) => source.display_id === String(display.id)) ?? sources[displayIndex]
 }
 
+function helperPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'capture', 'capturo-capture.exe')
+    : path.join(app.getAppPath(), 'native', 'capturo-capture', 'build', 'capturo-capture.exe')
+}
+
+// Captures one display through the native helper.
+//
+// Chromium's own capture is wrong on an HDR display: it converts to 8-bit without undoing
+// the SDR white level, so ordinary window content comes out several times too bright with
+// the highlights clipped away. The helper keeps the frame in FP16 scRGB, normalises against
+// the live SDR white level, tone maps, and only then encodes sRGB. It also excludes the
+// mouse pointer, which the capture stream did not. See D-014.
+type HelperCapture = { bytes: Buffer; width: number; height: number }
+
+async function captureWithHelper(display: Electron.Display): Promise<HelperCapture | null> {
+  if (process.platform !== 'win32') return null
+  const helper = helperPath()
+  if (!existsSync(helper)) return null
+
+  // DXGI enumerates outputs in its own order, so the monitor is identified by its physical
+  // desktop origin instead. dipToScreenRect performs the per-monitor scaling conversion.
+  const physical = screen.dipToScreenRect(null, display.bounds)
+
+  const output = path.join(app.getPath('temp'), `capturo-${randomUUID()}.png`)
+  try {
+    const report = await new Promise<string>((resolve, reject) => {
+      execFile(
+        helper,
+        ['--output', output, '--origin-x', String(physical.x), '--origin-y', String(physical.y)],
+        { timeout: 8000, windowsHide: true },
+        (error, stdout) => (error ? reject(error) : resolve(stdout))
+      )
+    })
+    const bytes = await fs.readFile(output)
+    // Take the dimensions from the helper rather than re-decoding, so nothing can reinterpret
+    // the image at a different scale factor on the way through.
+    const parsed = JSON.parse(report.trim()) as { ok: boolean; width: number; height: number }
+    if (!parsed.ok || !parsed.width || !parsed.height) return null
+    return { bytes, width: parsed.width, height: parsed.height }
+  } catch (error) {
+    console.error('capturo-capture failed, falling back to desktopCapturer', error)
+    return null
+  } finally {
+    void fs.rm(output, { force: true }).catch(() => {})
+  }
+}
+
 // The parts of a display the work area does not reach: usually a single taskbar strip,
 // but docked bars on any edge are handled. Top and bottom strips span the full width and
 // the side strips fill what is left, so the rectangles never overlap.
@@ -159,8 +208,11 @@ async function startCapture(): Promise<void> {
 
   const displays = screen.getAllDisplays()
   if (displays.length === 0) return
-  const maxWidth = Math.max(...displays.map((display) => Math.ceil(display.size.width * display.scaleFactor)))
-  const maxHeight = Math.max(...displays.map((display) => Math.ceil(display.size.height * display.scaleFactor)))
+
+  // desktopCapturer is only the fallback now, so thumbnails are requested at full size for
+  // the platforms that still use them.
+  const maxWidth = Math.max(...displays.map((d) => Math.ceil(d.size.width * d.scaleFactor)))
+  const maxHeight = Math.max(...displays.map((d) => Math.ceil(d.size.height * d.scaleFactor)))
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width: maxWidth, height: maxHeight },
@@ -172,11 +224,23 @@ async function startCapture(): Promise<void> {
 
   for (const [index, display] of displays.entries()) {
     const source = sourceForDisplay(sources, display, index)
-    if (!source || source.thumbnail.isEmpty()) continue
+    if (!source) continue
 
-    const imageSize = source.thumbnail.getSize()
-    const imageDataUrl = source.thumbnail.toDataURL()
     const bounds = display.bounds
+
+    // Prefer the native helper; fall back to the thumbnail when it is unavailable, which is
+    // every non-Windows platform and any Windows machine where the helper did not ship.
+    const helperCapture = await captureWithHelper(display)
+    let imageBytes: Uint8Array
+    let imageSize: { width: number; height: number }
+    if (helperCapture) {
+      imageBytes = helperCapture.bytes
+      imageSize = { width: helperCapture.width, height: helperCapture.height }
+    } else {
+      if (source.thumbnail.isEmpty()) continue
+      imageBytes = source.thumbnail.toPNG()
+      imageSize = source.thumbnail.getSize()
+    }
 
     // One editor over the work area, plus a filler for every strip it leaves uncovered.
     // Together they cover the display, so the taskbar is still part of the capture, while
@@ -192,7 +256,7 @@ async function startCapture(): Promise<void> {
       sessionId: nextSession.id,
       displayId: String(display.id),
       role: region.role,
-      imageDataUrl,
+      imageBytes,
       imageWidth: imageSize.width,
       imageHeight: imageSize.height,
       imageOrigin: { x: area.x - bounds.x, y: area.y - bounds.y },
@@ -322,6 +386,14 @@ function registerIpc(): void {
 
   ipcMain.handle('capture:cancel', (event, sessionId: string) => {
     if (validSession(event, sessionId)) closeSession()
+  })
+
+  // A renderer could not open its capture stream. Tear the session down rather than
+  // leaving an invisible overlay holding the pointer.
+  ipcMain.handle('capture:failed', (event, sessionId: string) => {
+    if (!validSession(event, sessionId)) return
+    closeSession()
+    notify('Capture unavailable', 'Capturo could not read an image from the display.')
   })
 
   ipcMain.handle('capture:copy', (event, sessionId: string, dataUrl: string) => {

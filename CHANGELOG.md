@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.8.0 - 2026-08-07
+
+### Fixed
+
+- Screenshots on an HDR display are now exact. Against a known pattern the greys
+  0/32/64/96/128/160/192/255 come back as themselves, with no error at all. 0.7.0 was still
+  2.5x too bright in linear light and clipped everything above roughly 180, because the
+  browser capture pipeline converts to 8 bit before the app can see the frame and never
+  undoes the SDR white level.
+- The mouse pointer is no longer captured. The frame comes from desktop duplication, which
+  excludes it.
+
+### Added
+
+- A native Windows capture helper, `capturo-capture.exe`, sitting behind an ordinary
+  process boundary. It duplicates the desktop in `R16G16B16A16_FLOAT`, normalises against
+  the live SDR white level read from Windows, tone maps in linear light, and only then
+  encodes sRGB. The rest of the app is unchanged.
+- Displays are matched to DXGI outputs by physical desktop origin. DXGI enumerates outputs
+  in a different order from Electron, so selecting by index captured the wrong monitor.
+
+### Known issues
+
+- Rotated displays fall back to the previous capture path, because a duplicated frame
+  arrives unrotated and is not turned back. Affects portrait monitors only, and only on
+  HDR ones would the colour differ.
+- Capture takes noticeably longer, around 460 ms for the helper alone on a 4K display.
+
+## 0.7.0 - 2026-08-07
+
+### Fixed
+
+- Screenshots taken on an HDR display were roughly 1.6x too bright, with everything above
+  about 60% grey clipped to flat white. Measured against a known pattern, greys drawn as
+  32/64/96/128/160/192 came back as 59/109/160/210/255/255. The frozen desktop is now
+  grabbed through a capture stream in the renderer instead of a `desktopCapturer`
+  thumbnail, which returns the same pixels the display is showing. The same pattern now
+  round-trips within 1/255, and a real-world capture matches a GDI reference exactly on
+  all three channels. SDR displays were never affected and are unchanged.
+
+### Known issues
+
+- The mouse pointer is now composited into the capture when it sits on the display being
+  captured. `desktopCapturer` excluded it; the capture stream does not, and neither the
+  `cursor: never` constraint nor hiding the cursor from the overlay prevents it. This is
+  the outstanding defect for 0.7.x; see D-014.
+
 ## 0.6.0 - 2026-08-06
 
 ### Changed

@@ -225,7 +225,7 @@ function drawAnnotationSelection(context: CanvasRenderingContext2D, annotation: 
 
 export function renderScene(
   context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
+  image: HTMLCanvasElement,
   annotations: Annotation[],
   draft: Annotation | null,
   options: RenderOptions = {}
@@ -243,13 +243,13 @@ export function renderScene(
 }
 
 export function exportSelection(
-  image: HTMLImageElement,
+  image: HTMLCanvasElement,
   selection: Rect,
   annotations: Annotation[]
 ): string {
   const composite = document.createElement('canvas')
-  composite.width = image.naturalWidth
-  composite.height = image.naturalHeight
+  composite.width = image.width
+  composite.height = image.height
   const compositeContext = composite.getContext('2d')
   if (!compositeContext) throw new Error('Canvas rendering is unavailable')
   renderScene(compositeContext, image, annotations, null, { shade: false })

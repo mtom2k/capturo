@@ -67,7 +67,7 @@ type Interaction =
 
 let payload: CapturePayload | null = null
 let role: OverlayRole = 'editor'
-let sourceImage: HTMLImageElement | null = null
+let sourceImage: HTMLCanvasElement | null = null
 let selection: Rect | null = null
 let annotations: Annotation[] = []
 let draft: Annotation | null = null
@@ -646,6 +646,31 @@ function handleShortcut(event: KeyboardEvent): void {
   if (tool && selection) setTool(tool)
 }
 
+// Decodes the frozen desktop main captured. A blob URL avoids the base64 round trip a data
+// URL would cost on a 4K frame.
+async function decodeFrozenDesktop(source: CapturePayload): Promise<HTMLCanvasElement> {
+  const bytes = new Uint8Array(source.imageBytes)
+  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
+  const url = URL.createObjectURL(blob)
+  try {
+    const image = new Image()
+    await new Promise<void>((resolve, reject) => {
+      image.addEventListener('load', () => resolve())
+      image.addEventListener('error', () => reject(new Error('Frozen desktop could not be decoded')))
+      image.src = url
+    })
+    const frame = document.createElement('canvas')
+    frame.width = image.naturalWidth
+    frame.height = image.naturalHeight
+    const frameContext = frame.getContext('2d')
+    if (!frameContext) throw new Error('Canvas rendering is unavailable')
+    frameContext.drawImage(image, 0, 0)
+    return frame
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 function initialize(nextPayload: CapturePayload): void {
   payload = nextPayload
   role = nextPayload.role
@@ -665,15 +690,28 @@ function initialize(nextPayload: CapturePayload): void {
     canvas.style.cursor = 'default'
   }
 
-  const image = new Image()
-  image.addEventListener('load', () => {
-    sourceImage = image
+  void (async () => {
+    try {
+      const frame = await decodeFrozenDesktop(nextPayload)
+      // Trust the frame's real size over the requested size.
+      nextPayload.imageWidth = frame.width
+      nextPayload.imageHeight = frame.height
+      canvas.width = frame.width
+      canvas.height = frame.height
+      sourceImage = frame
+    } catch (error) {
+      console.error('Capturo could not read the display', error)
+      void window.capturo.captureFailed(nextPayload.sessionId)
+      return
+    }
+
+    if (role === 'filler') canvas.style.cursor = 'default'
+    else updateCursor()
     redraw()
     requestAnimationFrame(() => {
       requestAnimationFrame(() => void window.capturo.captureReady(nextPayload.sessionId))
     })
-  })
-  image.src = nextPayload.imageDataUrl
+  })()
 }
 
 canvas.addEventListener('pointerdown', pointerDown)

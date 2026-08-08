@@ -19,6 +19,7 @@ const api: CapturoApi = {
     return () => ipcRenderer.removeListener('capture:session-closed', handler)
   },
   captureReady: (sessionId) => ipcRenderer.invoke('capture:ready', sessionId),
+  captureFailed: (sessionId) => ipcRenderer.invoke('capture:failed', sessionId),
   claimSession: (sessionId) => ipcRenderer.invoke('capture:claim', sessionId),
   copyImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy', sessionId, dataUrl),
   saveImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:save', sessionId, dataUrl),

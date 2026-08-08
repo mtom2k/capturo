@@ -1,6 +1,6 @@
 {
   "name": "capturo",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "description": "A fast, minimal screenshot and annotation tool for Windows and macOS.",
   "main": "./out/main/index.js",
   "author": "Capturo contributors",
@@ -35,6 +35,11 @@
         "from": "build/tray",
         "to": "tray",
         "filter": ["*.png"]
+      },
+      {
+        "from": "native/capturo-capture/build",
+        "to": "capture",
+        "filter": ["capturo-capture.exe"]
       }
     ],
     "mac": {

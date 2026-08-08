@@ -86,7 +86,10 @@ export type CapturePayload = {
   sessionId: string
   displayId: string
   role: OverlayRole
-  imageDataUrl: string
+  // The frozen desktop as PNG bytes. On Windows these come from the native helper, which
+  // captures in FP16 and tone maps correctly on HDR displays; elsewhere they come from
+  // desktopCapturer. See D-014.
+  imageBytes: Uint8Array
   imageWidth: number
   imageHeight: number
   // Where this window sits inside the captured region, in CSS pixels. Every overlay of a
@@ -120,6 +123,7 @@ export type CapturoApi = {
   onScene: (listener: (scene: SceneUpdate) => void) => () => void
   publishScene: (sessionId: string, scene: SceneUpdate) => void
   captureReady: (sessionId: string) => Promise<boolean>
+  captureFailed: (sessionId: string) => Promise<void>
   claimSession: (sessionId: string) => Promise<boolean>
   copyImage: (sessionId: string, dataUrl: string) => Promise<boolean>
   saveImage: (sessionId: string, dataUrl: string) => Promise<SaveResult>
