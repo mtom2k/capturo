@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.0 - 2026-08-08
+
+### Changed
+
+- The native helper now captures rotated displays instead of bailing on them. It turns the
+  duplicated (unrotated) surface back to the desktop orientation and reports the rotated
+  dimensions. This removes the slow `desktopCapturer` fallback that a rotated display used to
+  force — which grabbed every screen — so capture on a multi-monitor setup with a rotated
+  display is much faster. Measured on a 4K + rotated-1080p setup, frame capture dropped from
+  about 1.7 s to about 0.5 s.
+
+### Fixed
+
+- Screenshots of a rotated display are now HDR-correct, captured through the same native FP16
+  path as every other display rather than the washed-out fallback. Removes the 0.8.0 known
+  issue that rotated displays skipped the HDR path.
+
 ## 0.10.0 - 2026-08-08
 
 ### Changed

@@ -126,7 +126,7 @@ Three details are easy to get wrong:
 
 DXGI enumerates outputs in its own order, which does not match the host's display list. Selecting by index captures the wrong monitor, silently and convincingly. Displays are matched by physical desktop origin instead, obtained with `screen.dipToScreenRect`.
 
-A rotated output duplicates into an unrotated surface. Rather than rotate the pixels back, the helper reports the rotation and the caller falls back to its previous path for that monitor.
+A rotated output duplicates into an unrotated surface. The helper turns the pixels back to the desktop orientation while it writes the output, mapping each destination pixel to its source under the output's `DXGI_MODE_ROTATION` (90 and 270 swap width and height), and reports the rotated dimensions. The rotation direction is verified against real rotated hardware, since the DXGI convention is easy to invert. A rotated display is therefore captured natively — HDR-correct and fast — rather than falling back. (Superseding the earlier note: rotated displays used to bail and fall back to `desktopCapturer`.)
 
 Do not benchmark this against a GDI screen grab. GDI is itself wrong on an HDR display, and an earlier fix was declared correct on exactly that basis while the captures were still visibly blown out. Compare against content whose values are known, or against Snipping Tool. Note that Snipping Tool is not pixel-exact either: it lifts shadows and renders white as about 225, reserving headroom for HDR highlights. Faithful reproduction of SDR content is the goal here, so exactness against the drawn values is the test that matters.
 

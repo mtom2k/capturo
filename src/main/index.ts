@@ -340,28 +340,17 @@ async function startCapture(): Promise<void> {
   // full-resolution grabs of every screen, so they are fetched only when actually needed.
   const helperReady = process.platform === 'win32' && existsSync(helperPath())
 
-  // A rotated display cannot use the native helper — it duplicates into an unrotated surface,
-  // so the helper reports the rotation and bails (see D-015). Electron exposes the rotation
-  // up front, so when any display is rotated (or there is no helper at all) the desktopCapturer
-  // fallback is started in parallel with the helper captures instead of after them, and the
-  // helper is not spawned for a display we already know it cannot serve.
-  const fallbackDisplays = displays.filter((display) => !helperReady || display.rotation !== 0)
-  const sourcesPromise = fallbackDisplays.length > 0 ? captureSources(displays, fallbackDisplays) : null
+  // Grab every display through the native helper, in parallel. It handles rotated displays
+  // now too (see D-015), so desktopCapturer is only the fallback for platforms without the
+  // helper or the rare display it cannot serve. Grabbing every screen that way is expensive,
+  // so it is fetched once, afterwards, and sized only to the displays that came back empty.
+  const images: (DisplayImage | null)[] = helperReady
+    ? await Promise.all(displays.map(async (display) => (await captureWithHelper(display)) as DisplayImage | null))
+    : displays.map(() => null)
 
-  const images = await Promise.all(
-    displays.map(async (display, index) => {
-      if (helperReady && display.rotation === 0) {
-        const helperCapture = await captureWithHelper(display)
-        if (helperCapture) return helperCapture as DisplayImage
-      }
-      const sources = sourcesPromise ? await sourcesPromise : []
-      return imageFromSource(sourceForDisplay(sources, display, index))
-    })
-  )
-
-  // Rare: a helper failed on a non-rotated display and no fallback sources were prefetched.
-  if (images.some((image) => image === null) && !sourcesPromise) {
-    const sources = await captureSources(displays)
+  const missing = displays.filter((_display, index) => !images[index])
+  if (missing.length > 0) {
+    const sources = await captureSources(displays, missing)
     displays.forEach((display, index) => {
       if (!images[index]) images[index] = imageFromSource(sourceForDisplay(sources, display, index))
     })

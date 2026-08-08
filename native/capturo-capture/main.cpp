@@ -214,14 +214,9 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (!output) { Fail("EnumOutputs", E_INVALIDARG); return 1; }
 
-    // A rotated output duplicates into an unrotated surface, so the pixels would need
-    // turning before they line up with the desktop. Rather than reproduce that here, report
-    // it and let the caller fall back to its existing path for this monitor.
-    if (outputDesc.Rotation != DXGI_MODE_ROTATION_IDENTITY &&
-        outputDesc.Rotation != DXGI_MODE_ROTATION_UNSPECIFIED) {
-        std::printf("{\"ok\":false,\"stage\":\"rotated\",\"rotation\":%d}\n", static_cast<int>(outputDesc.Rotation));
-        return 3;
-    }
+    // A rotated output duplicates into an unrotated surface. The pixels are turned back to the
+    // desktop orientation when they are written out below (see the conversion loop), so a
+    // rotated display is captured natively rather than falling back.
 
     // Is this output actually in HDR right now? The user can toggle it at any time, so this
     // has to be read per capture rather than cached.
@@ -326,34 +321,53 @@ int wmain(int argc, wchar_t** argv) {
     hr = context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) { Fail("Map", hr); return 1; }
 
-    const UINT width = desc.Width;
-    const UINT height = desc.Height;
+    const UINT sw = desc.Width;
+    const UINT sh = desc.Height;
+    const bool isFloat = desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
     const float whiteScale = sdrWhiteNits / kScRgbWhiteNits;
+
+    // The duplicated surface is in the panel's unrotated orientation; rotate it to match the
+    // desktop. A 90/270 rotation swaps width and height. The output dimensions are what the
+    // caller receives, so a rotated display reports its true desktop size.
+    const DXGI_MODE_ROTATION rotation = outputDesc.Rotation;
+    const bool swapAxes =
+        rotation == DXGI_MODE_ROTATION_ROTATE90 || rotation == DXGI_MODE_ROTATION_ROTATE270;
+    const UINT width = swapAxes ? sh : sw;
+    const UINT height = swapAxes ? sw : sh;
     std::vector<BYTE> bgra(static_cast<size_t>(width) * height * 4);
 
-    const bool isFloat = desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
-    for (UINT y = 0; y < height; ++y) {
-        const BYTE* row = static_cast<const BYTE*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch;
-        BYTE* out = bgra.data() + static_cast<size_t>(y) * width * 4;
-        for (UINT x = 0; x < width; ++x) {
-            float r, g, b;
-            if (isFloat) {
-                const auto* px = reinterpret_cast<const DirectX::PackedVector::HALF*>(row) + static_cast<size_t>(x) * 4;
-                // scRGB is linear, so normalise against SDR white and tone map in linear light.
-                r = ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[0]) / whiteScale);
-                g = ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[1]) / whiteScale);
-                b = ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[2]) / whiteScale);
-                r = LinearToSrgb(r); g = LinearToSrgb(g); b = LinearToSrgb(b);
-            } else {
-                // Already SDR and gamma encoded; pass it through untouched.
-                const BYTE* px = row + static_cast<size_t>(x) * 4;
-                b = px[0] / 255.0f; g = px[1] / 255.0f; r = px[2] / 255.0f;
+    // Convert one source pixel (scRGB FP16 tone mapped, or SDR passthrough) to sRGB BGRA.
+    auto convert = [&](const BYTE* srcRow, UINT sx, BYTE* dst) {
+        float r, g, b;
+        if (isFloat) {
+            const auto* px = reinterpret_cast<const DirectX::PackedVector::HALF*>(srcRow) + static_cast<size_t>(sx) * 4;
+            r = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[0]) / whiteScale));
+            g = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[1]) / whiteScale));
+            b = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[2]) / whiteScale));
+        } else {
+            const BYTE* px = srcRow + static_cast<size_t>(sx) * 4;
+            b = px[0] / 255.0f; g = px[1] / 255.0f; r = px[2] / 255.0f;
+        }
+        dst[0] = static_cast<BYTE>(b * 255.0f + 0.5f);
+        dst[1] = static_cast<BYTE>(g * 255.0f + 0.5f);
+        dst[2] = static_cast<BYTE>(r * 255.0f + 0.5f);
+        dst[3] = 255;
+    };
+
+    // For each destination pixel, map back to its source pixel under the rotation. Direction
+    // is verified against real rotated hardware, since the DXGI convention is easy to invert.
+    const BYTE* base = static_cast<const BYTE*>(mapped.pData);
+    for (UINT oy = 0; oy < height; ++oy) {
+        BYTE* outRow = bgra.data() + static_cast<size_t>(oy) * width * 4;
+        for (UINT ox = 0; ox < width; ++ox) {
+            UINT sx, sy;
+            switch (rotation) {
+                case DXGI_MODE_ROTATION_ROTATE90:  sx = oy;          sy = sh - 1 - ox; break;
+                case DXGI_MODE_ROTATION_ROTATE270: sx = sw - 1 - oy; sy = ox;          break;
+                case DXGI_MODE_ROTATION_ROTATE180: sx = sw - 1 - ox; sy = sh - 1 - oy; break;
+                default:                           sx = ox;          sy = oy;          break;
             }
-            BYTE* dst = out + static_cast<size_t>(x) * 4;
-            dst[0] = static_cast<BYTE>(b * 255.0f + 0.5f);
-            dst[1] = static_cast<BYTE>(g * 255.0f + 0.5f);
-            dst[2] = static_cast<BYTE>(r * 255.0f + 0.5f);
-            dst[3] = 255;
+            convert(base + static_cast<size_t>(sy) * mapped.RowPitch, sx, outRow + static_cast<size_t>(ox) * 4);
         }
     }
 

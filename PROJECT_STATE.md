@@ -4,13 +4,13 @@ Last updated: 2026-08-07
 
 ## Phase
 
-`0.10.0` built and passing the automated gate on Windows; the capture-latency measurement, reveal frame-diff, HDR re-check, and macOS validation are still pending on real hardware.
+`0.11.0` built and passing the automated gate on Windows; rotated-display capture verified on real hardware. Reveal frame-diff, HDR re-check on the main display, and macOS validation are still pending.
 
 ## Current build
 
-`0.10.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.11.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
 
-`0.1.0` through `0.9.1` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
+`0.1.0` through `0.10.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
 ## Target release
 
@@ -116,6 +116,11 @@ Last updated: 2026-08-07
   - removed avoidable invocation cost: the redundant full-resolution `desktopCapturer` pass is skipped on the Windows helper path, per-display frame grabs and overlay loads run in parallel, and the reveal's fixed 250 ms floor is gone (the animation it hid is already suppressed by `thickFrame:false`)
   - native helper no longer stalls on a static desktop: the frame-acquire wait is bounded and falls back to the current desktop surface (D-015 amended); it now also reports per-stage timings, and `CAPTURO_TIMING=1` logs the capture path
   - still to run on real hardware: `CAPTURO_TIMING` before/after numbers, the reveal frame-diff (single hard cut, no black frame), the HDR known-pattern re-check, and pixel-exact selection (D-012)
+- 2026-08-08 `0.11.0` rotated-display capture:
+  - the native helper now turns a rotated output back to the desktop orientation instead of falling back. Verified on a real portrait (1080x1920) secondary: the helper reported `ok` with the rotated dimensions and the written PNG was correctly oriented (upright, not mirrored)
+  - with the rotated display served by the helper, the `desktopCapturer` fallback no longer runs. Measured with `CAPTURO_TIMING=1` on a 4K + rotated-1080p desktop: frame capture went from ~1700ms (0.9.x) to ~927ms (0.10.0 parallel fallback) to ~498ms once the rotated display used the helper, both displays grabbed in parallel
+  - automated gate green: typecheck, 31/31 tests, build; helper rebuilds clean under `/W4`
+  - the 90/270 rotation direction is verified for this display's orientation; 180 and the opposite 90 follow by symmetry and are not yet exercised on hardware
 
 ## Known constraints
 
