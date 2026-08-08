@@ -57,14 +57,20 @@ The editor UI is a two-row stack anchored to the crop rectangle. The primary too
 
 Sizes are continuous and expressed in pixels. Stroke width and numbered-step size are sliders that report their value in `px` and update while being dragged, so a size can be judged against the screenshot underneath rather than guessed from a named step. Text is the exception and keeps a list of preset sizes, because type is conventionally chosen from known values. All of these are CSS-pixel values converted to source-image pixels through the capture scale at the point they are stored, so a size means the same thing on any display.
 
+## Settings
+
+Preferences are opened on demand from the tray and never form part of the steady state: the settings window is a normal framed `BrowserWindow`, reused if already open and destroyed on close. It loads the second renderer entry point (`settings.html`) through the same sandboxed, context-isolated preload as the capture overlays, and communicates only through the explicit `settings:get` / `settings:update` IPC handlers. See D-016.
+
+The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only file Capturo writes without an explicit Save, and it holds no captured pixels — only the save format, JPEG quality, the notification toggle, and the capture shortcut. Format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding the shortcut re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS.
+
 ## Source layout
 
 ```text
-src/main/       Electron lifecycle, capture, tray, native integrations
-src/preload/    contextBridge API
-src/renderer/   capture/editor UI, canvas rendering, styles
-src/shared/     IPC and geometry types shared across process boundaries
-tests/          deterministic unit tests for pure geometry/model behavior
+src/main/       Electron lifecycle, capture, tray, native integrations, settings store
+src/preload/    contextBridge API (capture + settings)
+src/renderer/   capture/editor UI and the settings window, canvas rendering, styles
+src/shared/     IPC, geometry, and settings types/logic shared across process boundaries
+tests/          deterministic unit tests for pure geometry/model/settings behavior
 ```
 
 ## Security boundary

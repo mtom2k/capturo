@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0 - 2026-08-07
+
+### Added
+
+- A settings window, opened from the tray. It is minimal on purpose and holds two tabs:
+  - **Capture:** choose PNG or JPEG for saved files, a JPEG quality slider, a toggle for
+    the post-capture notification, and a rebindable capture shortcut.
+  - **GIF:** a placeholder for a planned future feature; no controls yet.
+- Preferences persist to `settings.json` under the app's user-data folder. It is the only
+  file Capturo writes without an explicit Save and it holds no captured pixels — just the
+  four values above. A corrupt or missing file falls back to defaults. See D-016.
+
+### Changed
+
+- Save can now write JPEG. Format and quality apply to **saved files only**; copy always
+  places a lossless bitmap on the clipboard. The save dialog honours an explicit `.jpg`,
+  `.jpeg`, or `.png` you type over the stored default.
+- The capture shortcut is no longer hardcoded. Rebinding re-registers the global
+  accelerator and updates the tray label; if the chosen combination is already taken by
+  another app, the previous working shortcut is kept and the reason is shown.
+- The post-capture notification can be turned off.
+
 ## 0.8.0 - 2026-08-07
 
 ### Fixed

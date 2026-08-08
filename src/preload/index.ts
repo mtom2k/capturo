@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CapturePayload, CapturoApi, SceneUpdate } from '../shared/types'
+import type { CaptureSettings, CapturoSettingsApi } from '../shared/settings'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -26,4 +27,11 @@ const api: CapturoApi = {
   cancelSession: (sessionId) => ipcRenderer.invoke('capture:cancel', sessionId)
 }
 
+// Exposed to the settings window (and harmless to the capture overlays, which ignore it).
+const settingsApi: CapturoSettingsApi = {
+  get: () => ipcRenderer.invoke('settings:get'),
+  update: (update: Partial<CaptureSettings>) => ipcRenderer.invoke('settings:update', update)
+}
+
 contextBridge.exposeInMainWorld('capturo', api)
+contextBridge.exposeInMainWorld('capturoSettings', settingsApi)

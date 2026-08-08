@@ -54,6 +54,14 @@ Verify on at least 100% and one scaled DPI setting:
 
     Count consecutive frames whose difference exceeds the noise floor. One or two frames is a correct hard cut. A run of ten or more, especially one that decays smoothly toward zero, is an animation. The `file=` argument must be a bare relative filename, because `ffmpeg` treats `:` in a filter argument as an option separator.
 
+17. Right-click the tray and open **Settings…**. Confirm it opens once and refocuses rather than stacking a second window when reopened, that closing it leaves the tray process resident, and that the **Capture** and **GIF** tabs switch (GIF shows only the placeholder).
+
+18. Exercise each capture setting and confirm it persists across an app restart (the values live in `settings.json` under the user-data folder):
+
+    - **Notification.** Turn it off, capture and copy, and confirm no toast appears; turn it on and confirm it returns.
+    - **Format and quality.** Set JPEG at a low quality and Save: the file is a `.jpg`, decodes correctly, and is visibly smaller than a PNG of the same region. Switch back to PNG and confirm Save writes a `.png`. In both cases, Copy still places a lossless bitmap on the clipboard, and the JPEG quality slider is inactive while PNG is selected. Also type an explicit `.png` extension into the dialog while JPEG is the setting, and confirm the written bytes match the extension you chose.
+    - **Shortcut rebind.** Record a new combination (e.g. `Ctrl+Shift+4`): the new chord starts capture, the old one no longer does, and the tray tooltip and menu label both show the new binding. Then try a combination already owned by another app and confirm the settings window reports it and keeps the previous shortcut. Restart and confirm the last accepted shortcut is still bound.
+
 The 2026-08-04 passes covered scaled DPI, multi-display claim, pen rendering, exact-dimension clipboard export, lifecycle teardown, text entry, object manipulation, crop/annotation independence, step borders and sizing, contextual-toolbar ordering, paint-gated presentation, and the raster tray asset path on Windows 11.
 
 ## macOS desktop matrix

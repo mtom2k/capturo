@@ -27,6 +27,9 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Visual system: `src/renderer/styles.css`
 - Shared types and geometry: `src/shared/`
 - Annotation bounds, hit-testing, movement, and resizing: `src/shared/annotations.ts`
+- Settings window UI: `src/renderer/settings.ts` / `settings.html` / `settings.css`
+- Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
+- Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
 
 ## Verification expectations
 
@@ -55,5 +58,7 @@ That tiling is why the renderer derives scale from `captureSize` and offsets poi
 Only the editor takes input; pointer capture carries a drag that began there out over the fillers, which is how selections reach the taskbar. The editor publishes the scene to its fillers on every redraw. Drop that and the strips stop shading with the selection.
 
 The two toolbar rows are intentionally ordered primary-first and contextual-second in `src/renderer/index.html`.
+
+The renderer is a two-page build: `electron.vite.config.ts` lists both `index.html` (capture overlay) and `settings.html` (settings window) as Rollup inputs, and both emit into `out/renderer`. Dropping the second input, or renaming a page, breaks the settings window, which `src/main/index.ts` loads by filename (`settings.html`) in packaged builds and as `${ELECTRON_RENDERER_URL}/settings.html` in dev.
 
 `npm run icons` regenerates the application icon plus Windows/macOS tray PNGs from SVG sources under `build/`. Keep tray strokes heavy enough to survive at 16 px; do not restore runtime SVG decoding in the Electron main process.

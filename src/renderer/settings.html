@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo Settings</title>
+  </head>
+  <body>
+    <main class="settings">
+      <nav class="tabs" role="tablist" aria-label="Settings sections">
+        <button class="tab selected" data-tab="capture" role="tab" aria-selected="true">Capture</button>
+        <button class="tab" data-tab="gif" role="tab" aria-selected="false">GIF</button>
+      </nav>
+
+      <section class="panel" data-panel="capture" role="tabpanel">
+        <div class="row">
+          <div class="label">
+            <span>Format</span>
+            <small>PNG is lossless. JPEG makes smaller files.</small>
+          </div>
+          <div class="segmented" id="format" role="group" aria-label="Save format">
+            <button class="seg selected" data-format="png" aria-pressed="true">PNG</button>
+            <button class="seg" data-format="jpeg" aria-pressed="false">JPEG</button>
+          </div>
+        </div>
+
+        <div class="row" id="quality-row">
+          <div class="label">
+            <span>JPEG quality</span>
+            <small>Higher keeps more detail.</small>
+          </div>
+          <label class="slider-wrap">
+            <input id="quality" type="range" min="60" max="100" step="1" value="92" aria-label="JPEG quality percent" />
+            <output id="quality-value">92%</output>
+          </label>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <span>Notification</span>
+            <small>Show a toast after copy or save.</small>
+          </div>
+          <button class="switch" id="notify" role="switch" aria-checked="true" aria-label="Show notification after capture">
+            <span class="knob"></span>
+          </button>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <span>Capture shortcut</span>
+            <small id="shortcut-hint">Click, then press the keys.</small>
+          </div>
+          <div class="shortcut">
+            <button class="recorder" id="recorder">Ctrl+Shift+2</button>
+            <button class="reset" id="reset" title="Reset to default">Reset</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="gif" role="tabpanel" hidden>
+        <div class="placeholder">
+          <strong>GIF capture is coming soon.</strong>
+          <p>Record a region straight to an animated GIF, with the same drag, annotate, and go flow as a screenshot.</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./settings.ts"></script>
+  </body>
+</html>

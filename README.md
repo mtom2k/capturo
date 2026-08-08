@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.8.0-blue)
+![version](https://img.shields.io/badge/version-0.9.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -23,8 +23,8 @@ No prebuilt binaries are published yet, so for now you build it yourself. It tak
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.8.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.8.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
+| `Capturo-Setup-0.9.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.9.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -64,6 +64,18 @@ The toolbar sits under the selection. Tools are on the first row; the second row
 ### 🎚️ Sizing
 
 Stroke width and numbered-step size are pixel sliders, 1 to 24px and 10 to 48px, and they update as you drag so you can judge the size against the screenshot underneath. Text keeps a list of preset sizes from 12px to 48px. Pick an existing annotation with the Select tool and the slider jumps to that object's size, so you can adjust something you already drew.
+
+## ⚙️ Settings
+
+Right-click the tray icon and choose **Settings…**. It is deliberately small, and opens only when you ask for it: closing it leaves Capturo resident in the tray as before.
+
+- **Format.** Save as PNG (lossless) or JPEG. There is a **JPEG quality** slider for when you want smaller files. Format and quality apply to files you **Save**; **Copy** always puts a lossless image on the clipboard.
+- **Notification.** Turn the toast after a copy or save on or off.
+- **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.
+
+Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options.
+
+A second **GIF** tab is a placeholder for a planned feature and has no controls yet.
 
 ## 🌈 HDR displays
 

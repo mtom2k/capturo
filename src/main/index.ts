@@ -19,6 +19,9 @@ import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CapturePayload, OverlayRole, Rect, SaveResult } from '../shared/types'
+import { DEFAULT_CAPTURE_SHORTCUT, type CaptureSettings, type SettingsUpdateResult } from '../shared/settings'
+import { formatAccelerator } from '../shared/shortcut'
+import { getSettings, loadSettings, updateSettings } from './settings'
 
 type OverlayEntry = {
   window: BrowserWindow
@@ -42,6 +45,10 @@ const SHOW_TRANSITION_MS = 250
 
 let tray: Tray | null = null
 let session: CaptureSession | null = null
+let settingsWindow: BrowserWindow | null = null
+// The capture shortcut currently registered with the OS. Tracked so a rebind can cleanly
+// unregister the old accelerator and roll back to it if the new one is rejected.
+let activeShortcut: string | null = null
 let isQuitting = false
 
 const isMac = process.platform === 'darwin'
@@ -94,6 +101,7 @@ function revealOverlay(entry: OverlayEntry): void {
 }
 
 function notify(title: string, body: string): void {
+  if (!getSettings().capture.showNotification) return
   if (Notification.isSupported()) new Notification({ title, body, silent: true }).show()
 }
 
@@ -347,7 +355,42 @@ function imageFromDataUrl(dataUrl: string): Electron.NativeImage | null {
   return image.isEmpty() ? null : image
 }
 
+// Format and quality apply to saved files only; the clipboard always gets a lossless
+// bitmap (see D-016). The renderer hands over a lossless PNG data URL regardless, and the
+// on-disk encoding is chosen here. The user can override the extension in the save dialog,
+// so an explicit .jpg/.jpeg or .png on the chosen path wins over the stored format.
+function encodeCapture(image: Electron.NativeImage, filePath: string, settings: CaptureSettings): Buffer {
+  const extension = path.extname(filePath).toLowerCase()
+  const asJpeg =
+    extension === '.jpg' ||
+    extension === '.jpeg' ||
+    (extension !== '.png' && settings.format === 'jpeg')
+  return asJpeg ? image.toJPEG(settings.jpegQuality) : image.toPNG()
+}
+
 function registerIpc(): void {
+  ipcMain.handle('settings:get', () => getSettings())
+
+  // A settings change is persisted immediately. A shortcut change additionally re-registers
+  // the global accelerator; if the OS rejects the new one, the stored shortcut and the live
+  // registration are both rolled back to the previous working value and the reason is
+  // returned so the settings window can show it.
+  ipcMain.handle('settings:update', (_event, update: Partial<CaptureSettings>): SettingsUpdateResult => {
+    const previousShortcut = getSettings().capture.captureShortcut
+    let next = updateSettings(update)
+    let shortcutError: string | undefined
+
+    if (next.capture.captureShortcut !== previousShortcut) {
+      if (applyShortcut(next.capture.captureShortcut)) {
+        refreshTray()
+      } else {
+        next = updateSettings({ captureShortcut: previousShortcut })
+        shortcutError = `${formatAccelerator(update.captureShortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(previousShortcut, isMac)}.`
+      }
+    }
+    return { settings: next, shortcutError }
+  })
+
   ipcMain.handle('capture:ready', (event, sessionId: string) => {
     const active = validSession(event, sessionId)
     const entry = active?.overlays.get(event.sender.id)
@@ -423,14 +466,18 @@ function registerIpc(): void {
         String(now.getMinutes()).padStart(2, '0'),
         String(now.getSeconds()).padStart(2, '0')
       ].join('')
+      const settings = getSettings().capture
+      const jpeg = settings.format === 'jpeg'
       const options: Electron.SaveDialogOptions = {
         title: 'Save screenshot',
-        defaultPath: path.join(app.getPath('pictures'), `Capturo ${stamp}.png`),
-        filters: [{ name: 'PNG image', extensions: ['png'] }]
+        defaultPath: path.join(app.getPath('pictures'), `Capturo ${stamp}.${jpeg ? 'jpg' : 'png'}`),
+        filters: jpeg
+          ? [{ name: 'JPEG image', extensions: ['jpg', 'jpeg'] }, { name: 'PNG image', extensions: ['png'] }]
+          : [{ name: 'PNG image', extensions: ['png'] }, { name: 'JPEG image', extensions: ['jpg', 'jpeg'] }]
       }
       const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
       if (result.canceled || !result.filePath) return { saved: false, canceled: true }
-      await fs.writeFile(result.filePath, image.toPNG())
+      await fs.writeFile(result.filePath, encodeCapture(image, result.filePath, settings))
       closeSession()
       notify('Screenshot saved', path.basename(result.filePath))
       return { saved: true, canceled: false, filePath: result.filePath }
@@ -438,21 +485,102 @@ function registerIpc(): void {
   )
 }
 
-function createTray(): void {
-  // The running build must be identifiable without inspecting files on disk, so the
-  // version appears both on hover and in the menu.
+// Registers a capture accelerator with the OS, replacing whatever is currently bound. On
+// failure the previous accelerator is put back so a rejected rebind never leaves the app
+// with no working shortcut. Returns whether the requested accelerator took effect.
+function applyShortcut(accelerator: string): boolean {
+  if (activeShortcut) globalShortcut.unregister(activeShortcut)
+  let registered = false
+  try {
+    registered = globalShortcut.register(accelerator, () => void startCapture())
+  } catch {
+    // Electron throws rather than returning false for a syntactically invalid accelerator.
+    registered = false
+  }
+  if (registered) {
+    activeShortcut = accelerator
+    return true
+  }
+  if (activeShortcut) {
+    try {
+      globalShortcut.register(activeShortcut, () => void startCapture())
+    } catch {
+      // The previous accelerator was valid a moment ago; nothing more to do if it now fails.
+    }
+  }
+  return false
+}
+
+// At startup, bind the saved shortcut. If it is unavailable (taken by another app since it
+// was chosen), fall back to the default and persist that so the tray label stays truthful.
+function registerInitialShortcut(): void {
+  const configured = getSettings().capture.captureShortcut
+  if (applyShortcut(configured)) return
+  if (configured !== DEFAULT_CAPTURE_SHORTCUT && applyShortcut(DEFAULT_CAPTURE_SHORTCUT)) {
+    updateSettings({ captureShortcut: DEFAULT_CAPTURE_SHORTCUT })
+  }
+}
+
+// The tray tooltip and menu both surface the version and the live capture shortcut, so the
+// running build and its binding can be read without opening anything.
+function refreshTray(): void {
+  if (!tray) return
   const version = app.getVersion()
-  tray = new Tray(trayImage())
-  tray.setToolTip(`Capturo ${version} - take a screenshot`)
+  const shortcut = getSettings().capture.captureShortcut
+  tray.setToolTip(`Capturo ${version} — ${formatAccelerator(shortcut, isMac)} to capture`)
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'New screenshot', accelerator: 'CommandOrControl+Shift+2', click: () => void startCapture() },
+      { label: 'New screenshot', accelerator: shortcut, click: () => void startCapture() },
+      { label: 'Settings…', click: () => openSettings() },
       { type: 'separator' },
       { label: `Version ${version}`, enabled: false },
       { label: 'Quit Capturo', click: () => { isQuitting = true; app.quit() } }
     ])
   )
+}
+
+function createTray(): void {
+  tray = new Tray(trayImage())
+  refreshTray()
   tray.on('click', () => void startCapture())
+}
+
+// A small, framed, on-demand preferences window. Reused if already open. It is not a
+// resident surface: closing it destroys it and the app stays tray-only. See D-016.
+function openSettings(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore()
+    settingsWindow.show()
+    settingsWindow.focus()
+    return
+  }
+
+  const window = new BrowserWindow({
+    width: 460,
+    height: 452,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Capturo Settings',
+    backgroundColor: '#050910',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  settingsWindow = window
+  window.on('closed', () => {
+    if (settingsWindow === window) settingsWindow = null
+  })
+  window.once('ready-to-show', () => window.show())
+
+  const devUrl = rendererUrl()
+  if (devUrl) void window.loadURL(`${devUrl}/settings.html`)
+  else void window.loadFile(path.join(__dirname, '../renderer/settings.html'))
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -462,9 +590,10 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('com.capturo.app')
     if (isMac) app.dock?.hide()
+    loadSettings()
     registerIpc()
+    registerInitialShortcut()
     createTray()
-    globalShortcut.register('CommandOrControl+Shift+2', () => void startCapture())
     if (isSmokeInstance) void startCapture()
   })
   app.on('activate', () => void startCapture())

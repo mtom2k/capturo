@@ -1,20 +1,20 @@
 # Project State
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Phase
 
-`0.6.0` built and validated on Windows; macOS validation still pending.
+`0.9.0` built and passing the automated gate on Windows; the settings GUI smoke test and macOS validation are still pending.
 
 ## Current build
 
-`0.6.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.9.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
 
-`0.1.0` through `0.5.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
+`0.1.0` through `0.8.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
 ## Target release
 
-`0.6.0` - complete local capture, annotation, copy, and save workflow on Windows and macOS, with an animation-free capture transition, pixel-exact selection, the whole display capturable without disturbing notifications, and continuous pixel sizing for drawing tools.
+`0.9.0` - the complete local capture, annotation, copy, and save workflow, HDR-correct native capture, and a minimal tray-opened settings window: save format (PNG/JPEG) with JPEG quality, a post-capture notification toggle, and a rebindable capture shortcut, plus a placeholder GIF tab for a future feature.
 
 ## Functional checklist
 
@@ -40,7 +40,13 @@ Last updated: 2026-08-06
 - [x] Pixel-exact selection and export on scaled displays
 - [x] Version visible from the tray
 - [x] Undo
-- [x] Windows smoke test
+- [x] Tray-opened settings window with Capture and GIF tabs
+- [x] Save as PNG or JPEG with a JPEG quality control (save-only; clipboard stays lossless)
+- [x] Post-capture notification toggle
+- [x] Rebindable capture shortcut with conflict fallback
+- [x] Settings persisted to `userData/settings.json` (no captured pixels)
+- [x] Windows smoke test (through 0.6.0)
+- [ ] Settings GUI smoke test on Windows
 - [ ] macOS smoke test
 - [x] Windows packages
 - [ ] Signed/notarized macOS packages
@@ -98,6 +104,10 @@ Last updated: 2026-08-06
   - numbered-step slider driven to `48px` and the placed marker scaled with it
   - selecting the existing rectangle with the Select tool moved the slider to `24px` rather than resetting to the default
   - text retains its preset list, now labelled `12px` through `48px`
+- 2026-08-07 `0.9.0` settings:
+  - automated gate green: `npm run typecheck`, `npm test` (27/27, including new `settings` and `shortcut` suites), and `npm run build`, which emits `out/renderer/settings.html` alongside `index.html` from the new two-page Rollup input
+  - pure logic covered by unit tests: quality clamping, invalid-input fallback, partial merges; accelerator building for modifier combinations, bare function keys, and rejection of modifier-only or unmapped chords
+  - GUI smoke test still to run on the Windows desktop: tab switching, the notification toggle, PNG↔JPEG save output and quality, and shortcut rebind including the taken-chord fallback (see TESTING.md)
 
 ## Known constraints
 

@@ -127,3 +127,21 @@ DXGI enumerates outputs in its own order, which does not match the host's displa
 A rotated output duplicates into an unrotated surface. Rather than rotate the pixels back, the helper reports the rotation and the caller falls back to its previous path for that monitor.
 
 Do not benchmark this against a GDI screen grab. GDI is itself wrong on an HDR display, and an earlier fix was declared correct on exactly that basis while the captures were still visibly blown out. Compare against content whose values are known, or against Snipping Tool. Note that Snipping Tool is not pixel-exact either: it lifts shadows and renders white as about 225, reserving headroom for HDR highlights. Faithful reproduction of SDR content is the goal here, so exactness against the drawn values is the test that matters.
+
+## D-016: An on-demand settings window with minimal on-disk preferences
+
+**Status:** accepted
+
+Capturo is tray-first with no persistent window (D-002) and writes nothing to disk unless the user chooses Save (D-006, Privacy). A preferences surface appears to cut against both, so it is introduced deliberately rather than by drift.
+
+The settings window is opened only from the tray and destroyed when closed. It is not a resident dashboard and does not change the steady state: with settings closed, Capturo is still one tray process and no window. This keeps D-002's intent — the icon still opens straight into capture, and nothing else is on screen between captures.
+
+Preferences persist to a single `settings.json` in `app.getPath('userData')`. This is the one thing Capturo writes without an explicit Save, and it is compatible with D-006 because it holds **no captured pixels**: only four values — save format, JPEG quality, the notification toggle, and the capture shortcut. A corrupt or half-written file is never fatal; `normalizeSettings` in `src/shared/settings.ts` turns any input into a complete, valid object, so the app always starts.
+
+The scope is kept small on purpose. Format and JPEG quality apply to **saved files only**. Copy-to-clipboard stays a lossless bitmap, which is the only meaningful thing to put on the Windows clipboard, so format and quality live entirely in the main process at save time and never reach the renderer. The renderer keeps producing a lossless PNG data URL; `capture:save` chooses the on-disk encoding, honouring an explicit `.jpg`/`.jpeg`/`.png` the user types into the save dialog over the stored default.
+
+The logic is split the way the rest of the codebase is: pure validation and accelerator parsing in `src/shared/` with unit tests, side effects (filesystem, `globalShortcut`, tray) in `src/main/`. The security boundary is unchanged — the settings window reuses the existing sandboxed, context-isolated preload and talks only through explicit typed IPC handlers.
+
+A rebindable capture shortcut is the one preference with a failure mode: the chosen accelerator may be owned by another application. `globalShortcut.register` reports this (or throws for a malformed accelerator), so a rebind that does not take effect rolls both the live registration and the stored value back to the previous working shortcut and reports the reason to the settings window. At startup an unavailable saved shortcut falls back to the default so the tray label stays truthful.
+
+A second **GIF** tab ships as a disabled placeholder. It records intent — GIF capture is a planned future feature — without any capture or encoding logic in this change.
