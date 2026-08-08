@@ -41,11 +41,13 @@ Windows can be built and exercised from this repository's current host. The fina
 
 The development-only `CAPTURO_CAPTURE_ON_START=1` environment flag opens capture at launch and uses a temporary user-data scope. It exists for smoke automation and does not alter normal single-instance production behavior.
 
+Set `CAPTURO_TIMING=1` to print capture-path phase timings to stderr: how long frames took to grab (with the native helper's own setup/acquire/convert/encode breakdown, which it always reports in its JSON) and how long overlays took to load. It is silent otherwise and is the way to quantify invocation latency.
+
 Overlay presentation has two separate hazards, and fixing one does not fix the other.
 
 First, do not reveal the overlay from `did-finish-load`. The renderer must draw the captured desktop and acknowledge `capture:ready`, or Windows presents the BrowserWindow background as a full-screen flash.
 
-Second, do not reveal the overlay by taking it from hidden to shown. Windows animates that transition, which makes the desktop appear to zoom and cross-fade into place. `showInactive()` is therefore called immediately after the window is created, while it is still fully transparent and set to ignore mouse events, and `capture:ready` reveals it with `setOpacity(1)`. Moving that `showInactive()` back to the ready handler reintroduces the animation. See D-011.
+Second, reveal the overlay by opacity, not by taking it from hidden to shown. `showInactive()` is called immediately after the window is created, while it is still fully transparent and set to ignore mouse events, and `capture:ready` reveals it with `setOpacity(1)`. This keeps the window painting while invisible and stops it swallowing pointer input before it is ready. The reveal is immediate — there is no longer a fixed delay — because dropping `WS_THICKFRAME` (`thickFrame: false`) suppresses the window-open animation the old 250 ms floor existed to hide. Do not reintroduce that floor, and do not move `showInactive()` into the ready handler. See D-011.
 
 When verifying either, difference consecutive video frames. Average luminance does not change meaningfully during a scale animation and will report a broken build as fixed.
 

@@ -8,6 +8,19 @@ type RenderOptions = {
   uiScale?: number
 }
 
+// The dim laid over the frozen desktop during a capture. Before a selection exists it
+// covers the whole screen, so invoking Capturo visibly enters capture mode; once a region is
+// selected the same tint darkens everything outside it while the selection reads at full
+// brightness.
+const SHADE_FILL = 'rgba(5, 9, 16, 0.52)'
+
+function drawScreenDim(context: CanvasRenderingContext2D): void {
+  context.save()
+  context.fillStyle = SHADE_FILL
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height)
+  context.restore()
+}
+
 function roundedRectPath(context: CanvasRenderingContext2D, rect: Rect, radius: number): void {
   const r = Math.min(radius, rect.width / 2, rect.height / 2)
   context.beginPath()
@@ -161,7 +174,7 @@ function drawSelection(context: CanvasRenderingContext2D, selection: Rect, uiSca
   const width = context.canvas.width
   const height = context.canvas.height
   context.save()
-  context.fillStyle = 'rgba(5, 9, 16, 0.52)'
+  context.fillStyle = SHADE_FILL
   context.fillRect(0, 0, width, selection.y)
   context.fillRect(0, selection.y, selection.x, selection.height)
   context.fillRect(selection.x + selection.width, selection.y, width - selection.x - selection.width, selection.height)
@@ -235,7 +248,12 @@ export function renderScene(
   context.drawImage(image, 0, 0, context.canvas.width, context.canvas.height)
   for (const annotation of annotations) renderAnnotation(context, annotation)
   if (draft) renderAnnotation(context, draft)
-  if (options.selection && options.shade !== false) drawSelection(context, options.selection, options.uiScale ?? 1)
+  if (options.shade !== false) {
+    // With a selection, dim everything outside it; before one exists, dim the whole screen
+    // so the frozen desktop reads as capture mode rather than the live desktop.
+    if (options.selection) drawSelection(context, options.selection, options.uiScale ?? 1)
+    else drawScreenDim(context)
+  }
   if (options.selectedAnnotation && options.shade !== false) {
     drawAnnotationSelection(context, options.selectedAnnotation, options.uiScale ?? 1)
   }

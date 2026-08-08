@@ -4,13 +4,13 @@ Last updated: 2026-08-07
 
 ## Phase
 
-`0.9.1` built and passing the automated gate on Windows; the settings GUI smoke test and macOS validation are still pending.
+`0.10.0` built and passing the automated gate on Windows; the capture-latency measurement, reveal frame-diff, HDR re-check, and macOS validation are still pending on real hardware.
 
 ## Current build
 
-`0.9.1`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.10.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
 
-`0.1.0` through `0.9.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
+`0.1.0` through `0.9.1` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
 ## Target release
 
@@ -111,6 +111,11 @@ Last updated: 2026-08-07
 - 2026-08-07 `0.9.1` fix:
   - a 1px border framed the capture overlay around the whole screen and along the work-area/taskbar seam. Cause: frameless windows keep `WS_THICKFRAME`, which Windows 11 borders, and the display is tiled into several overlays, so every overlay edge showed it
   - dropping `WS_THICKFRAME` (`thickFrame: false`) removes the border; confirmed gone in the running app on Windows 11
+- 2026-08-08 `0.10.0` performance:
+  - automated gate green: `npm run typecheck`, `npm test` (31/31, including new `uncoveredStrips` cases), `npm run build`; the native helper rebuilds clean under `/W4`
+  - removed avoidable invocation cost: the redundant full-resolution `desktopCapturer` pass is skipped on the Windows helper path, per-display frame grabs and overlay loads run in parallel, and the reveal's fixed 250 ms floor is gone (the animation it hid is already suppressed by `thickFrame:false`)
+  - native helper no longer stalls on a static desktop: the frame-acquire wait is bounded and falls back to the current desktop surface (D-015 amended); it now also reports per-stage timings, and `CAPTURO_TIMING=1` logs the capture path
+  - still to run on real hardware: `CAPTURO_TIMING` before/after numbers, the reveal frame-diff (single hard cut, no black frame), the HDR known-pattern re-check, and pixel-exact selection (D-012)
 
 ## Known constraints
 

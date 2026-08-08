@@ -97,6 +97,32 @@ export function snapToAxis(start: Point, point: Point, diagonal = true): Point {
   }
 }
 
+// The parts of a display the work area does not reach: usually a single taskbar strip, but
+// docked bars on any edge are handled. Top and bottom strips span the full width and the
+// side strips fill what is left, so the rectangles never overlap. Used to tile a display
+// into an editor over the work area plus a filler per uncovered strip (see D-013).
+export function uncoveredStrips(bounds: Rect, area: Rect): Rect[] {
+  const strips: Rect[] = []
+  const areaRight = area.x + area.width
+  const areaBottom = area.y + area.height
+  const boundsRight = bounds.x + bounds.width
+  const boundsBottom = bounds.y + bounds.height
+
+  if (area.y > bounds.y) {
+    strips.push({ x: bounds.x, y: bounds.y, width: bounds.width, height: area.y - bounds.y })
+  }
+  if (areaBottom < boundsBottom) {
+    strips.push({ x: bounds.x, y: areaBottom, width: bounds.width, height: boundsBottom - areaBottom })
+  }
+  if (area.x > bounds.x) {
+    strips.push({ x: bounds.x, y: area.y, width: area.x - bounds.x, height: area.height })
+  }
+  if (areaRight < boundsRight) {
+    strips.push({ x: areaRight, y: area.y, width: boundsRight - areaRight, height: area.height })
+  }
+  return strips.filter((strip) => strip.width > 0 && strip.height > 0)
+}
+
 export function translatePoint(point: Point, delta: Point): Point {
   return { x: point.x + delta.x, y: point.y + delta.y }
 }

@@ -99,8 +99,6 @@ export type CapturePayload = {
   // rather than by the window's viewport, so a window covering part of a display still
   // maps pointer positions to the correct source pixels.
   captureSize: { width: number; height: number }
-  displayBounds: Rect
-  scaleFactor: number
 }
 
 // The editor owns all interaction; fillers are passive and repaint from these updates so

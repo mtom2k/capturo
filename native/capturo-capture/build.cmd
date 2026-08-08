@@ -20,6 +20,11 @@ if not defined VSPATH (
   exit /b 1
 )
 
+REM vcvars64.bat calls vswhere by bare name, so put the VS Installer directory (which is not
+REM on PATH by default) ahead of it. Without this the build still works, but vcvars prints a
+REM harmless "'vswhere.exe' is not recognized" to stderr that looks like a failure.
+set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
+
 call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b 1
 

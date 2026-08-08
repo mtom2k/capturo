@@ -172,6 +172,14 @@ int wmain(int argc, wchar_t** argv) {
     // than a DPI-virtualised one.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
+    // Stage timings, reported in the JSON so the caller can see where a capture spends its
+    // time (setup, frame acquisition, pixel conversion, PNG encode).
+    LARGE_INTEGER qpcFreq;
+    QueryPerformanceFrequency(&qpcFreq);
+    auto stamp = []() { LARGE_INTEGER t; QueryPerformanceCounter(&t); return t.QuadPart; };
+    auto msBetween = [&qpcFreq](long long a, long long b) { return (b - a) * 1000.0 / qpcFreq.QuadPart; };
+    const long long tStart = stamp();
+
     Options options;
     if (!ParseOptions(argc, argv, options)) {
         std::printf("{\"ok\":false,\"stage\":\"arguments\"}\n");
@@ -251,39 +259,68 @@ int wmain(int argc, wchar_t** argv) {
     ComPtr<IDXGIOutputDuplication> duplication;
     hr = output5->DuplicateOutput1(device.Get(), 0, ARRAYSIZE(formats), formats, &duplication);
     if (FAILED(hr)) { Fail("DuplicateOutput1", hr); return 1; }
+    const long long tDupReady = stamp();
 
-    // The first frames after duplication starts are often empty; keep asking until one
-    // carries actual content.
-    ComPtr<IDXGIResource> resource;
-    DXGI_OUTDUPL_FRAME_INFO frameInfo{};
-    for (int attempt = 0; attempt < 60; ++attempt) {
-        duplication->ReleaseFrame();
-        hr = duplication->AcquireNextFrame(500, &frameInfo, &resource);
-        if (hr == DXGI_ERROR_WAIT_TIMEOUT) continue;
-        if (FAILED(hr)) { Fail("AcquireNextFrame", hr); return 1; }
-        if (frameInfo.LastPresentTime.QuadPart != 0 || frameInfo.AccumulatedFrames > 0) break;
-    }
-    if (!resource) { Fail("AcquireNextFrame", E_FAIL); return 1; }
-
-    ComPtr<ID3D11Texture2D> frame;
-    hr = resource.As(&frame);
-    if (FAILED(hr)) { Fail("QueryInterface(ID3D11Texture2D)", hr); return 1; }
+    // Acquire the desktop frame.
+    //
+    // The first AcquireNextFrame after duplication starts already holds the current desktop,
+    // but its metadata usually reports no present yet. Requiring a present is correct on an
+    // active desktop, but a static one never presents, so the previous code discarded that
+    // first valid frame and then blocked for the full timeout on every idle screen. Instead:
+    // prefer a genuinely presented frame, but keep the most recent acquired surface as a
+    // fallback and use it once a short budget elapses. Each frame is copied into a staging
+    // texture immediately so it can be released promptly while its pixels are retained.
+    const double kAcquireBudgetMs = 100.0;
+    const long long tAcquireStart = stamp();
 
     D3D11_TEXTURE2D_DESC desc{};
-    frame->GetDesc(&desc);
-
-    // Note: the duplicated frame excludes the mouse pointer. That is deliberate, and it is
-    // why this helper also resolves the cursor appearing in captures.
-    D3D11_TEXTURE2D_DESC staging = desc;
-    staging.Usage = D3D11_USAGE_STAGING;
-    staging.BindFlags = 0;
-    staging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    staging.MiscFlags = 0;
-
     ComPtr<ID3D11Texture2D> readback;
-    hr = device->CreateTexture2D(&staging, nullptr, &readback);
-    if (FAILED(hr)) { Fail("CreateTexture2D", hr); return 1; }
-    context->CopyResource(readback.Get(), frame.Get());
+    bool haveFrame = false;
+    bool presented = false;
+
+    while (!presented) {
+        const double elapsed = msBetween(tAcquireStart, stamp());
+        const UINT wait = elapsed >= kAcquireBudgetMs ? 1 : static_cast<UINT>(kAcquireBudgetMs - elapsed);
+
+        ComPtr<IDXGIResource> resource;
+        DXGI_OUTDUPL_FRAME_INFO frameInfo{};
+        hr = duplication->AcquireNextFrame(wait, &frameInfo, &resource);
+        if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
+            // No newer frame arrived. If we already hold a surface it is the current desktop
+            // (static screen); use it. Otherwise keep waiting until the budget is spent.
+            if (haveFrame) break;
+            if (msBetween(tAcquireStart, stamp()) >= kAcquireBudgetMs) break;
+            continue;
+        }
+        if (FAILED(hr)) { Fail("AcquireNextFrame", hr); return 1; }
+
+        ComPtr<ID3D11Texture2D> frame;
+        hr = resource.As(&frame);
+        if (FAILED(hr)) { duplication->ReleaseFrame(); Fail("QueryInterface(ID3D11Texture2D)", hr); return 1; }
+
+        if (!haveFrame) {
+            // Size the staging (readback) texture from the first frame. The duplicated frame
+            // excludes the mouse pointer, which is why this helper also fixes the cursor
+            // appearing in captures.
+            frame->GetDesc(&desc);
+            D3D11_TEXTURE2D_DESC staging = desc;
+            staging.Usage = D3D11_USAGE_STAGING;
+            staging.BindFlags = 0;
+            staging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging.MiscFlags = 0;
+            hr = device->CreateTexture2D(&staging, nullptr, &readback);
+            if (FAILED(hr)) { duplication->ReleaseFrame(); Fail("CreateTexture2D", hr); return 1; }
+        }
+
+        context->CopyResource(readback.Get(), frame.Get());
+        haveFrame = true;
+        presented = frameInfo.LastPresentTime.QuadPart != 0 || frameInfo.AccumulatedFrames > 0;
+        duplication->ReleaseFrame();
+
+        if (!presented && msBetween(tAcquireStart, stamp()) >= kAcquireBudgetMs) break;
+    }
+    if (!haveFrame) { Fail("AcquireNextFrame", E_FAIL); return 1; }
+    const long long tAcquired = stamp();
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
     hr = context->Map(readback.Get(), 0, D3D11_MAP_READ, 0, &mapped);
@@ -321,15 +358,19 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     context->Unmap(readback.Get(), 0);
-    duplication->ReleaseFrame();
+    const long long tConverted = stamp();
 
     hr = WritePng(options.output, bgra, width, height);
     if (FAILED(hr)) { Fail("WritePng", hr); return 1; }
+    const long long tEncoded = stamp();
 
     std::printf(
         "{\"ok\":true,\"width\":%u,\"height\":%u,\"format\":\"%s\",\"hdrActive\":%s,"
-        "\"sdrWhiteNits\":%.1f,\"whiteLevelQueried\":%s}\n",
+        "\"sdrWhiteNits\":%.1f,\"whiteLevelQueried\":%s,"
+        "\"timings\":{\"setup\":%.1f,\"acquire\":%.1f,\"convert\":%.1f,\"encode\":%.1f}}\n",
         width, height, isFloat ? "R16G16B16A16_FLOAT" : "B8G8R8A8_UNORM",
-        hdrActive ? "true" : "false", sdrWhiteNits, whiteLevelQueried ? "true" : "false");
+        hdrActive ? "true" : "false", sdrWhiteNits, whiteLevelQueried ? "true" : "false",
+        msBetween(tStart, tDupReady), msBetween(tDupReady, tAcquired),
+        msBetween(tAcquired, tConverted), msBetween(tConverted, tEncoded));
     return 0;
 }

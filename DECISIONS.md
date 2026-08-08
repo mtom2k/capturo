@@ -70,6 +70,8 @@ The overlay is now shown transparent immediately after it is created, so the pla
 
 Verification must measure geometric motion between consecutive frames, not average luminance. A scale animation moves the same desktop image, so frame-average brightness barely changes and a luminance check reports success while the animation is still plainly visible.
 
+**Amended (0.10.0): the reveal no longer waits out a fixed delay.** The opacity reveal above once carried a 250 ms floor that spent the window's show transition while the overlay was invisible. Dropping `WS_THICKFRAME` (`thickFrame: false`, added in 0.9.1 to remove the Windows 11 border) also suppresses that open transition, so there is no animation left to wait out. `revealOverlay` now raises the opacity the instant the renderer acknowledges `capture:ready`, with no timer. The transparent-early + opacity mechanism is kept: it still guarantees the window has painted before it is visible (D-010) and cannot swallow pointer events before then, and an opacity change is itself never animated. The same frame-differencing verification applies — a correct reveal is a single hard cut with no black frame and no motion on either side.
+
 ## D-012: Overlay bounds are re-applied after the window exists
 
 **Status:** accepted, target amended by D-013
@@ -127,6 +129,8 @@ DXGI enumerates outputs in its own order, which does not match the host's displa
 A rotated output duplicates into an unrotated surface. Rather than rotate the pixels back, the helper reports the rotation and the caller falls back to its previous path for that monitor.
 
 Do not benchmark this against a GDI screen grab. GDI is itself wrong on an HDR display, and an earlier fix was declared correct on exactly that basis while the captures were still visibly blown out. Compare against content whose values are known, or against Snipping Tool. Note that Snipping Tool is not pixel-exact either: it lifts shadows and renders white as about 225, reserving headroom for HDR highlights. Faithful reproduction of SDR content is the goal here, so exactness against the drawn values is the test that matters.
+
+**Amended (0.10.0): the frame-acquire wait is bounded.** The helper used to loop on `AcquireNextFrame(500ms)` and discard every frame until one reported a present (`LastPresentTime` or `AccumulatedFrames` non-zero). On an *active* desktop a present arrives within milliseconds, but a *static* desktop never presents, so the first — already valid — frame was thrown away and the helper then blocked for the full timeout, capture after capture. The loop now still prefers a genuinely presented frame but keeps the most recent acquired surface as a fallback (copied into the staging texture immediately so the frame can be released), and uses it once a short budget (~100 ms) elapses. This removes the static-desktop stall without changing pixels: a presented frame is still preferred when one is available, and the fallback surface is the current desktop. Re-verify colour with the known-pattern test, not by eye. The helper also now reports per-stage timings (setup, acquire, convert, encode) in its JSON so the cost is measurable.
 
 ## D-016: An on-demand settings window with minimal on-disk preferences
 

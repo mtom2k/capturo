@@ -4,7 +4,8 @@ import {
   moveRect,
   normalizeRect,
   resizeRect,
-  snapToAxis
+  snapToAxis,
+  uncoveredStrips
 } from '../src/shared/geometry'
 
 describe('normalizeRect', () => {
@@ -52,6 +53,38 @@ describe('resize handles', () => {
 
   it('finds a side handle', () => {
     expect(getResizeHandle({ x: 80, y: 40 }, rect, 5)).toBe('east')
+  })
+})
+
+describe('uncoveredStrips', () => {
+  it('returns a single strip for a bottom taskbar', () => {
+    expect(
+      uncoveredStrips({ x: 0, y: 0, width: 2560, height: 1440 }, { x: 0, y: 0, width: 2560, height: 1392 })
+    ).toEqual([{ x: 0, y: 1392, width: 2560, height: 48 }])
+  })
+
+  it('returns nothing when the work area covers the display', () => {
+    const full = { x: 0, y: 0, width: 1920, height: 1080 }
+    expect(uncoveredStrips(full, full)).toEqual([])
+  })
+
+  it('handles a left-docked bar', () => {
+    expect(
+      uncoveredStrips({ x: 0, y: 0, width: 1000, height: 800 }, { x: 60, y: 0, width: 940, height: 800 })
+    ).toEqual([{ x: 0, y: 0, width: 60, height: 800 }])
+  })
+
+  it('produces non-overlapping strips when every edge is inset', () => {
+    const strips = uncoveredStrips(
+      { x: 0, y: 0, width: 1000, height: 800 },
+      { x: 10, y: 20, width: 980, height: 760 }
+    )
+    expect(strips).toEqual([
+      { x: 0, y: 0, width: 1000, height: 20 },
+      { x: 0, y: 780, width: 1000, height: 20 },
+      { x: 0, y: 20, width: 10, height: 760 },
+      { x: 990, y: 20, width: 10, height: 760 }
+    ])
   })
 })
 

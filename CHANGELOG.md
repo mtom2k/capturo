@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.10.0 - 2026-08-08
+
+### Changed
+
+- Invoking a capture is much faster. The overlay now appears with no artificial delay, and
+  the work to grab each display's frozen desktop runs in parallel rather than one screen at
+  a time.
+- The reveal no longer waits out a fixed 250 ms. That delay existed to hide Windows'
+  window-open animation, which the 0.9.1 `thickFrame:false` change already suppresses, so it
+  was pure latency. The overlay is revealed the instant it has painted (D-011).
+- `desktopCapturer` is no longer consulted on Windows when the native helper serves the
+  frame. It used to grab a full-resolution thumbnail of every screen on every capture and
+  then throw the result away; it is now fetched only when a display actually needs the
+  fallback.
+- The native capture helper no longer stalls on a static desktop. It used to discard the
+  first (valid) duplicated frame and block for the full timeout waiting for a screen update
+  that an idle desktop never makes; it now prefers a presented frame but falls back to the
+  current desktop surface after a short budget. Output pixels are unchanged (D-015).
+- On a multi-monitor setup with a rotated display, capture is faster. A rotated display
+  cannot use the native helper, so it uses the `desktopCapturer` fallback; that fallback now
+  runs in parallel with the helper captures instead of after them, and the helper is no
+  longer launched for a display it cannot serve.
+
+### Fixed
+
+- The screen dims as soon as a capture is invoked, the same tint shown outside a selection,
+  so it is clear that Capturo is in capture mode rather than showing the live desktop.
+  Dragging a region reveals it at full brightness with the surroundings still dimmed.
+
+### Internal
+
+- The capture helper reports per-stage timings, and `CAPTURO_TIMING=1` prints capture-path
+  phase timings, so invocation latency can be measured.
+- `startCapture` was refactored into focused helpers, the pure `uncoveredStrips` tiling maths
+  moved to `src/shared/geometry.ts` with unit tests, and unused payload fields were removed.
+  No behaviour change.
+
 ## 0.9.1 - 2026-08-07
 
 ### Fixed

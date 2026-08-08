@@ -21,27 +21,22 @@ import { randomUUID } from 'node:crypto'
 import type { CapturePayload, OverlayRole, Rect, SaveResult } from '../shared/types'
 import { DEFAULT_CAPTURE_SHORTCUT, type CaptureSettings, type SettingsUpdateResult } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
+import { uncoveredStrips } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 
 type OverlayEntry = {
   window: BrowserWindow
   payload: CapturePayload
-  shownAt: number
   revealed: boolean
 }
+
+// The frozen desktop for one display, ready to hand to its overlays.
+type DisplayImage = { bytes: Uint8Array; width: number; height: number }
 
 type CaptureSession = {
   id: string
   overlays: Map<number, OverlayEntry>
 }
-
-// Windows plays a scale-and-fade transition whenever a window goes from hidden to
-// shown. On a borderless window sized to the whole display that reads as the desktop
-// zooming into place, which is exactly what a capture overlay must never do. The
-// overlay is therefore shown fully transparent as soon as it is created, so the
-// transition runs while nothing is on screen, and is later revealed by raising its
-// opacity, which is composited immediately and is never animated.
-const SHOW_TRANSITION_MS = 250
 
 let tray: Tray | null = null
 let session: CaptureSession | null = null
@@ -53,6 +48,13 @@ let isQuitting = false
 
 const isMac = process.platform === 'darwin'
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
+// Opt-in phase timings for the capture path, printed to stderr. Off by default so normal
+// runs stay quiet; used to measure the invocation latency end to end.
+const timingEnabled = process.env.CAPTURO_TIMING === '1'
+
+function logTiming(message: string): void {
+  if (timingEnabled) console.error(`[timing] ${message}`)
+}
 
 if (isSmokeInstance) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
@@ -81,23 +83,16 @@ function closeSession(): void {
   }
 }
 
-// The renderer has painted the frozen desktop, so the overlay can become visible.
-// The window has been on screen (transparent) since it was created; if its show
-// transition has not finished yet, wait out the remainder so the reveal cannot
-// expose a half-animated frame.
+// The renderer has painted the frozen desktop, so the overlay can be revealed. The window
+// has been on screen but fully transparent since it was created, so this is an immediate
+// opacity change onto an already-painted frame: no black flash (D-010), and with the sizing
+// frame gone (thickFrame:false) no window-open animation to wait out (D-011). It is revealed
+// the instant it is ready, with no artificial delay.
 function revealOverlay(entry: OverlayEntry): void {
   if (entry.revealed || entry.window.isDestroyed()) return
   entry.revealed = true
-
-  const present = (): void => {
-    if (entry.window.isDestroyed()) return
-    entry.window.setIgnoreMouseEvents(false)
-    entry.window.setOpacity(1)
-  }
-
-  const remaining = SHOW_TRANSITION_MS - (Date.now() - entry.shownAt)
-  if (remaining <= 0) present()
-  else setTimeout(present, remaining)
+  entry.window.setIgnoreMouseEvents(false)
+  entry.window.setOpacity(1)
 }
 
 function notify(title: string, body: string): void {
@@ -142,6 +137,7 @@ async function captureWithHelper(display: Electron.Display): Promise<HelperCaptu
   const physical = screen.dipToScreenRect(null, display.bounds)
 
   const output = path.join(app.getPath('temp'), `capturo-${randomUUID()}.png`)
+  const started = performance.now()
   try {
     const report = await new Promise<string>((resolve, reject) => {
       execFile(
@@ -154,8 +150,19 @@ async function captureWithHelper(display: Electron.Display): Promise<HelperCaptu
     const bytes = await fs.readFile(output)
     // Take the dimensions from the helper rather than re-decoding, so nothing can reinterpret
     // the image at a different scale factor on the way through.
-    const parsed = JSON.parse(report.trim()) as { ok: boolean; width: number; height: number }
+    const parsed = JSON.parse(report.trim()) as {
+      ok: boolean
+      width: number
+      height: number
+      timings?: Record<string, number>
+    }
     if (!parsed.ok || !parsed.width || !parsed.height) return null
+    if (timingEnabled) {
+      const stages = parsed.timings
+        ? ` [${Object.entries(parsed.timings).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ')}]`
+        : ''
+      logTiming(`helper display ${display.id}: ${(performance.now() - started).toFixed(0)}ms total${stages}`)
+    }
     return { bytes, width: parsed.width, height: parsed.height }
   } catch (error) {
     console.error('capturo-capture failed, falling back to desktopCapturer', error)
@@ -163,31 +170,6 @@ async function captureWithHelper(display: Electron.Display): Promise<HelperCaptu
   } finally {
     void fs.rm(output, { force: true }).catch(() => {})
   }
-}
-
-// The parts of a display the work area does not reach: usually a single taskbar strip,
-// but docked bars on any edge are handled. Top and bottom strips span the full width and
-// the side strips fill what is left, so the rectangles never overlap.
-function uncoveredStrips(bounds: Rect, area: Rect): Rect[] {
-  const strips: Rect[] = []
-  const areaRight = area.x + area.width
-  const areaBottom = area.y + area.height
-  const boundsRight = bounds.x + bounds.width
-  const boundsBottom = bounds.y + bounds.height
-
-  if (area.y > bounds.y) {
-    strips.push({ x: bounds.x, y: bounds.y, width: bounds.width, height: area.y - bounds.y })
-  }
-  if (areaBottom < boundsBottom) {
-    strips.push({ x: bounds.x, y: areaBottom, width: bounds.width, height: boundsBottom - areaBottom })
-  }
-  if (area.x > bounds.x) {
-    strips.push({ x: bounds.x, y: area.y, width: area.x - bounds.x, height: area.height })
-  }
-  if (areaRight < boundsRight) {
-    strips.push({ x: areaRight, y: area.y, width: boundsRight - areaRight, height: area.height })
-  }
-  return strips.filter((strip) => strip.width > 0 && strip.height > 0)
 }
 
 async function ensureScreenPermission(): Promise<boolean> {
@@ -210,6 +192,140 @@ async function ensureScreenPermission(): Promise<boolean> {
   return false
 }
 
+async function captureSources(
+  displays: Electron.Display[],
+  sizingDisplays: Electron.Display[] = displays
+): Promise<Electron.DesktopCapturerSource[]> {
+  // getSources returns every screen, but the thumbnail size only needs to fit the displays
+  // that will actually use the fallback (the others are served by the helper and discarded
+  // here). Sizing to just those keeps the grab from paying for a 4K thumbnail of a screen it
+  // will throw away.
+  const sized = sizingDisplays.length > 0 ? sizingDisplays : displays
+  const maxWidth = Math.max(...sized.map((d) => Math.ceil(d.size.width * d.scaleFactor)))
+  const maxHeight = Math.max(...sized.map((d) => Math.ceil(d.size.height * d.scaleFactor)))
+  return desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: maxWidth, height: maxHeight },
+    fetchWindowIcons: false
+  })
+}
+
+function imageFromSource(source: Electron.DesktopCapturerSource | undefined): DisplayImage | null {
+  if (!source || source.thumbnail.isEmpty()) return null
+  const size = source.thumbnail.getSize()
+  return { bytes: source.thumbnail.toPNG(), width: size.width, height: size.height }
+}
+
+// One editor over the work area, plus a filler for every strip it leaves uncovered. Together
+// they cover the display so the taskbar is still part of the capture, while no single window
+// covers the monitor and trips the full-screen classification. See D-013.
+function overlayRegions(display: Electron.Display): { rect: Rect; role: OverlayRole }[] {
+  return [
+    { rect: display.workArea, role: 'editor' },
+    ...uncoveredStrips(display.bounds, display.workArea).map((rect) => ({ rect, role: 'filler' as const }))
+  ]
+}
+
+function buildPayload(
+  sessionId: string,
+  display: Electron.Display,
+  region: { rect: Rect; role: OverlayRole },
+  image: DisplayImage
+): CapturePayload {
+  const bounds = display.bounds
+  const area = region.rect
+  return {
+    sessionId,
+    displayId: String(display.id),
+    role: region.role,
+    imageBytes: image.bytes,
+    imageWidth: image.width,
+    imageHeight: image.height,
+    imageOrigin: { x: area.x - bounds.x, y: area.y - bounds.y },
+    captureSize: { width: bounds.width, height: bounds.height }
+  }
+}
+
+function createOverlayWindow(area: Rect): BrowserWindow {
+  const overlay = new BrowserWindow({
+    x: area.x,
+    y: area.y,
+    width: area.width,
+    height: area.height,
+    frame: false,
+    // A frameless window keeps WS_THICKFRAME by default, and Windows 11 draws a 1px DWM
+    // border around any window that has it. Because a display is tiled into several overlays
+    // (D-013), that border appears at every window edge: a hairline around the screen and,
+    // doubled, along the editor/taskbar seam. Dropping WS_THICKFRAME removes it. The window
+    // is not resizable, so the sizing frame is not wanted anyway, and this also suppresses
+    // the platform's open animation, which is why the reveal no longer waits one out (D-011).
+    thickFrame: false,
+    transparent: false,
+    backgroundColor: '#000000',
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  })
+
+  overlay.setAlwaysOnTop(true, 'screen-saver')
+  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // Show fully transparent right away so the window paints while invisible and cannot swallow
+  // pointer events meant for whatever the user is still working in. capture:ready later raises
+  // the opacity. See D-011.
+  overlay.setOpacity(0)
+  overlay.setIgnoreMouseEvents(true)
+  overlay.showInactive()
+
+  // A window's construction size is only a request; Windows adds frame insets and clamps it,
+  // which previously left the viewport a few pixels off the intended area. Re-applying the
+  // bounds once the window exists is honoured exactly, and must happen before the renderer
+  // loads: the renderer derives source-image pixels from its own viewport, so any mismatch
+  // silently rescales the desktop and skews every selection. See D-012.
+  overlay.setBounds(area)
+  return overlay
+}
+
+// Creates one overlay window for a region and loads the renderer into it. Resolves once the
+// renderer has loaded; the caller awaits all overlays together so they load concurrently.
+async function spawnOverlay(
+  owner: CaptureSession,
+  display: Electron.Display,
+  region: { rect: Rect; role: OverlayRole },
+  image: DisplayImage
+): Promise<void> {
+  const payload = buildPayload(owner.id, display, region, image)
+  const overlay = createOverlayWindow(region.rect)
+
+  const webContentsId = overlay.webContents.id
+  overlay.on('closed', () => {
+    owner.overlays.delete(webContentsId)
+    if (session === owner && owner.overlays.size === 0) session = null
+  })
+  overlay.webContents.on('did-finish-load', () => {
+    if (!overlay.isDestroyed() && session === owner) {
+      overlay.webContents.send('capture:initialize', payload)
+    }
+  })
+  owner.overlays.set(webContentsId, { window: overlay, payload, revealed: false })
+
+  const devUrl = rendererUrl()
+  if (devUrl) await overlay.loadURL(devUrl)
+  else await overlay.loadFile(path.join(__dirname, '../renderer/index.html'))
+}
+
 async function startCapture(): Promise<void> {
   if (!(await ensureScreenPermission())) return
   closeSession()
@@ -217,129 +333,51 @@ async function startCapture(): Promise<void> {
   const displays = screen.getAllDisplays()
   if (displays.length === 0) return
 
-  // desktopCapturer is only the fallback now, so thumbnails are requested at full size for
-  // the platforms that still use them.
-  const maxWidth = Math.max(...displays.map((d) => Math.ceil(d.size.width * d.scaleFactor)))
-  const maxHeight = Math.max(...displays.map((d) => Math.ceil(d.size.height * d.scaleFactor)))
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: maxWidth, height: maxHeight },
-    fetchWindowIcons: false
-  })
+  const started = performance.now()
+
+  // The native helper serves the frame on Windows; desktopCapturer is only the fallback for
+  // other platforms or a Windows machine where the helper did not ship. Its thumbnails are
+  // full-resolution grabs of every screen, so they are fetched only when actually needed.
+  const helperReady = process.platform === 'win32' && existsSync(helperPath())
+
+  // A rotated display cannot use the native helper — it duplicates into an unrotated surface,
+  // so the helper reports the rotation and bails (see D-015). Electron exposes the rotation
+  // up front, so when any display is rotated (or there is no helper at all) the desktopCapturer
+  // fallback is started in parallel with the helper captures instead of after them, and the
+  // helper is not spawned for a display we already know it cannot serve.
+  const fallbackDisplays = displays.filter((display) => !helperReady || display.rotation !== 0)
+  const sourcesPromise = fallbackDisplays.length > 0 ? captureSources(displays, fallbackDisplays) : null
+
+  const images = await Promise.all(
+    displays.map(async (display, index) => {
+      if (helperReady && display.rotation === 0) {
+        const helperCapture = await captureWithHelper(display)
+        if (helperCapture) return helperCapture as DisplayImage
+      }
+      const sources = sourcesPromise ? await sourcesPromise : []
+      return imageFromSource(sourceForDisplay(sources, display, index))
+    })
+  )
+
+  // Rare: a helper failed on a non-rotated display and no fallback sources were prefetched.
+  if (images.some((image) => image === null) && !sourcesPromise) {
+    const sources = await captureSources(displays)
+    displays.forEach((display, index) => {
+      if (!images[index]) images[index] = imageFromSource(sourceForDisplay(sources, display, index))
+    })
+  }
+  logTiming(`frames captured in ${(performance.now() - started).toFixed(0)}ms`)
 
   const nextSession: CaptureSession = { id: randomUUID(), overlays: new Map() }
   session = nextSession
 
-  for (const [index, display] of displays.entries()) {
-    const source = sourceForDisplay(sources, display, index)
-    if (!source) continue
-
-    const bounds = display.bounds
-
-    // Prefer the native helper; fall back to the thumbnail when it is unavailable, which is
-    // every non-Windows platform and any Windows machine where the helper did not ship.
-    const helperCapture = await captureWithHelper(display)
-    let imageBytes: Uint8Array
-    let imageSize: { width: number; height: number }
-    if (helperCapture) {
-      imageBytes = helperCapture.bytes
-      imageSize = { width: helperCapture.width, height: helperCapture.height }
-    } else {
-      if (source.thumbnail.isEmpty()) continue
-      imageBytes = source.thumbnail.toPNG()
-      imageSize = source.thumbnail.getSize()
-    }
-
-    // One editor over the work area, plus a filler for every strip it leaves uncovered.
-    // Together they cover the display, so the taskbar is still part of the capture, while
-    // no single window covers the monitor and trips the full-screen classification.
-    const regions: { rect: Rect; role: OverlayRole }[] = [
-      { rect: display.workArea, role: 'editor' },
-      ...uncoveredStrips(bounds, display.workArea).map((rect) => ({ rect, role: 'filler' as const }))
-    ]
-
-    for (const region of regions) {
-    const area = region.rect
-    const payload: CapturePayload = {
-      sessionId: nextSession.id,
-      displayId: String(display.id),
-      role: region.role,
-      imageBytes,
-      imageWidth: imageSize.width,
-      imageHeight: imageSize.height,
-      imageOrigin: { x: area.x - bounds.x, y: area.y - bounds.y },
-      captureSize: { width: bounds.width, height: bounds.height },
-      displayBounds: { ...bounds },
-      scaleFactor: display.scaleFactor
-    }
-    const overlay = new BrowserWindow({
-      x: area.x,
-      y: area.y,
-      width: area.width,
-      height: area.height,
-      frame: false,
-      // A frameless window keeps WS_THICKFRAME by default, and Windows 11 draws a 1px DWM
-      // border around any window that has it. Because a display is tiled into several
-      // overlays (D-013), that border appears at every window edge: a hairline around the
-      // screen and, doubled, along the editor/taskbar seam. Dropping WS_THICKFRAME removes
-      // it. The window is not resizable, so the sizing frame is not wanted anyway, and this
-      // also suppresses the platform's open animation, which D-011 already works to avoid.
-      thickFrame: false,
-      transparent: false,
-      backgroundColor: '#000000',
-      resizable: false,
-      movable: false,
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      show: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      webPreferences: {
-        preload: path.join(__dirname, '../preload/index.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        backgroundThrottling: false
-      }
-    })
-
-    overlay.setAlwaysOnTop(true, 'screen-saver')
-    overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-
-    // Show before loading so the platform's show transition is spent on an invisible
-    // window. Until the reveal it must not swallow the pointer events of whatever the
-    // user is still working in.
-    overlay.setOpacity(0)
-    overlay.setIgnoreMouseEvents(true)
-    overlay.showInactive()
-    const shownAt = Date.now()
-
-    // A window's construction size is only a request; Windows adds frame insets and
-    // clamps it, which previously left the viewport a few pixels off the intended area.
-    // Re-applying the bounds once the window exists is honoured exactly. This must happen
-    // before the renderer loads: the renderer derives source-image pixels from its own
-    // viewport, so any mismatch between viewport and frozen image silently rescales the
-    // desktop and skews every selection.
-    overlay.setBounds(area)
-
-    const webContentsId = overlay.webContents.id
-    overlay.on('closed', () => {
-      nextSession.overlays.delete(webContentsId)
-      if (session === nextSession && nextSession.overlays.size === 0) session = null
-    })
-    overlay.webContents.on('did-finish-load', () => {
-      if (!overlay.isDestroyed() && session === nextSession) {
-        overlay.webContents.send('capture:initialize', payload)
-      }
-    })
-    nextSession.overlays.set(webContentsId, { window: overlay, payload, shownAt, revealed: false })
-
-    const devUrl = rendererUrl()
-    if (devUrl) await overlay.loadURL(devUrl)
-    else await overlay.loadFile(path.join(__dirname, '../renderer/index.html'))
-    }
-  }
+  const loads: Promise<void>[] = []
+  displays.forEach((display, index) => {
+    const image = images[index]
+    if (!image) return
+    for (const region of overlayRegions(display)) loads.push(spawnOverlay(nextSession, display, region, image))
+  })
+  await Promise.all(loads)
 
   if (nextSession.overlays.size === 0) {
     closeSession()
@@ -348,7 +386,9 @@ async function startCapture(): Promise<void> {
       title: 'Capture unavailable',
       message: 'Capturo could not read an image from the connected display.'
     })
+    return
   }
+  logTiming(`${nextSession.overlays.size} overlays loaded in ${(performance.now() - started).toFixed(0)}ms`)
 }
 
 function validSession(event: Electron.IpcMainInvokeEvent, sessionId: string): CaptureSession | null {

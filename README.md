@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.9.1-blue)
+![version](https://img.shields.io/badge/version-0.10.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -23,8 +23,8 @@ No prebuilt binaries are published yet, so for now you build it yourself. It tak
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.9.1-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.9.1-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
+| `Capturo-Setup-0.10.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.10.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -107,7 +107,7 @@ Worth knowing before you rely on it:
 - **A selection cannot span two monitors.** Every display gets an overlay, but the first one you click owns the capture. Displays with different scale factors need a proper virtual desktop compositor to do this correctly.
 - **A drag has to start outside the taskbar.** Once a selection is under way it extends over the taskbar normally, so you can capture the taskbar by starting just above it and dragging down. You just cannot begin the drag by pressing on the taskbar itself.
 - **Rotated displays skip the HDR path.** A duplicated frame arrives unrotated and is not turned back, so portrait monitors fall back to the normal capture path. Only matters if the rotated display is also in HDR.
-- **Capture takes a moment longer** than it used to, roughly half a second on a 4K display, because the frame is captured, tone mapped, and encoded before the overlay appears.
+- **The native HDR helper still adds some capture cost** on Windows, because the frame is captured, tone mapped, and encoded before the overlay appears. This is now much smaller than it was: the overlay is revealed the instant it has painted with no artificial delay, displays are grabbed in parallel, the redundant `desktopCapturer` pass is skipped, and the helper no longer stalls on a static desktop.
 - **macOS is untested.** Never run on real Apple hardware. Unsigned and un-notarized. See the note at the top of this file. Specifically unverified: launching, capturing, the Screen Recording permission flow, Retina output, menu bar behaviour, Spaces and full-screen apps, and how HDR and EDR displays behave, since the HDR fix here is Windows only.
 - **Windows builds are unsigned**, so SmartScreen will complain. See [Getting it](#️-getting-it).
 - **`npm run dist:win` can exit non-zero on the first run after deleting `release/`.** A file lock during Electron's extraction step. The artifacts are still built correctly and running the command again succeeds.
