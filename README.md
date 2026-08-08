@@ -1,10 +1,17 @@
 # 📸 Capturo
 
-A small screenshot tool for Windows and macOS that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
+A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
 ![version](https://img.shields.io/badge/version-0.8.0-blue)
-![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
+![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
+![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
+
+> ### 🪟 Windows only, for now
+>
+> Capturo is developed and tested on Windows 11. **The macOS build has never been run on real Apple hardware.** The code paths exist and `npm run dist:mac` will produce a DMG, but nothing about it has been verified: not launching, not capturing, not the Screen Recording permission prompt, not Retina output, not the menu bar. The packages are also unsigned and un-notarized, so macOS will refuse to open them without manual intervention.
+>
+> Treat macOS as unsupported. If you try it, expect it to be broken, and please open an issue with what happened.
 
 ![Selecting a region](./docs/selection.png)
 
@@ -23,11 +30,11 @@ Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 
 
 Windows will warn you that the publisher is unknown when you run either one. That is expected: the builds are not code-signed. Click **More info** then **Run anyway**.
 
-macOS is not usable yet. See [Known issues](#-known-issues).
+There is no macOS download, and there will not be one until somebody has actually run it on a Mac. See the note at the top.
 
 ## ✨ Using it
 
-1. Click the Capturo tray icon, or press `Ctrl + Shift + 2` (`Cmd + Shift + 2` on macOS).
+1. Click the Capturo tray icon, or press `Ctrl + Shift + 2` (`Cmd + Shift + 2` on macOS, in theory).
 2. The screen freezes. Drag to select a region. Drag inside it to move it, or grab an edge or corner to resize.
 3. Annotate with pen, line, arrow, rectangle, ellipse, numbered step, text, blur, or pixelate.
 4. Pick the Select tool to click any existing annotation and move, resize, recolour, or restyle it. Double-click text to edit it. `Delete` removes what is selected.
@@ -89,7 +96,7 @@ Worth knowing before you rely on it:
 - **A drag has to start outside the taskbar.** Once a selection is under way it extends over the taskbar normally, so you can capture the taskbar by starting just above it and dragging down. You just cannot begin the drag by pressing on the taskbar itself.
 - **Rotated displays skip the HDR path.** A duplicated frame arrives unrotated and is not turned back, so portrait monitors fall back to the normal capture path. Only matters if the rotated display is also in HDR.
 - **Capture takes a moment longer** than it used to, roughly half a second on a 4K display, because the frame is captured, tone mapped, and encoded before the overlay appears.
-- **macOS is untested.** The code paths exist and the app is built for it, but nobody has run it on real macOS hardware yet, and the builds are not signed or notarized. Treat macOS as unsupported for now.
+- **macOS is untested.** Never run on real Apple hardware. Unsigned and un-notarized. See the note at the top of this file. Specifically unverified: launching, capturing, the Screen Recording permission flow, Retina output, menu bar behaviour, Spaces and full-screen apps, and how HDR and EDR displays behave, since the HDR fix here is Windows only.
 - **Windows builds are unsigned**, so SmartScreen will complain. See [Getting it](#️-getting-it).
 - **`npm run dist:win` can exit non-zero on the first run after deleting `release/`.** A file lock during Electron's extraction step. The artifacts are still built correctly and running the command again succeeds.
 
@@ -111,7 +118,7 @@ npm run typecheck   # strict TypeScript across main, preload, and renderer
 npm test            # geometry and annotation model tests
 npm run build       # typecheck, tests, then a production build
 npm run dist:win    # Windows installer and portable exe into release/
-npm run dist:mac    # macOS DMG and ZIP, must be run on macOS
+npm run dist:mac    # macOS DMG and ZIP, must be run on macOS, output is untested
 ```
 
 ### The native capture helper
