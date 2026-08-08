@@ -60,8 +60,10 @@ let settingsWindow: BrowserWindow | null = null
 // The GIF recording control window, plus which display it records and how. The display id
 // drives setDisplayMediaRequestHandler so the renderer's getDisplayMedia targets it.
 let recordingWindow: BrowserWindow | null = null
-// A click-through, content-protected ring drawn around the region while recording.
+// A click-through, content-protected ring drawn around the region while recording, plus dim
+// strips shading everything outside it to emphasize what is being captured.
 let recordingBorderWindow: BrowserWindow | null = null
+let recordingShadeWindows: BrowserWindow[] = []
 let recordingTargetDisplayId: string | null = null
 let recordingPayload: GifRecordPayload | null = null
 // The accelerators currently registered with the OS, per action. Tracked so a rebind can
@@ -617,12 +619,57 @@ function registerIpc(): void {
 function closeRecording(): void {
   const window = recordingWindow
   const border = recordingBorderWindow
+  const shade = recordingShadeWindows
   recordingWindow = null
   recordingBorderWindow = null
+  recordingShadeWindows = []
   recordingTargetDisplayId = null
   recordingPayload = null
   if (window && !window.isDestroyed()) window.destroy()
   if (border && !border.isDestroyed()) border.destroy()
+  for (const strip of shade) if (!strip.isDestroyed()) strip.destroy()
+}
+
+// A tiny transparent, click-through, content-protected window filling a rectangle. Used both
+// for the shade strips and (with a border) is close to the ring window. Loads inline HTML so
+// no renderer entry is needed; no preload since it is purely visual.
+function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
+  const window = new BrowserWindow({
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+    frame: false,
+    thickFrame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: false,
+    focusable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+  })
+  window.setAlwaysOnTop(true, 'screen-saver')
+  window.setContentProtection(true)
+  window.setIgnoreMouseEvents(true)
+  const html = `<!doctype html><html><body style="margin:0;${bodyStyle}"></body></html>`
+  void window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+  window.once('ready-to-show', () => window.showInactive())
+  return window
+}
+
+// Dims everything on the display outside the region. Tiled into strips (never one full-monitor
+// window) so it does not trip the full-screen classification that switches on Do Not Disturb,
+// the same reason the screenshot overlay tiles (D-013).
+function createShadeWindows(display: Electron.Display, region: Rect): BrowserWindow[] {
+  return uncoveredStrips(display.bounds, region).map((strip) =>
+    createChromeWindow(strip, 'background:rgba(5,9,16,0.5)')
+  )
 }
 
 // The recorded region in the display's DIP coordinates, from the resolution-independent crop.
@@ -655,36 +702,10 @@ function placeControlBar(display: Electron.Display, region: Rect, width: number,
 // it frames the recording for the user without appearing in it.
 function createBorderWindow(region: Rect): BrowserWindow {
   const pad = 3
-  const window = new BrowserWindow({
-    x: Math.round(region.x - pad),
-    y: Math.round(region.y - pad),
-    width: Math.round(region.width + pad * 2),
-    height: Math.round(region.height + pad * 2),
-    frame: false,
-    thickFrame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    resizable: false,
-    movable: false,
-    focusable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    show: false,
-    skipTaskbar: true,
-    hasShadow: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
-  })
-  window.setAlwaysOnTop(true, 'screen-saver')
-  window.setContentProtection(true)
-  window.setIgnoreMouseEvents(true)
-  const html =
-    `<!doctype html><html><body style="margin:0;background:transparent">` +
-    `<div style="position:fixed;inset:0;border:${pad}px solid #ef4444;box-sizing:border-box"></div>` +
-    `</body></html>`
-  void window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-  window.once('ready-to-show', () => window.showInactive())
-  return window
+  return createChromeWindow(
+    { x: region.x - pad, y: region.y - pad, width: region.width + pad * 2, height: region.height + pad * 2 },
+    `height:100vh;box-sizing:border-box;border:${pad}px solid #ef4444`
+  )
 }
 
 // The GIF recording control bar: a small always-on-top window over the recorded display, next
@@ -696,6 +717,7 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
   recordingPayload = payload
 
   const region = regionInDip(display, payload.crop)
+  recordingShadeWindows = createShadeWindows(display, region)
   recordingBorderWindow = createBorderWindow(region)
 
   const width = 340
@@ -737,8 +759,11 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
       recordingPayload = null
     }
     const border = recordingBorderWindow
+    const shade = recordingShadeWindows
     recordingBorderWindow = null
+    recordingShadeWindows = []
     if (border && !border.isDestroyed()) border.destroy()
+    for (const strip of shade) if (!strip.isDestroyed()) strip.destroy()
   })
   window.webContents.on('did-finish-load', () => {
     if (!window.isDestroyed() && recordingPayload) window.webContents.send('gif:record-init', recordingPayload)
