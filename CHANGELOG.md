@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1 - 2026-08-07
+
+### Fixed
+
+- A 1px border appeared around the whole screen during a capture, and as a hairline along
+  the seam between the work area and the taskbar. A frameless window keeps `WS_THICKFRAME`
+  by default, and Windows 11 draws a border around any window that has it; because a
+  display is tiled into several overlays, that border showed at every overlay edge. The
+  overlays now drop `WS_THICKFRAME`, which removes the border. They are not resizable, so
+  the sizing frame was never needed.
+
 ## 0.9.0 - 2026-08-07
 
 ### Added

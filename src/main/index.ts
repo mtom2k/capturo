@@ -278,6 +278,13 @@ async function startCapture(): Promise<void> {
       width: area.width,
       height: area.height,
       frame: false,
+      // A frameless window keeps WS_THICKFRAME by default, and Windows 11 draws a 1px DWM
+      // border around any window that has it. Because a display is tiled into several
+      // overlays (D-013), that border appears at every window edge: a hairline around the
+      // screen and, doubled, along the editor/taskbar seam. Dropping WS_THICKFRAME removes
+      // it. The window is not resizable, so the sizing frame is not wanted anyway, and this
+      // also suppresses the platform's open animation, which D-011 already works to avoid.
+      thickFrame: false,
       transparent: false,
       backgroundColor: '#000000',
       resizable: false,

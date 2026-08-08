@@ -4,13 +4,13 @@ Last updated: 2026-08-07
 
 ## Phase
 
-`0.9.0` built and passing the automated gate on Windows; the settings GUI smoke test and macOS validation are still pending.
+`0.9.1` built and passing the automated gate on Windows; the settings GUI smoke test and macOS validation are still pending.
 
 ## Current build
 
-`0.9.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.9.1`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
 
-`0.1.0` through `0.8.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
+`0.1.0` through `0.9.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
 ## Target release
 
@@ -108,6 +108,9 @@ Last updated: 2026-08-07
   - automated gate green: `npm run typecheck`, `npm test` (27/27, including new `settings` and `shortcut` suites), and `npm run build`, which emits `out/renderer/settings.html` alongside `index.html` from the new two-page Rollup input
   - pure logic covered by unit tests: quality clamping, invalid-input fallback, partial merges; accelerator building for modifier combinations, bare function keys, and rejection of modifier-only or unmapped chords
   - GUI smoke test still to run on the Windows desktop: tab switching, the notification toggle, PNG↔JPEG save output and quality, and shortcut rebind including the taken-chord fallback (see TESTING.md)
+- 2026-08-07 `0.9.1` fix:
+  - a 1px border framed the capture overlay around the whole screen and along the work-area/taskbar seam. Cause: frameless windows keep `WS_THICKFRAME`, which Windows 11 borders, and the display is tiled into several overlays, so every overlay edge showed it
+  - dropping `WS_THICKFRAME` (`thickFrame: false`) removes the border; confirmed gone in the running app on Windows 11
 
 ## Known constraints
 
