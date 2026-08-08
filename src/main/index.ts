@@ -10,6 +10,7 @@ import {
   nativeImage,
   Notification,
   screen,
+  session as electronSession,
   shell,
   systemPreferences,
   Tray
@@ -17,9 +18,16 @@ import {
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { CapturePayload, OverlayRole, Rect, SaveResult } from '../shared/types'
-import { DEFAULT_CAPTURE_SHORTCUT, type CaptureSettings, type SettingsUpdateResult } from '../shared/settings'
+import type { CapturePayload, OverlayRole, Point, Rect, SaveResult } from '../shared/types'
+import {
+  DEFAULT_CAPTURE_SHORTCUT,
+  DEFAULT_GIF_SHORTCUT,
+  type CaptureSettings,
+  type SettingsUpdate,
+  type SettingsUpdateResult
+} from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
+import type { CropRect, GifRecordPayload, GifSaveResult } from '../shared/gif'
 import { uncoveredStrips } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 import { captureDisplays, helperAvailable, startCaptureHelper, stopCaptureHelper } from './capture-helper'
@@ -33,21 +41,40 @@ type OverlayEntry = {
 // The frozen desktop for one display, ready to hand to its overlays.
 type DisplayImage = { bytes: Uint8Array; width: number; height: number }
 
+// A screenshot capture and a GIF capture share the same region-selection overlays; the mode
+// decides which renderer they load and what happens once a region is chosen.
+type CaptureMode = 'screenshot' | 'gif'
+
+// The two global shortcuts Capturo registers.
+type ShortcutKind = 'capture' | 'gif'
+
 type CaptureSession = {
   id: string
+  mode: CaptureMode
   overlays: Map<number, OverlayEntry>
 }
 
 let tray: Tray | null = null
 let session: CaptureSession | null = null
 let settingsWindow: BrowserWindow | null = null
-// The capture shortcut currently registered with the OS. Tracked so a rebind can cleanly
-// unregister the old accelerator and roll back to it if the new one is rejected.
-let activeShortcut: string | null = null
+// The GIF recording control window, plus which display it records and how. The display id
+// drives setDisplayMediaRequestHandler so the renderer's getDisplayMedia targets it.
+let recordingWindow: BrowserWindow | null = null
+// A click-through, content-protected ring drawn around the region while recording.
+let recordingBorderWindow: BrowserWindow | null = null
+let recordingTargetDisplayId: string | null = null
+let recordingPayload: GifRecordPayload | null = null
+// The accelerators currently registered with the OS, per action. Tracked so a rebind can
+// cleanly unregister the old one and roll back to it if the new one is rejected.
+const activeShortcuts: Partial<Record<ShortcutKind, string>> = {}
 let isQuitting = false
 
 const isMac = process.platform === 'darwin'
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
+const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
+// Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
+// the record → encode → save pipeline.
+const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 // Opt-in phase timings for the capture path, printed to stderr. Off by default so normal
 // runs stay quiet; used to measure the invocation latency end to end.
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
@@ -56,7 +83,7 @@ function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
-if (isSmokeInstance) {
+if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
 
@@ -290,6 +317,10 @@ function createOverlayWindow(area: Rect): BrowserWindow {
 
 // Creates one overlay window for a region and loads the renderer into it. Resolves once the
 // renderer has loaded; the caller awaits all overlays together so they load concurrently.
+function overlayHtml(mode: CaptureMode): string {
+  return mode === 'gif' ? 'gif.html' : 'index.html'
+}
+
 async function spawnOverlay(
   owner: CaptureSession,
   display: Electron.Display,
@@ -312,11 +343,15 @@ async function spawnOverlay(
   owner.overlays.set(webContentsId, { window: overlay, payload, revealed: false })
 
   const devUrl = rendererUrl()
-  if (devUrl) await overlay.loadURL(devUrl)
-  else await overlay.loadFile(path.join(__dirname, '../renderer/index.html'))
+  const html = overlayHtml(owner.mode)
+  if (devUrl) await overlay.loadURL(owner.mode === 'gif' ? `${devUrl}/${html}` : devUrl)
+  else await overlay.loadFile(path.join(__dirname, `../renderer/${html}`))
 }
 
-async function startCapture(): Promise<void> {
+// Opens the region-selection overlays for a screenshot or a GIF. Both freeze the desktop the
+// same way and reuse the same selection UI; the mode picks which renderer loads and what
+// happens after a region is chosen (screenshot exports; GIF starts recording).
+async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
   if (!(await ensureScreenPermission())) return
   closeSession()
 
@@ -340,7 +375,7 @@ async function startCapture(): Promise<void> {
   }
   logTiming(`frames captured in ${(performance.now() - started).toFixed(0)}ms`)
 
-  const nextSession: CaptureSession = { id: randomUUID(), overlays: new Map() }
+  const nextSession: CaptureSession = { id: randomUUID(), mode, overlays: new Map() }
   session = nextSession
 
   const loads: Promise<void>[] = []
@@ -363,6 +398,14 @@ async function startCapture(): Promise<void> {
   logTiming(`${nextSession.overlays.size} overlays loaded in ${(performance.now() - started).toFixed(0)}ms`)
 }
 
+function startCapture(): Promise<void> {
+  return openSelectionOverlays('screenshot')
+}
+
+function startGifCapture(): Promise<void> {
+  return openSelectionOverlays('gif')
+}
+
 function validSession(event: Electron.IpcMainInvokeEvent, sessionId: string): CaptureSession | null {
   if (!session || session.id !== sessionId || !session.overlays.has(event.sender.id)) return null
   return session
@@ -378,6 +421,20 @@ function imageFromDataUrl(dataUrl: string): Electron.NativeImage | null {
 // bitmap (see D-016). The renderer hands over a lossless PNG data URL regardless, and the
 // on-disk encoding is chosen here. The user can override the extension in the save dialog,
 // so an explicit .jpg/.jpeg or .png on the chosen path wins over the stored format.
+// A filename-safe local timestamp, e.g. 20260808-131500, shared by screenshot and GIF saves.
+function fileTimestamp(): string {
+  const now = new Date()
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    '-',
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0')
+  ].join('')
+}
+
 function encodeCapture(image: Electron.NativeImage, filePath: string, settings: CaptureSettings): Buffer {
   const extension = path.extname(filePath).toLowerCase()
   const asJpeg =
@@ -394,19 +451,21 @@ function registerIpc(): void {
   // the global accelerator; if the OS rejects the new one, the stored shortcut and the live
   // registration are both rolled back to the previous working value and the reason is
   // returned so the settings window can show it.
-  ipcMain.handle('settings:update', (_event, update: Partial<CaptureSettings>): SettingsUpdateResult => {
-    const previousShortcut = getSettings().capture.captureShortcut
+  ipcMain.handle('settings:update', (_event, update: SettingsUpdate): SettingsUpdateResult => {
+    const before = getSettings()
     let next = updateSettings(update)
     let shortcutError: string | undefined
 
-    if (next.capture.captureShortcut !== previousShortcut) {
-      if (applyShortcut(next.capture.captureShortcut)) {
-        refreshTray()
-      } else {
-        next = updateSettings({ captureShortcut: previousShortcut })
-        shortcutError = `${formatAccelerator(update.captureShortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(previousShortcut, isMac)}.`
-      }
+    if (next.capture.captureShortcut !== before.capture.captureShortcut &&
+        !applyShortcut('capture', next.capture.captureShortcut)) {
+      next = updateSettings({ capture: { captureShortcut: before.capture.captureShortcut } })
+      shortcutError = `${formatAccelerator(update.capture?.captureShortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(before.capture.captureShortcut, isMac)}.`
     }
+    if (next.gif.shortcut !== before.gif.shortcut && !applyShortcut('gif', next.gif.shortcut)) {
+      next = updateSettings({ gif: { shortcut: before.gif.shortcut } })
+      shortcutError = `${formatAccelerator(update.gif?.shortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(before.gif.shortcut, isMac)}.`
+    }
+    refreshTray()
     return { settings: next, shortcutError }
   })
 
@@ -450,6 +509,66 @@ function registerIpc(): void {
     if (validSession(event, sessionId)) closeSession()
   })
 
+  // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
+  // the selection overlays and open the recording control window over the chosen display; it
+  // captures the live region and encodes it. The region arrives in the frozen image's pixels,
+  // converted to a resolution-independent fractional crop for the live stream.
+  ipcMain.handle('gif:start', (event, sessionId: string, region: Rect) => {
+    const active = validSession(event, sessionId)
+    if (!active || active.mode !== 'gif') return false
+    const entry = active.overlays.get(event.sender.id)
+    if (!entry) return false
+    const display = screen.getAllDisplays().find((d) => String(d.id) === entry.payload.displayId)
+    if (!display) return false
+
+    const { imageWidth, imageHeight } = entry.payload
+    const crop = {
+      x: region.x / imageWidth,
+      y: region.y / imageHeight,
+      width: region.width / imageWidth,
+      height: region.height / imageHeight
+    }
+    const gif = getSettings().gif
+    closeSession()
+    openRecordingWindow(display, { crop, fps: gif.fps, quality: gif.quality })
+    return true
+  })
+
+  // The recording window finished encoding and sent the GIF bytes. Save via a native dialog.
+  ipcMain.handle('gif:save', async (event, bytes: ArrayBuffer): Promise<GifSaveResult> => {
+    if (!recordingWindow || event.sender.id !== recordingWindow.webContents.id) return { saved: false, canceled: false }
+    // Smoke path: write to a fixed file and log it, so the record→encode→save pipeline can be
+    // exercised without the save dialog.
+    if (isGifRecordSmoke) {
+      const smokePath = path.join(app.getPath('temp'), 'capturo-smoke.gif')
+      await fs.writeFile(smokePath, Buffer.from(bytes))
+      console.error(`[gif-smoke] saved ${bytes.byteLength} bytes to ${smokePath}`)
+      closeRecording()
+      return { saved: true, canceled: false, filePath: smokePath }
+    }
+    const options: Electron.SaveDialogOptions = {
+      title: 'Save GIF',
+      defaultPath: path.join(app.getPath('pictures'), `Capturo ${fileTimestamp()}.gif`),
+      filters: [{ name: 'GIF image', extensions: ['gif'] }]
+    }
+    const result = await dialog.showSaveDialog(recordingWindow, options)
+    if (result.canceled || !result.filePath) {
+      closeRecording()
+      return { saved: false, canceled: true }
+    }
+    await fs.writeFile(result.filePath, Buffer.from(bytes))
+    closeRecording()
+    notify('GIF saved', path.basename(result.filePath))
+    return { saved: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('gif:cancel', (event) => {
+    if (recordingWindow && event.sender.id === recordingWindow.webContents.id) {
+      if (isGifRecordSmoke) console.error('[gif-smoke] recording canceled (no frames or getDisplayMedia failed)')
+      closeRecording()
+    }
+  })
+
   // A renderer could not open its capture stream. Tear the session down rather than
   // leaving an invisible overlay holding the pointer.
   ipcMain.handle('capture:failed', (event, sessionId: string) => {
@@ -475,16 +594,7 @@ function registerIpc(): void {
       const image = imageFromDataUrl(dataUrl)
       if (!active || !image) return { saved: false, canceled: false }
       const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
-      const now = new Date()
-      const stamp = [
-        now.getFullYear(),
-        String(now.getMonth() + 1).padStart(2, '0'),
-        String(now.getDate()).padStart(2, '0'),
-        '-',
-        String(now.getHours()).padStart(2, '0'),
-        String(now.getMinutes()).padStart(2, '0'),
-        String(now.getSeconds()).padStart(2, '0')
-      ].join('')
+      const stamp = fileTimestamp()
       const settings = getSettings().capture
       const jpeg = settings.format === 'jpeg'
       const options: Electron.SaveDialogOptions = {
@@ -504,25 +614,188 @@ function registerIpc(): void {
   )
 }
 
-// Registers a capture accelerator with the OS, replacing whatever is currently bound. On
-// failure the previous accelerator is put back so a rejected rebind never leaves the app
-// with no working shortcut. Returns whether the requested accelerator took effect.
-function applyShortcut(accelerator: string): boolean {
-  if (activeShortcut) globalShortcut.unregister(activeShortcut)
+function closeRecording(): void {
+  const window = recordingWindow
+  const border = recordingBorderWindow
+  recordingWindow = null
+  recordingBorderWindow = null
+  recordingTargetDisplayId = null
+  recordingPayload = null
+  if (window && !window.isDestroyed()) window.destroy()
+  if (border && !border.isDestroyed()) border.destroy()
+}
+
+// The recorded region in the display's DIP coordinates, from the resolution-independent crop.
+function regionInDip(display: Electron.Display, crop: CropRect): Rect {
+  const bounds = display.bounds
+  return {
+    x: bounds.x + crop.x * bounds.width,
+    y: bounds.y + crop.y * bounds.height,
+    width: crop.width * bounds.width,
+    height: crop.height * bounds.height
+  }
+}
+
+// Puts the control bar just above the region, else just below, else inside its top edge —
+// always horizontally centred on the region and kept on the display.
+function placeControlBar(display: Electron.Display, region: Rect, width: number, height: number): Point {
+  const bounds = display.bounds
+  const margin = 8
+  const x = Math.round(
+    Math.max(bounds.x + margin, Math.min(bounds.x + bounds.width - width - margin, region.x + region.width / 2 - width / 2))
+  )
+  const above = region.y - height - margin
+  if (above >= bounds.y + margin) return { x, y: Math.round(above) }
+  const below = region.y + region.height + margin
+  if (below + height <= bounds.y + bounds.height - margin) return { x, y: Math.round(below) }
+  return { x, y: Math.round(Math.min(region.y + margin, bounds.y + bounds.height - height - margin)) }
+}
+
+// A thin red ring around the region. Transparent centre, click-through, content-protected, so
+// it frames the recording for the user without appearing in it.
+function createBorderWindow(region: Rect): BrowserWindow {
+  const pad = 3
+  const window = new BrowserWindow({
+    x: Math.round(region.x - pad),
+    y: Math.round(region.y - pad),
+    width: Math.round(region.width + pad * 2),
+    height: Math.round(region.height + pad * 2),
+    frame: false,
+    thickFrame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: false,
+    focusable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+  })
+  window.setAlwaysOnTop(true, 'screen-saver')
+  window.setContentProtection(true)
+  window.setIgnoreMouseEvents(true)
+  const html =
+    `<!doctype html><html><body style="margin:0;background:transparent">` +
+    `<div style="position:fixed;inset:0;border:${pad}px solid #ef4444;box-sizing:border-box"></div>` +
+    `</body></html>`
+  void window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+  window.once('ready-to-show', () => window.showInactive())
+  return window
+}
+
+// The GIF recording control bar: a small always-on-top window over the recorded display, next
+// to the region. It is content-protected so it is excluded from the capture, and it runs
+// getDisplayMedia + the encoder for the selected region. See D-018.
+function openRecordingWindow(display: Electron.Display, payload: GifRecordPayload): void {
+  closeRecording()
+  recordingTargetDisplayId = String(display.id)
+  recordingPayload = payload
+
+  const region = regionInDip(display, payload.crop)
+  recordingBorderWindow = createBorderWindow(region)
+
+  const width = 340
+  const height = 46
+  const { x, y } = placeControlBar(display, region, width, height)
+  const window = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    frame: false,
+    thickFrame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  recordingWindow = window
+  window.setAlwaysOnTop(true, 'screen-saver')
+  // Keep the control bar out of the recording. On Windows 11 this uses
+  // WDA_EXCLUDEFROMCAPTURE, so getDisplayMedia never sees it.
+  window.setContentProtection(true)
+
+  window.on('closed', () => {
+    if (recordingWindow === window) {
+      recordingWindow = null
+      recordingTargetDisplayId = null
+      recordingPayload = null
+    }
+    const border = recordingBorderWindow
+    recordingBorderWindow = null
+    if (border && !border.isDestroyed()) border.destroy()
+  })
+  window.webContents.on('did-finish-load', () => {
+    if (!window.isDestroyed() && recordingPayload) window.webContents.send('gif:record-init', recordingPayload)
+  })
+  window.once('ready-to-show', () => window.show())
+
+  const devUrl = rendererUrl()
+  if (devUrl) void window.loadURL(`${devUrl}/gif-record.html`)
+  else void window.loadFile(path.join(__dirname, '../renderer/gif-record.html'))
+}
+
+// getDisplayMedia in the recording window is answered here with the display currently being
+// recorded, so there is no system picker and the stream is always the right screen.
+function registerDisplayMediaHandler(): void {
+  electronSession.defaultSession.setDisplayMediaRequestHandler(
+    (_request, callback) => {
+      const displayId = recordingTargetDisplayId
+      if (!displayId) {
+        callback({})
+        return
+      }
+      desktopCapturer
+        .getSources({ types: ['screen'] })
+        .then((sources) => {
+          const source = sources.find((candidate) => candidate.display_id === displayId) ?? sources[0]
+          callback(source ? { video: source } : {})
+        })
+        .catch(() => callback({}))
+    },
+    { useSystemPicker: false }
+  )
+}
+
+function shortcutHandler(kind: ShortcutKind): () => void {
+  return kind === 'gif' ? () => void startGifCapture() : () => void startCapture()
+}
+
+// Registers an accelerator for one action with the OS, replacing whatever it currently has
+// bound. On failure the previous accelerator is put back so a rejected rebind never leaves
+// the action with no working shortcut. Returns whether the requested accelerator took effect.
+function applyShortcut(kind: ShortcutKind, accelerator: string): boolean {
+  const previous = activeShortcuts[kind]
+  if (previous) globalShortcut.unregister(previous)
   let registered = false
   try {
-    registered = globalShortcut.register(accelerator, () => void startCapture())
+    registered = globalShortcut.register(accelerator, shortcutHandler(kind))
   } catch {
     // Electron throws rather than returning false for a syntactically invalid accelerator.
     registered = false
   }
   if (registered) {
-    activeShortcut = accelerator
+    activeShortcuts[kind] = accelerator
     return true
   }
-  if (activeShortcut) {
+  if (previous) {
     try {
-      globalShortcut.register(activeShortcut, () => void startCapture())
+      globalShortcut.register(previous, shortcutHandler(kind))
     } catch {
       // The previous accelerator was valid a moment ago; nothing more to do if it now fails.
     }
@@ -530,13 +803,19 @@ function applyShortcut(accelerator: string): boolean {
   return false
 }
 
-// At startup, bind the saved shortcut. If it is unavailable (taken by another app since it
-// was chosen), fall back to the default and persist that so the tray label stays truthful.
-function registerInitialShortcut(): void {
-  const configured = getSettings().capture.captureShortcut
-  if (applyShortcut(configured)) return
-  if (configured !== DEFAULT_CAPTURE_SHORTCUT && applyShortcut(DEFAULT_CAPTURE_SHORTCUT)) {
-    updateSettings({ captureShortcut: DEFAULT_CAPTURE_SHORTCUT })
+// At startup, bind each saved shortcut. If one is unavailable (taken by another app since it
+// was chosen), fall back to its default and persist that so the tray label stays truthful.
+function registerInitialShortcuts(): void {
+  const settings = getSettings()
+  if (!applyShortcut('capture', settings.capture.captureShortcut) &&
+      settings.capture.captureShortcut !== DEFAULT_CAPTURE_SHORTCUT &&
+      applyShortcut('capture', DEFAULT_CAPTURE_SHORTCUT)) {
+    updateSettings({ capture: { captureShortcut: DEFAULT_CAPTURE_SHORTCUT } })
+  }
+  if (!applyShortcut('gif', settings.gif.shortcut) &&
+      settings.gif.shortcut !== DEFAULT_GIF_SHORTCUT &&
+      applyShortcut('gif', DEFAULT_GIF_SHORTCUT)) {
+    updateSettings({ gif: { shortcut: DEFAULT_GIF_SHORTCUT } })
   }
 }
 
@@ -545,11 +824,12 @@ function registerInitialShortcut(): void {
 function refreshTray(): void {
   if (!tray) return
   const version = app.getVersion()
-  const shortcut = getSettings().capture.captureShortcut
-  tray.setToolTip(`Capturo ${version} — ${formatAccelerator(shortcut, isMac)} to capture`)
+  const settings = getSettings()
+  tray.setToolTip(`Capturo ${version} — ${formatAccelerator(settings.capture.captureShortcut, isMac)} to capture`)
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'New screenshot', accelerator: shortcut, click: () => void startCapture() },
+      { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
+      { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
       { label: 'Settings…', click: () => openSettings() },
       { type: 'separator' },
       { label: `Version ${version}`, enabled: false },
@@ -614,9 +894,19 @@ if (!app.requestSingleInstanceLock()) {
     // setup and no cold DLL load. See D-017.
     startCaptureHelper()
     registerIpc()
-    registerInitialShortcut()
+    registerDisplayMediaHandler()
+    registerInitialShortcuts()
     createTray()
     if (isSmokeInstance) void startCapture()
+    if (isGifSmokeInstance) void startGifCapture()
+    if (isGifRecordSmoke) {
+      openRecordingWindow(screen.getPrimaryDisplay(), {
+        crop: { x: 0.3, y: 0.3, width: 0.4, height: 0.4 },
+        fps: 15,
+        quality: 70,
+        autoStopMs: 3000
+      })
+    }
   })
   app.on('activate', () => void startCapture())
   app.on('window-all-closed', () => {
@@ -625,6 +915,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     isQuitting = true
     closeSession()
+    closeRecording()
     stopCaptureHelper()
     globalShortcut.unregisterAll()
   })

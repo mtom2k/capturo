@@ -13,8 +13,8 @@ import {
   DEFAULT_SETTINGS,
   mergeSettings,
   normalizeSettings,
-  type CaptureSettings,
-  type Settings
+  type Settings,
+  type SettingsUpdate
 } from '../shared/settings'
 
 let cache: Settings = DEFAULT_SETTINGS
@@ -51,8 +51,8 @@ function persist(next: Settings): void {
   }
 }
 
-// Applies a partial capture update over the current settings and saves the result.
-export function updateSettings(update: Partial<CaptureSettings>): Settings {
+// Applies a partial settings update over the current settings and saves the result.
+export function updateSettings(update: SettingsUpdate): Settings {
   persist(mergeSettings(cache, update))
   return cache
 }

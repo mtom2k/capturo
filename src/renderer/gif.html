@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo GIF</title>
+  </head>
+  <body>
+    <canvas id="capture-canvas" aria-label="GIF recording region"></canvas>
+
+    <div id="hint" class="hint">Drag to select a region to record · Esc to cancel</div>
+    <div id="dimensions" class="dimensions" hidden></div>
+
+    <div id="editor-ui" class="editor-ui" hidden>
+      <div id="toolbar" class="gif-toolbar" role="toolbar" aria-label="GIF controls">
+        <button id="record" class="gif-btn primary" aria-label="Start recording">
+          <span class="dot"></span>Start Recording
+        </button>
+        <button id="cancel" class="gif-btn" aria-label="Cancel">Cancel</button>
+      </div>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./gif.ts"></script>
+  </body>
+</html>

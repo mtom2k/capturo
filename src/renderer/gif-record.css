@@ -1,0 +1,121 @@
+/* GIF recording control bar. Its window is content-protected so it is excluded from the
+   capture; it fills the small window it lives in. Reuses the neutral compact system (D-007). */
+
+:root {
+  color: #f8fafc;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  user-select: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.record-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: #171b22;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+  /* The bar background is a drag handle so the user can move it out of the way. */
+  -webkit-app-region: drag;
+}
+
+.rec-btn,
+.rec-spacer {
+  -webkit-app-region: no-drag;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.record-bar.paused .rec-dot {
+  background: #f59e0b;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.rec-timer {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-frames {
+  color: #8b93a1;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-spacer {
+  flex: 1;
+}
+
+.rec-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #2a3039;
+  color: #f8fafc;
+  font-size: 12px;
+}
+
+.rec-btn:hover,
+.rec-btn:focus-visible {
+  outline: none;
+  background: #334155;
+}
+
+.rec-btn.primary {
+  background: #1677e8;
+}
+
+.rec-btn.primary:hover,
+.rec-btn.primary:focus-visible {
+  background: #0f6bd5;
+}
+
+.rec-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

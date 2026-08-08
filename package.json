@@ -34,12 +34,16 @@
       {
         "from": "build/tray",
         "to": "tray",
-        "filter": ["*.png"]
+        "filter": [
+          "*.png"
+        ]
       },
       {
         "from": "native/capturo-capture/build",
         "to": "capture",
-        "filter": ["capturo-capture.exe"]
+        "filter": [
+          "capturo-capture.exe"
+        ]
       }
     ],
     "mac": {
@@ -76,5 +80,8 @@
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "gifenc": "^1.0.3"
   }
 }

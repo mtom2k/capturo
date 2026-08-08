@@ -46,22 +46,52 @@
           </button>
         </div>
 
-        <div class="row">
+        <div class="row shortcut-field" data-shortcut="capture">
           <div class="label">
             <span>Capture shortcut</span>
-            <small id="shortcut-hint">Click, then press the keys.</small>
+            <small class="shortcut-hint">Click, then press the keys.</small>
           </div>
           <div class="shortcut">
-            <button class="recorder" id="recorder">Ctrl+Shift+2</button>
-            <button class="reset" id="reset" title="Reset to default">Reset</button>
+            <button class="recorder">Ctrl+Shift+2</button>
+            <button class="reset" title="Reset to default">Reset</button>
           </div>
         </div>
       </section>
 
       <section class="panel" data-panel="gif" role="tabpanel" hidden>
-        <div class="placeholder">
-          <strong>GIF capture is coming soon.</strong>
-          <p>Record a region straight to an animated GIF, with the same drag, annotate, and go flow as a screenshot.</p>
+        <div class="row">
+          <div class="label">
+            <span>Frame rate</span>
+            <small>Higher is smoother and larger.</small>
+          </div>
+          <select id="gif-fps" class="native-select" aria-label="GIF frame rate">
+            <option value="10">10 fps</option>
+            <option value="15">15 fps</option>
+            <option value="20">20 fps</option>
+            <option value="30">30 fps</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <span>Quality</span>
+            <small>Higher keeps more colour, at a larger size.</small>
+          </div>
+          <label class="slider-wrap">
+            <input id="gif-quality" type="range" min="1" max="100" step="1" value="70" aria-label="GIF quality percent" />
+            <output id="gif-quality-value">70%</output>
+          </label>
+        </div>
+
+        <div class="row shortcut-field" data-shortcut="gif">
+          <div class="label">
+            <span>GIF shortcut</span>
+            <small class="shortcut-hint">Click, then press the keys.</small>
+          </div>
+          <div class="shortcut">
+            <button class="recorder">Ctrl+Shift+3</button>
+            <button class="reset" title="Reset to default">Reset</button>
+          </div>
         </div>
       </section>
     </main>

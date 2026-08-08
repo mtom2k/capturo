@@ -1,0 +1,59 @@
+/* GIF overlay toolbar. The canvas, hint, dimensions, and status reuse styles.css (the
+   screenshot overlay's visual system); only the text-button toolbar is GIF-specific. */
+
+.gif-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 5px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #171b22;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.35);
+}
+
+.gif-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #2a3039;
+  color: #f8fafc;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.gif-btn:hover,
+.gif-btn:focus-visible {
+  outline: none;
+  background: #334155;
+}
+
+.gif-btn.primary {
+  background: #1677e8;
+}
+
+.gif-btn.primary:hover,
+.gif-btn.primary:focus-visible {
+  background: #0f6bd5;
+}
+
+.gif-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gif-btn .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.gif-btn:disabled .dot {
+  background: #7a8291;
+}

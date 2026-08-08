@@ -11,11 +11,13 @@ export default defineConfig({
   renderer: {
     build: {
       rollupOptions: {
-        // Two pages share one preload: the capture overlay and the on-demand settings
-        // window. Both emit into out/renderer alongside their assets.
+        // Renderer pages share one preload: the capture overlay, the settings window, the GIF
+        // selection overlay, and the GIF recording control bar. All emit into out/renderer.
         input: {
           index: resolve('src/renderer/index.html'),
-          settings: resolve('src/renderer/settings.html')
+          settings: resolve('src/renderer/settings.html'),
+          gif: resolve('src/renderer/gif.html'),
+          'gif-record': resolve('src/renderer/gif-record.html')
         }
       }
     }

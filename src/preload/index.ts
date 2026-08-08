@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CapturePayload, CapturoApi, SceneUpdate } from '../shared/types'
-import type { CaptureSettings, CapturoSettingsApi } from '../shared/settings'
+import type { CapturePayload, CapturoApi, Rect, SceneUpdate } from '../shared/types'
+import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
+import type { CapturoGifApi, GifRecordPayload } from '../shared/gif'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -30,8 +31,21 @@ const api: CapturoApi = {
 // Exposed to the settings window (and harmless to the capture overlays, which ignore it).
 const settingsApi: CapturoSettingsApi = {
   get: () => ipcRenderer.invoke('settings:get'),
-  update: (update: Partial<CaptureSettings>) => ipcRenderer.invoke('settings:update', update)
+  update: (update: SettingsUpdate) => ipcRenderer.invoke('settings:update', update)
+}
+
+// Exposed to the GIF selection overlay and recording window.
+const gifApi: CapturoGifApi = {
+  startRecording: (sessionId: string, region: Rect) => ipcRenderer.invoke('gif:start', sessionId, region),
+  onRecordInitialize(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, payload: GifRecordPayload): void => listener(payload)
+    ipcRenderer.on('gif:record-init', handler)
+    return () => ipcRenderer.removeListener('gif:record-init', handler)
+  },
+  saveRecording: (bytes: ArrayBuffer) => ipcRenderer.invoke('gif:save', bytes),
+  cancelRecording: () => ipcRenderer.invoke('gif:cancel')
 }
 
 contextBridge.exposeInMainWorld('capturo', api)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
+contextBridge.exposeInMainWorld('capturoGif', gifApi)

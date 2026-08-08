@@ -274,8 +274,29 @@ button {
   border-radius: 4px;
 }
 
-#shortcut-hint.error {
+.shortcut-hint.error {
   color: #f97362;
+}
+
+/* GIF frame-rate dropdown. */
+.native-select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #3a414c;
+  border-radius: 6px;
+  outline: 0;
+  background: #171b22;
+  color: #f8fafc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.native-select:hover {
+  border-color: #4b5563;
+}
+
+.native-select:focus-visible {
+  border-color: #1683ff;
 }
 
 /* GIF placeholder. */
