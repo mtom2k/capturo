@@ -14,8 +14,7 @@ import {
   systemPreferences,
   Tray
 } from 'electron'
-import { promises as fs, existsSync } from 'node:fs'
-import { execFile } from 'node:child_process'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CapturePayload, OverlayRole, Rect, SaveResult } from '../shared/types'
@@ -23,6 +22,7 @@ import { DEFAULT_CAPTURE_SHORTCUT, type CaptureSettings, type SettingsUpdateResu
 import { formatAccelerator } from '../shared/shortcut'
 import { uncoveredStrips } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
+import { captureDisplays, helperAvailable, startCaptureHelper, stopCaptureHelper } from './capture-helper'
 
 type OverlayEntry = {
   window: BrowserWindow
@@ -112,64 +112,54 @@ function sourceForDisplay(
   return sources.find((source) => source.display_id === String(display.id)) ?? sources[displayIndex]
 }
 
-function helperPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'capture', 'capturo-capture.exe')
-    : path.join(app.getAppPath(), 'native', 'capturo-capture', 'build', 'capturo-capture.exe')
-}
+// Captures displays through the persistent native helper (see capture-helper.ts). It keeps
+// the frame in FP16 scRGB, normalises against the live SDR white level, tone maps, turns a
+// rotated surface back to the desktop orientation, and only then encodes sRGB — none of which
+// Chromium's own 8-bit capture does correctly on an HDR display. It also excludes the mouse
+// pointer. See D-014, D-015, D-017. Returns one DisplayImage per display, null where the
+// helper could not serve it (the caller falls back to desktopCapturer for those).
+async function captureWithHelper(displays: Electron.Display[]): Promise<(DisplayImage | null)[]> {
+  if (!helperAvailable()) return displays.map(() => null)
 
-// Captures one display through the native helper.
-//
-// Chromium's own capture is wrong on an HDR display: it converts to 8-bit without undoing
-// the SDR white level, so ordinary window content comes out several times too bright with
-// the highlights clipped away. The helper keeps the frame in FP16 scRGB, normalises against
-// the live SDR white level, tone maps, and only then encodes sRGB. It also excludes the
-// mouse pointer, which the capture stream did not. See D-014.
-type HelperCapture = { bytes: Buffer; width: number; height: number }
+  // DXGI enumerates outputs in its own order, so each monitor is identified by its physical
+  // desktop origin. dipToScreenRect performs the per-monitor scaling conversion.
+  const outputs = displays.map(() => path.join(app.getPath('temp'), `capturo-${randomUUID()}.png`))
+  const requests = displays.map((display, index) => {
+    const physical = screen.dipToScreenRect(null, display.bounds)
+    return { originX: physical.x, originY: physical.y, output: outputs[index] }
+  })
 
-async function captureWithHelper(display: Electron.Display): Promise<HelperCapture | null> {
-  if (process.platform !== 'win32') return null
-  const helper = helperPath()
-  if (!existsSync(helper)) return null
-
-  // DXGI enumerates outputs in its own order, so the monitor is identified by its physical
-  // desktop origin instead. dipToScreenRect performs the per-monitor scaling conversion.
-  const physical = screen.dipToScreenRect(null, display.bounds)
-
-  const output = path.join(app.getPath('temp'), `capturo-${randomUUID()}.png`)
-  const started = performance.now()
+  let results: Awaited<ReturnType<typeof captureDisplays>> = []
   try {
-    const report = await new Promise<string>((resolve, reject) => {
-      execFile(
-        helper,
-        ['--output', output, '--origin-x', String(physical.x), '--origin-y', String(physical.y)],
-        { timeout: 8000, windowsHide: true },
-        (error, stdout) => (error ? reject(error) : resolve(stdout))
-      )
-    })
-    const bytes = await fs.readFile(output)
-    // Take the dimensions from the helper rather than re-decoding, so nothing can reinterpret
-    // the image at a different scale factor on the way through.
-    const parsed = JSON.parse(report.trim()) as {
-      ok: boolean
-      width: number
-      height: number
-      timings?: Record<string, number>
-    }
-    if (!parsed.ok || !parsed.width || !parsed.height) return null
-    if (timingEnabled) {
-      const stages = parsed.timings
-        ? ` [${Object.entries(parsed.timings).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ')}]`
-        : ''
-      logTiming(`helper display ${display.id}: ${(performance.now() - started).toFixed(0)}ms total${stages}`)
-    }
-    return { bytes, width: parsed.width, height: parsed.height }
+    results = await captureDisplays(requests)
   } catch (error) {
-    console.error('capturo-capture failed, falling back to desktopCapturer', error)
-    return null
-  } finally {
-    void fs.rm(output, { force: true }).catch(() => {})
+    console.error('capture helper failed, falling back to desktopCapturer', error)
   }
+
+  const images = await Promise.all(
+    displays.map(async (_display, index) => {
+      const result = results[index]
+      if (!result?.ok || !result.width || !result.height) return null
+      try {
+        // Trust the helper's reported dimensions rather than re-decoding, so nothing can
+        // reinterpret the image at a different scale factor on the way through.
+        const bytes = await fs.readFile(outputs[index])
+        return { bytes, width: result.width, height: result.height } as DisplayImage
+      } catch {
+        return null
+      }
+    })
+  )
+
+  for (const output of outputs) void fs.rm(output, { force: true }).catch(() => {})
+  if (timingEnabled) {
+    results.forEach((result, index) => {
+      if (!result?.timings) return
+      const stages = Object.entries(result.timings).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ')
+      logTiming(`helper display ${displays[index].id}: [${stages}]`)
+    })
+  }
+  return images
 }
 
 async function ensureScreenPermission(): Promise<boolean> {
@@ -335,18 +325,11 @@ async function startCapture(): Promise<void> {
 
   const started = performance.now()
 
-  // The native helper serves the frame on Windows; desktopCapturer is only the fallback for
-  // other platforms or a Windows machine where the helper did not ship. Its thumbnails are
-  // full-resolution grabs of every screen, so they are fetched only when actually needed.
-  const helperReady = process.platform === 'win32' && existsSync(helperPath())
-
-  // Grab every display through the native helper, in parallel. It handles rotated displays
-  // now too (see D-015), so desktopCapturer is only the fallback for platforms without the
-  // helper or the rare display it cannot serve. Grabbing every screen that way is expensive,
-  // so it is fetched once, afterwards, and sized only to the displays that came back empty.
-  const images: (DisplayImage | null)[] = helperReady
-    ? await Promise.all(displays.map(async (display) => (await captureWithHelper(display)) as DisplayImage | null))
-    : displays.map(() => null)
+  // The persistent native helper serves the frame on Windows, handling rotated and HDR
+  // displays. desktopCapturer is only the fallback for platforms without the helper or the
+  // rare display it cannot serve; grabbing every screen that way is expensive, so it is
+  // fetched once, afterwards, and sized only to the displays that came back empty.
+  const images = await captureWithHelper(displays)
 
   const missing = displays.filter((_display, index) => !images[index])
   if (missing.length > 0) {
@@ -627,6 +610,9 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'win32') app.setAppUserModelId('com.capturo.app')
     if (isMac) app.dock?.hide()
     loadSettings()
+    // Warm the persistent capture helper now so the first capture pays no device/duplication
+    // setup and no cold DLL load. See D-017.
+    startCaptureHelper()
     registerIpc()
     registerInitialShortcut()
     createTray()
@@ -639,6 +625,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     isQuitting = true
     closeSession()
+    stopCaptureHelper()
     globalShortcut.unregisterAll()
   })
   app.on('will-quit', () => {

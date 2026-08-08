@@ -28,7 +28,7 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 
 ## Capture flow
 
-1. The main process hides any prior overlays and grabs each display's frozen desktop. On Windows this is the native FP16 helper (D-015); other platforms, or a Windows machine without the helper, fall back to a `desktopCapturer` thumbnail. The frames for all displays are grabbed concurrently, and the fallback `desktopCapturer` sources — full-resolution grabs of every screen — are fetched only when a display actually needs them, never on the Windows happy path.
+1. The main process hides any prior overlays and grabs each display's frozen desktop. On Windows this is the native FP16 helper (D-015), which runs as a persistent background process warmed at launch so a capture pays no device/duplication setup (D-017); other platforms, or a Windows machine without the helper, fall back to a `desktopCapturer` thumbnail. The helper captures the requested displays in one batch, and the fallback `desktopCapturer` sources — full-resolution grabs of every screen — are fetched only when a display actually needs them, never on the Windows happy path.
 2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently, sending each the frozen image plus the origin and size it needs. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input.
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
@@ -66,7 +66,7 @@ The source of truth is an in-memory settings object in the main process, validat
 ## Source layout
 
 ```text
-src/main/       Electron lifecycle, capture, tray, native integrations, settings store
+src/main/       Electron lifecycle, capture, tray, native integrations, settings + capture-helper
 src/preload/    contextBridge API (capture + settings)
 src/renderer/   capture/editor UI and the settings window, canvas rendering, styles
 src/shared/     IPC, geometry, and settings types/logic shared across process boundaries

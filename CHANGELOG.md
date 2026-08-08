@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0 - 2026-08-08
+
+### Changed
+
+- The native capture helper is now a persistent background process, warmed when Capturo
+  launches, instead of a fresh process spawned for every capture. Creating the graphics
+  device and desktop duplication — about 190 ms of work, plus a one-time cold start on the
+  first capture after boot — now happens once, in the background, so captures no longer pay
+  for it. On the 4K + rotated-1080p setup, frame capture dropped from about 0.5 s to about
+  0.33 s, and the first capture after a reboot is no longer slow. See D-017.
+
+### Internal
+
+- The helper gained a serve mode (line-delimited requests over stdin, one JSON result per
+  line) alongside the existing one-shot `--output` mode, kept for testing and fallback. Its
+  process lifecycle — spawn, warm, batch request with a timeout, restart on death, kill on
+  quit — lives in `src/main/capture-helper.ts`. Desktop-duplication invalidation from display
+  changes is detected and rebuilt; a dead or hung helper falls back to `desktopCapturer`; and
+  the helper self-terminates if its parent dies, leaving no orphan process.
+
 ## 0.11.0 - 2026-08-08
 
 ### Changed

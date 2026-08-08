@@ -149,3 +149,23 @@ The logic is split the way the rest of the codebase is: pure validation and acce
 A rebindable capture shortcut is the one preference with a failure mode: the chosen accelerator may be owned by another application. `globalShortcut.register` reports this (or throws for a malformed accelerator), so a rebind that does not take effect rolls both the live registration and the stored value back to the previous working shortcut and reports the reason to the settings window. At startup an unavailable saved shortcut falls back to the default so the tray label stays truthful.
 
 A second **GIF** tab ships as a disabled placeholder. It records intent — GIF capture is a planned future feature — without any capture or encoding logic in this change.
+
+## D-017: The capture helper is a persistent background process
+
+**Status:** accepted
+
+The native helper used to be spawned fresh for every capture: it loaded the graphics DLLs, created a Direct3D device, and started DXGI desktop duplication before it could grab a frame. Measured, that was ~187 ms of setup on *every* capture, plus a ~586 ms one-time cold DLL load on the first capture after boot — far more than the pixel work itself. So the helper is now spawned once, warmed at app launch, and kept alive to answer capture requests, creating the device and duplication a single time. Warm captures then pay no setup, and the first capture after boot is fast because the cold start happened in the background before the user asked.
+
+This adds a resident child process, which is a change to the quiet-resident model, so it is recorded rather than introduced by drift. It is compatible with that model: the helper has no window, captures nothing until asked, communicates only over a private stdin/stdout pipe with its parent (no network), and holds only a graphics device and desktop-duplication handles. The renderer/security boundary is unchanged — the helper is a main-process concern behind `src/main/capture-helper.ts`.
+
+The helper keeps a one-shot mode (`--output …`), used for standalone testing and as a definition of a single capture; serve mode (no arguments) reads one request per line — `originX \t originY \t outputPath` — and writes one JSON result line each, reusing the same FP16/rotation/tone-map/encode path.
+
+Three failure modes shape the design:
+
+**Duplication goes invalid.** Desktop duplication is lost (`DXGI_ERROR_ACCESS_LOST`) whenever the display setup changes — resolution, rotation, monitor plug/unplug, the secure desktop, a full-screen exclusive app. Each output's duplication is cached by desktop origin and, on a loss, dropped and rebuilt; a removed device (`DXGI_ERROR_DEVICE_REMOVED`) rebuilds everything, and a stale factory (`IsCurrent()` false) re-enumerates. A capture retries once through a rebuild before giving up. HDR state and SDR white are re-read per capture, never cached, since the user can toggle them.
+
+**A hung or dead helper must never hang or break a capture.** The main side keeps a single batch in flight with a timeout; on timeout or process death it rejects, and the caller falls back to `desktopCapturer` (the same fallback used on non-Windows). A dead helper is respawned on the next capture.
+
+**Orphaned processes.** The serve loop exits on stdin EOF, so the helper self-terminates when its parent dies even on a hard kill, in addition to being killed on a normal quit (`before-quit`). Verified: force-killing the app leaves no `capturo-capture.exe` behind.
+
+A kept-alive duplication buffers frames between captures; the bounded-acquire logic (D-015) — prefer a presented frame, else reuse the last surface it holds — is what makes a capture after a long idle return the current desktop rather than a stale or empty one.

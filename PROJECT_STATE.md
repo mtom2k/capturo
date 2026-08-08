@@ -4,13 +4,13 @@ Last updated: 2026-08-07
 
 ## Phase
 
-`0.11.0` built and passing the automated gate on Windows; rotated-display capture verified on real hardware. Reveal frame-diff, HDR re-check on the main display, and macOS validation are still pending.
+`0.12.0` built and passing the automated gate on Windows; the persistent capture helper, rotated-display capture, and HDR output verified on real hardware. Reveal frame-diff and macOS validation are still pending.
 
 ## Current build
 
-`0.11.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.12.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
 
-`0.1.0` through `0.10.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
+`0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
 ## Target release
 
@@ -121,6 +121,12 @@ Last updated: 2026-08-07
   - with the rotated display served by the helper, the `desktopCapturer` fallback no longer runs. Measured with `CAPTURO_TIMING=1` on a 4K + rotated-1080p desktop: frame capture went from ~1700ms (0.9.x) to ~927ms (0.10.0 parallel fallback) to ~498ms once the rotated display used the helper, both displays grabbed in parallel
   - automated gate green: typecheck, 31/31 tests, build; helper rebuilds clean under `/W4`
   - the 90/270 rotation direction is verified for this display's orientation; 180 and the opposite 90 follow by symmetry and are not yet exercised on hardware
+- 2026-08-08 `0.12.0` persistent capture helper:
+  - the helper is now spawned once and warmed at launch. Measured with `CAPTURO_TIMING=1` on the 4K + rotated-1080p desktop: warm captures report `setup 0` on every display and frame capture holds at ~323-335ms (down from ~498ms), bounded now by the sequential convert+encode
+  - serve mode verified: a two-display batch over stdin returned correct main (3840x2160 HDR, `hdrActive:true`) and rotated (1080x1920) PNGs; the main HDR capture is not washed out and the rotated one is upright
+  - resilience verified: killing the persistent helper mid-session respawned and warmed a fresh one and the capture still succeeded; force-killing the app (bypassing the graceful quit) left no `capturo-capture.exe` behind, because the serve loop exits on stdin EOF
+  - not yet exercised on hardware: a display-config change (rotate / resolution / unplug) between captures; the `DXGI_ERROR_ACCESS_LOST` rebuild path handles it and the desktopCapturer fallback is the safety net, but it should be confirmed manually (see TESTING.md)
+  - automated gate green: typecheck, 31/31 tests, build; helper rebuilds clean under `/W4`
 
 ## Known constraints
 

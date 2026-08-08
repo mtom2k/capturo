@@ -30,6 +30,7 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Settings window UI: `src/renderer/settings.ts` / `settings.html` / `settings.css`
 - Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
 - Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
+- Native HDR capture helper: `native/capturo-capture/main.cpp` (one-shot `--output` mode plus a persistent serve mode). Its lifecycle — spawn, warm at launch, batch request with timeout, restart, kill on quit — is `src/main/capture-helper.ts`. See D-015, D-017.
 
 ## Verification expectations
 

@@ -66,6 +66,13 @@ Verify on at least 100% and one scaled DPI setting:
 
 20. On a setup with a **rotated display**, confirm it is captured natively and correctly. The `CAPTURO_TIMING=1` log should show a helper line for the rotated display (not a `desktopCapturer` fallback), reporting the rotated (portrait) dimensions. The captured image of that display must be upright and not mirrored — text reads left to right, window controls stay top-right. Running the helper standalone against the display's physical origin (`capturo-capture.exe --output test.png --origin-x <x> --origin-y <y>`) and opening the PNG is the quickest check. Only the 90/270 orientation matching the test hardware is exercised; 180 follows by symmetry.
 
+21. **Persistent capture helper (D-017).** With `CAPTURO_TIMING=1`, confirm warm captures report `setup 0` and that the first capture after a reboot is not slow (the helper warms at launch). Then exercise its resilience:
+
+    - **Display change mid-session.** Between two captures, rotate a monitor, change its resolution, or unplug/replug one, and confirm the next capture still produces a correct, correctly-sized overlay for it — the duplication is rebuilt on `DXGI_ERROR_ACCESS_LOST` rather than returning a black or stale frame. Lock the screen or trigger a UAC prompt, then capture again.
+    - **Dead helper.** Kill `capturo-capture.exe` from Task Manager mid-session; the next capture must still succeed (respawn, or `desktopCapturer` fallback) and a helper should be running again afterwards.
+    - **No orphan.** Quit Capturo (and separately, force-kill it) and confirm no `capturo-capture.exe` is left behind.
+    - **Idle then capture.** Leave the app resident for a while on a static desktop, then capture, and confirm it shows the current desktop, not a stale frame.
+
 The 2026-08-04 passes covered scaled DPI, multi-display claim, pen rendering, exact-dimension clipboard export, lifecycle teardown, text entry, object manipulation, crop/annotation independence, step borders and sizing, contextual-toolbar ordering, paint-gated presentation, and the raster tray asset path on Windows 11.
 
 ## macOS desktop matrix

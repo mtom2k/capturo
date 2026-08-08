@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.11.0-blue)
+![version](https://img.shields.io/badge/version-0.12.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -23,8 +23,8 @@ No prebuilt binaries are published yet, so for now you build it yourself. It tak
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.11.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.11.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
+| `Capturo-Setup-0.12.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.12.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
