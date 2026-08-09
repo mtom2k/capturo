@@ -58,4 +58,46 @@ describe('GifRecordingEncoder', () => {
     // rather than the ~120 KB of 30 full frames — roughly an order of magnitude smaller.
     expect(bytes.length).toBeLessThan(8000)
   })
+
+  it('coalesces a run of identical frames into a single written frame', () => {
+    const width = 32
+    const height = 32
+    const solid = (value: number): Uint8Array => {
+      const rgba = new Uint8Array(width * height * 4)
+      for (let pixel = 0; pixel < width * height; pixel += 1) {
+        rgba[pixel * 4] = value
+        rgba[pixel * 4 + 1] = value
+        rgba[pixel * 4 + 2] = value
+        rgba[pixel * 4 + 3] = 255
+      }
+      return rgba
+    }
+    const encoder = new GifRecordingEncoder(width, height, 15, 80)
+    for (let frame = 0; frame < 30; frame += 1) encoder.addFrame(solid(120))
+    const bytes = encoder.finish()
+    // 30 identical frames collapse into one frame whose delay covers the whole static span,
+    // rather than 30 separate transparent frames.
+    expect(encoder.frameCount).toBe(1)
+    expect(String.fromCharCode(...bytes.slice(0, 6))).toBe('GIF89a')
+  })
+
+  it('writes one frame per distinct run, coalescing repeats within each', () => {
+    const width = 16
+    const height = 16
+    const solid = (value: number): Uint8Array => {
+      const rgba = new Uint8Array(width * height * 4)
+      for (let pixel = 0; pixel < width * height; pixel += 1) {
+        rgba[pixel * 4] = value
+        rgba[pixel * 4 + 1] = value
+        rgba[pixel * 4 + 2] = value
+        rgba[pixel * 4 + 3] = 255
+      }
+      return rgba
+    }
+    const encoder = new GifRecordingEncoder(width, height, 15, 80)
+    // A, A, B, B, B, A -> three distinct runs -> three written frames.
+    for (const value of [10, 10, 200, 200, 200, 10]) encoder.addFrame(solid(value))
+    encoder.finish()
+    expect(encoder.frameCount).toBe(3)
+  })
 })

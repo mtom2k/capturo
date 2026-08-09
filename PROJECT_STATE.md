@@ -1,14 +1,14 @@
 # Project State
 
-Last updated: 2026-08-07
+Last updated: 2026-08-09
 
 ## Phase
 
-`0.12.0` built and passing the automated gate on Windows; the persistent capture helper, rotated-display capture, and HDR output verified on real hardware. Reveal frame-diff and macOS validation are still pending.
+`0.13.0` is the last released build. GIF capture shipped: a region is selected, recorded live, and saved as an animated GIF, with a content-protected control bar, border, and shade, and with identical-frame coalescing on top of the transparent-pixel differencing. Copy-to-clipboard was deliberately deferred past 0.13.0 (see the to-do list below). The Windows release ships the NSIS installer only; the portable exe was dropped for this release.
 
 ## Current build
 
-`0.12.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu.
+`0.13.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu. The published GitHub release is `v0.13.0` (installer only).
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -45,6 +45,14 @@ Last updated: 2026-08-07
 - [x] Post-capture notification toggle
 - [x] Rebindable capture shortcut with conflict fallback
 - [x] Settings persisted to `userData/settings.json` (no captured pixels)
+- [x] GIF: tray New GIF item and rebindable GIF shortcut open region selection
+- [x] GIF: record a region live (cursor included) and save a valid, correctly-cropped `.gif`
+- [x] GIF: inter-frame differencing keeps files small (static content ~30x smaller)
+- [x] GIF: runs of identical frames coalesce into a single written frame (delay extended)
+- [x] GIF: content-protected control bar, border ring, and shade (absent from the capture)
+- [x] GIF: FPS and quality settings, persisted
+- [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.13.0 (per-platform work; see To do)
+- [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
 - [ ] Settings GUI smoke test on Windows
 - [ ] macOS smoke test
@@ -127,6 +135,29 @@ Last updated: 2026-08-07
   - resilience verified: killing the persistent helper mid-session respawned and warmed a fresh one and the capture still succeeded; force-killing the app (bypassing the graceful quit) left no `capturo-capture.exe` behind, because the serve loop exits on stdin EOF
   - not yet exercised on hardware: a display-config change (rotate / resolution / unplug) between captures; the `DXGI_ERROR_ACCESS_LOST` rebuild path handles it and the desktopCapturer fallback is the safety net, but it should be confirmed manually (see TESTING.md)
   - automated gate green: typecheck, 31/31 tests, build; helper rebuilds clean under `/W4`
+- 2026-08-08 GIF capture (Phases 1-3, unreleased on `main`):
+  - full pipeline verified end to end via `CAPTURO_GIF_RECORD_SMOKE`: `getDisplayMedia` → sample region → `gifenc` worker → saved a valid, correctly-cropped `.gif`; the recorded region is full-brightness (shade correctly outside it) and free of the border ring (chrome is content-protected)
+  - inter-frame differencing measured: a 3s recording over the animated wallpaper dropped from ~18 MB to ~0.5 MB (~34x); a unit test shows 30 identical frames stay a few KB
+  - automated gate green: typecheck, 38 tests (new `gif` suite), build; all four renderer pages emit (`index`, `settings`, `gif`, `gif-record`)
+  - not verifiable by automation (content protection hides the recording chrome from all screen capture, including test screenshots): the drag-select, Pause/Resume/Stop flow, and the on-screen look of the border ring and shade — these need a hands-on pass on Windows
+- 2026-08-09 Phase 4 (0.13.0):
+  - Escape now cancels a capture or GIF selection before any region is dragged. The selection overlays are shown with `showInactive()` (D-011) so they held no keyboard focus until the first click, and the renderer's window `keydown` never fired; `revealOverlay` now focuses the editor overlay once it is painted. Validated by the user on real hardware — Escape cancels immediately in both flows. Committed to `main` (`a64067a`)
+  - identical-frame coalescing added to the GIF encoder: a run of frames identical to the pending one extends its delay rather than emitting a new full-palette frame, on top of the existing transparent-pixel differencing. Accumulated delay is capped at the GIF 16-bit centisecond max
+  - automated gate green: `npm run typecheck`, `npm test` (40 tests, +2 coalescing cases in `gif`)
+
+## To do (Phase 4 — finish and release GIF)
+
+- Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
+- Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
+- README section for GIF, bump to `0.13.0`, changelog entry, and cut the `v0.13.0` release.
+
+### Done in Phase 4
+
+- Runs of identical frames coalesce into a single written frame — the pending frame's delay is extended instead of emitting a new full-palette frame — on top of the transparent-pixel differencing, cutting per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
+
+### Deferred past 0.13.0
+
+- Copy the finished GIF to the clipboard. There is no clean, Electron-native, cross-platform way to put an animated GIF (or a `CF_HDROP` file drop) on the clipboard: Windows needs a file drop, macOS a GIF-data/file-URL pasteboard write, and the two share no code. A PowerShell `Set-Clipboard` shell-out was rejected as too heavy for a privacy-minimal app that otherwise spawns no external process but its own capture helper. When taken up, do it properly per platform — Windows via a `--clipboard-file` mode on the existing native helper; macOS via NSPasteboard once macOS is actually supported.
 
 ## Known constraints
 

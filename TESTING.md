@@ -73,6 +73,12 @@ Verify on at least 100% and one scaled DPI setting:
     - **No orphan.** Quit Capturo (and separately, force-kill it) and confirm no `capturo-capture.exe` is left behind.
     - **Idle then capture.** Leave the app resident for a while on a static desktop, then capture, and confirm it shows the current desktop, not a stale frame.
 
+22. **GIF capture (D-018).** From the tray **New GIF** or the GIF shortcut, drag a region and press **Start Recording**. During recording, confirm the emphasis chrome: a red border ring around the region, everything outside it dimmed, and a control bar with a live timer and frame counter — none of which are focus-stealing (the region stays interactive) and none of which trip Do Not Disturb. Record a few seconds of motion including moving the mouse, use **Pause/Resume**, then **Stop** and save.
+
+    Open the saved `.gif` and confirm: it plays and loops; the **mouse cursor is present**; it contains only the region (no border, no shade, no control bar — the chrome is content-protected); and the file is reasonably small (static content should be well under a megabyte). Try low vs high **quality** and **FPS** in Settings → GIF and confirm the size/smoothness trade-off. Recording chrome cannot be seen in a screenshot tool (content protection hides it from all capture), so this step must be done by eye.
+
+    For pipeline-only automation, `CAPTURO_GIF_RECORD_SMOKE=1` records a fixed centre region for ~3 s and writes `%TEMP%\capturo-smoke.gif` with no dialog; opening that file confirms the record → encode → save path and the crop.
+
 The 2026-08-04 passes covered scaled DPI, multi-display claim, pen rendering, exact-dimension clipboard export, lifecycle teardown, text entry, object manipulation, crop/annotation independence, step borders and sizing, contextual-toolbar ordering, paint-gated presentation, and the raster tray asset path on Windows 11.
 
 ## macOS desktop matrix

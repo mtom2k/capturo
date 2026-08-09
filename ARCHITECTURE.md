@@ -63,14 +63,22 @@ Preferences are opened on demand from the tray and never form part of the steady
 
 The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only file Capturo writes without an explicit Save, and it holds no captured pixels — only the save format, JPEG quality, the notification toggle, and the capture shortcut. Format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding the shortcut re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS.
 
+## GIF capture
+
+GIF capture records a live screen region to an animated GIF, opened from the tray **New GIF** item or a rebindable shortcut, parallel to a screenshot (see D-018). Region selection reuses the screenshot's frozen-overlay machinery through a slim GIF renderer (`gif.html`/`gif.ts`); only the toolbar and the post-selection action differ.
+
+On Start, the selection overlays are torn down and the main process opens the recording chrome over the display: a control bar (`gif-record.html`/`gif-record.ts`), a border ring, and dim shade strips outside the region. All are content-protected so they are excluded from the capture, the border and shade are click-through so the region stays live, and the shade is tiled (never one full-monitor window) to avoid the Do Not Disturb classification (D-013). The recording renderer opens `getDisplayMedia` — the main process's `setDisplayMediaRequestHandler` targets the recorded display, cursor included — samples the region to a canvas at the chosen FPS, and streams frames to a `gifenc` Web Worker (`gif-worker.ts`/`gif-encoder.ts`) that quantizes, applies inter-frame differencing, and writes incrementally, so memory holds only the compressed GIF. Stop encodes and the main process saves the bytes to a `.gif` via a native dialog.
+
 ## Source layout
 
 ```text
-src/main/       Electron lifecycle, capture, tray, native integrations, settings + capture-helper
-src/preload/    contextBridge API (capture + settings)
-src/renderer/   capture/editor UI and the settings window, canvas rendering, styles
-src/shared/     IPC, geometry, and settings types/logic shared across process boundaries
-tests/          deterministic unit tests for pure geometry/model/settings behavior
+src/main/       Electron lifecycle, capture, tray, native integrations, settings + capture-helper,
+                GIF recording windows (selection teardown, control bar, border, shade)
+src/preload/    contextBridge API (capture + settings + GIF)
+src/renderer/   capture/editor UI, settings window, GIF selection overlay + recording control bar,
+                canvas rendering, styles, GIF encoder + worker
+src/shared/     IPC, geometry, settings, and GIF types/logic shared across process boundaries
+tests/          deterministic unit tests for pure geometry/model/settings/GIF behavior
 ```
 
 ## Security boundary

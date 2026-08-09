@@ -73,9 +73,19 @@ Right-click the tray icon and choose **Settings…**. It is deliberately small, 
 - **Notification.** Turn the toast after a copy or save on or off.
 - **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.
 
+The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, and a rebindable **GIF shortcut**, all persisted the same way.
+
 Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options.
 
-A second **GIF** tab is a placeholder for a planned feature and has no controls yet.
+## 🎬 Recording a GIF
+
+> **New and still in progress.** GIF capture records and saves today. Copying a GIF to the
+> clipboard is not included — save it, then share the file. A hands-on pass is landing before it
+> ships in a release. Build from source to try it.
+
+Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and a small control bar gives you **Pause/Resume**, **Stop**, and a running timer and frame count. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and save a `.gif`.
+
+The ring, the dimming, and the control bar are all excluded from the recording, so the GIF contains only your region. Recordings can be any length, and pixels that do not change between frames are not re-encoded, so a mostly-static recording stays small while keeping its quality. Frame rate and quality come from the GIF settings tab.
 
 ## 🌈 HDR displays
 

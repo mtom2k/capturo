@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.13.0 - 2026-08-09
+
+### Added
+
+- GIF capture. Select a screen region from the tray **New GIF** item or a rebindable shortcut and
+  record it to an animated GIF. While recording, a red ring frames the region, everything outside
+  it is dimmed to emphasize what is captured, and a control bar shows Pause/Resume, Stop, a timer,
+  and a frame counter — all excluded from the recording. Frames are captured live (the mouse
+  cursor is included) and encoded off the main thread by `gifenc` with inter-frame differencing —
+  and runs of identical frames coalesce into one, extending its delay rather than re-encoding — so
+  files stay small (a 3-second clip that was ~18 MB is ~0.5 MB) and unlimited-duration recording
+  is viable. The Settings **GIF** tab controls frame rate, quality, and the GIF shortcut. Stop
+  saves a `.gif`. See D-018.
+
+### Fixed
+
+- Escape now cancels a capture or GIF region selection before a region has been dragged, not only
+  after. The selection overlays are shown without keyboard focus (so they never steal input
+  before they are ready), which meant the renderer never received the keypress until the first
+  click; the editor overlay is now focused the moment it is revealed.
+
+### Notes
+
+- Copying a GIF to the clipboard is not included in this release. There is no clean cross-platform
+  way to place an animated GIF or a file drop on the clipboard, and a PowerShell shell-out was
+  rejected as too heavy for this tool. It may return later, done properly per platform. See D-018.
+
 ## 0.12.0 - 2026-08-08
 
 ### Changed

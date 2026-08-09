@@ -31,6 +31,7 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
 - Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
 - Native HDR capture helper: `native/capturo-capture/main.cpp` (one-shot `--output` mode plus a persistent serve mode). Its lifecycle — spawn, warm at launch, batch request with timeout, restart, kill on quit — is `src/main/capture-helper.ts`. See D-015, D-017.
+- GIF capture: region-selection overlay `src/renderer/gif.ts` / `gif.html`; recording control bar `src/renderer/gif-record.ts` / `gif-record.html`; encoder + worker `src/renderer/gif-encoder.ts` / `gif-worker.ts` (uses `gifenc`); shared types and the pure quality/fps mapping in `src/shared/gif.ts`. The recording windows (selection teardown, control bar, content-protected border and shade, `setDisplayMediaRequestHandler`, save) live in `src/main/index.ts`. See D-018.
 
 ## Verification expectations
 
@@ -43,6 +44,10 @@ Windows can be built and exercised from this repository's current host. The fina
 The development-only `CAPTURO_CAPTURE_ON_START=1` environment flag opens capture at launch and uses a temporary user-data scope. It exists for smoke automation and does not alter normal single-instance production behavior.
 
 Set `CAPTURO_TIMING=1` to print capture-path phase timings to stderr: how long frames took to grab (with the native helper's own setup/acquire/convert/encode breakdown, which it always reports in its JSON) and how long overlays took to load. It is silent otherwise and is the way to quantify invocation latency.
+
+Two GIF smoke flags mirror `CAPTURO_CAPTURE_ON_START`: `CAPTURO_GIF_ON_START=1` opens GIF region selection at launch, and `CAPTURO_GIF_RECORD_SMOKE=1` records a fixed centre region for a few seconds and saves it to `%TEMP%\capturo-smoke.gif` with no dialog — the way to exercise the record → encode → save pipeline without the selection UI.
+
+Beware when verifying GIF recording: the control bar, border ring, and shade are content-protected (`setContentProtection(true)` → WDA_EXCLUDEFROMCAPTURE), which excludes them from **all** screen capture, including any automated screenshot. They are invisible to tooling and can only be judged by eye on real hardware. That same property is what keeps them out of the recorded GIF.
 
 Overlay presentation has two separate hazards, and fixing one does not fix the other.
 
