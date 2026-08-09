@@ -122,6 +122,12 @@ function revealOverlay(entry: OverlayEntry): void {
   entry.revealed = true
   entry.window.setIgnoreMouseEvents(false)
   entry.window.setOpacity(1)
+  // The overlay was shown with showInactive() (D-011), so it holds no keyboard focus until the
+  // user's first click. Without focus the renderer's window 'keydown' never fires, so Escape did
+  // nothing until a region drag had begun. Now that the editor is painted and interactive, give
+  // it focus so Escape cancels from the moment the frozen desktop appears. Only the editor takes
+  // input; fillers are left unfocused so they never steal it from the editor.
+  if (entry.payload.role === 'editor') entry.window.focus()
 }
 
 function notify(title: string, body: string): void {
