@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import sharp from 'sharp'
 import {
+  canQueueGifFrame,
   countdownSecondsRemaining,
   frameDelayMs,
   MIN_GIF_COLORS,
@@ -16,6 +18,20 @@ function solidFrame(width: number, height: number, value: number): Uint8Array {
     rgba[pixel * 4 + 3] = 255
   }
   return rgba
+}
+
+function setPixel(
+  rgba: Uint8Array,
+  width: number,
+  x: number,
+  y: number,
+  [red, green, blue]: [number, number, number]
+): void {
+  const offset = (y * width + x) * 4
+  rgba[offset] = red
+  rgba[offset + 1] = green
+  rgba[offset + 2] = blue
+  rgba[offset + 3] = 255
 }
 
 // Graphic Control Extensions carry each frame delay as a little-endian 16-bit centisecond
@@ -51,6 +67,15 @@ describe('gif helpers', () => {
     expect(countdownSecondsRemaining(3000, 2999)).toBe(1)
     expect(countdownSecondsRemaining(3000, 3000)).toBe(0)
     expect(countdownSecondsRemaining(3000, 4000)).toBe(0)
+  })
+
+  it('bounds the number of frames queued for the GIF worker', () => {
+    expect(canQueueGifFrame(0)).toBe(true)
+    expect(canQueueGifFrame(1)).toBe(true)
+    expect(canQueueGifFrame(2)).toBe(false)
+    expect(canQueueGifFrame(2, 3)).toBe(true)
+    expect(canQueueGifFrame(3, 3)).toBe(false)
+    expect(canQueueGifFrame(-1)).toBe(false)
   })
 })
 
@@ -136,6 +161,57 @@ describe('GifRecordingEncoder', () => {
     for (const value of [10, 10, 200, 200, 200, 10]) encoder.addFrame(solid(value))
     encoder.finish()
     expect(encoder.frameCount).toBe(3)
+  })
+
+  it('uses sparse palette work for localized changes and coalesces the resulting frame', () => {
+    const width = 8
+    const height = 8
+    const first = solidFrame(width, height, 20)
+    const second = first.slice()
+    setPixel(second, width, 3, 4, [240, 30, 10])
+
+    const encoder = new GifRecordingEncoder(width, height, 30, 70)
+    expect(encoder.addFrame(first, 0)).toBe('full')
+    expect(encoder.addFrame(second, 100)).toBe('sparse')
+    expect(encoder.addFrame(second.slice(), 200)).toBe('coalesced')
+    expect(frameDelaysMs(encoder.finish(300))).toEqual([100, 200])
+  })
+
+  it('falls back to full-frame palette work when more than a quarter of pixels change', () => {
+    const width = 8
+    const height = 8
+    const first = solidFrame(width, height, 20)
+    const second = first.slice()
+    for (let pixel = 0; pixel < 17; pixel += 1) {
+      setPixel(second, width, pixel % width, Math.floor(pixel / width), [220, 40, 80])
+    }
+
+    const encoder = new GifRecordingEncoder(width, height, 30, 70)
+    expect(encoder.addFrame(first, 0)).toBe('full')
+    expect(encoder.addFrame(second, 100)).toBe('full')
+    encoder.finish(200)
+  })
+
+  it('preserves localized changed pixels in the decoded animation', async () => {
+    const width = 8
+    const height = 8
+    const first = solidFrame(width, height, 20)
+    const second = first.slice()
+    setPixel(second, width, 3, 4, [240, 30, 10])
+
+    const encoder = new GifRecordingEncoder(width, height, 30, 100)
+    encoder.addFrame(first, 0)
+    expect(encoder.addFrame(second, 100)).toBe('sparse')
+    const bytes = encoder.finish(200)
+    const decoded = await sharp(bytes, { animated: true }).raw().toBuffer({ resolveWithObject: true })
+    const pageHeight = decoded.info.pageHeight ?? height
+    const channels = decoded.info.channels
+    const changedOffset = ((pageHeight + 4) * width + 3) * channels
+    const unchangedOffset = ((pageHeight + 4) * width + 2) * channels
+
+    expect(decoded.info.pages).toBe(2)
+    expect([...decoded.data.subarray(changedOffset, changedOffset + 3)]).toEqual([240, 30, 10])
+    expect([...decoded.data.subarray(unchangedOffset, unchangedOffset + 3)]).toEqual([20, 20, 20])
   })
 
   it.each([10, 15, 20, 30])('preserves one second at %i fps without per-frame rounding drift', (fps) => {

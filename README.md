@@ -88,6 +88,8 @@ The ring, the dimming, and the control bar are all excluded from the recording, 
 
 Frame rate controls the requested sampling cadence. Playback timing follows the recording's active elapsed time, so a large region that cannot be sampled at the full requested rate still plays at real-world speed rather than speeding up; paused time is not included.
 
+Capturo keeps only two frames in flight to the encoder. If a large or complex region cannot sustain the selected FPS, the control bar reports skipped sampling ticks instead of allowing an ever-growing encoding backlog; those gaps still retain their real elapsed duration. After Stop, the bar shows bounded finalization progress and then switches to Saving.
+
 ## 🌈 HDR displays
 
 Screenshots come out the same whether your monitor is in HDR mode or not.

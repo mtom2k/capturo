@@ -17,6 +17,19 @@
   final visible frame's duration; and static spans beyond the per-frame delay limit are split
   rather than truncated.
 
+### Performance
+
+- GIF recording now keeps at most two frames in flight to the encoder worker. If encoding cannot
+  sustain the selected FPS, sampling ticks are skipped before canvas readback instead of queuing
+  unbounded raw frames; active timestamps preserve the correct playback duration. The control
+  bar reports skipped ticks and bounded finalization progress.
+- Localized GIF changes now quantize and map only changed pixels when they cover at most 25% of
+  the region, while broadly changing frames retain the full-frame path. The final GIF buffer is
+  also transferred without a redundant complete copy.
+- A packaged 30 fps, 70% quality validation capture retained its complete 27.78-second timeline,
+  decoded without errors, and produced a 2.41 MB GIF versus roughly 22 MB in the comparable
+  pre-optimization capture. Results vary with region size and screen activity.
+
 ## 0.13.0 - 2026-08-09
 
 ### Added

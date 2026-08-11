@@ -41,11 +41,11 @@ Documentation is part of the implementation, not a release-day cleanup. Before h
 
 Every behavior change should pass `npm run typecheck`, `npm test`, and `npm run build`. UI changes require at least one real capture smoke test. Update the functional checklist and known constraints in `PROJECT_STATE.md` before handing off.
 
-## Current performance follow-up
+## Current performance state
 
-The next planned work is GIF encoding optimization, not another timing rewrite. A real 27-second capture at 30 fps and 70% quality produced roughly 800 sampled frames and a ~22 MB GIF, then waited noticeably after Stop. The recorder currently posts every sampled RGBA buffer without worker acknowledgement, so a worker that cannot sustain the requested cadence accumulates a queue; the `finish` message must wait behind it.
+OPT1 and OPT2 are implemented in the GIF pipeline (D-020). Worker acknowledgements bound the queue to two transferred frames; do not remove the acknowledgement or raise the bound casually, because each queued 1920x1080 RGBA frame is about 7.9 MiB and a 4K frame is about 31.6 MiB. When the bound is full, the renderer skips the sampling tick before canvas readback. The timestamp invariant makes this safe: the preceding visible frame receives the longer real elapsed duration.
 
-Take **OPT1** first: bound the worker queue to two or three frames, acknowledge processed frames, skip sampling while the bound is reached, and expose finalization progress. Skipped samples are compatible with the existing timestamp invariant: the preceding visible frame simply receives the longer real elapsed duration. Then take **OPT2**: compute the changed-pixel set before quantization, combine the identity and difference walks, and run palette work only over changed pixels. Keep a full-frame fallback for broadly changing content. `PROJECT_STATE.md` records the baseline and measured synthetic result. Neither optimization is implemented in the current commit.
+The encoder's equality scan collects at most 25% of the region into reusable changed-pixel and position scratch buffers. It quantizes/maps that compact set and scatters it into a transparent indexed frame. More widespread changes return early to full-frame quantization and differencing. Fully identical frames still coalesce. Tests assert sparse/coalesced/full strategy selection and decode a sparse animation through Sharp to prove both changed and unchanged pixels composite correctly. If further optimization is needed, profile real recordings before evaluating `rgb444` or a multi-worker ordered encoder; neither is part of the current pipeline.
 
 ## Platform follow-up
 

@@ -5,6 +5,10 @@ import type { Rect } from './types'
 
 export const MIN_GIF_COLORS = 8
 export const MAX_GIF_COLORS = 256
+// Keep at most one frame executing and one waiting in the worker. When the encoder cannot
+// sustain the requested sampling cadence, the recorder skips samples instead of building an
+// unbounded queue of full-resolution RGBA buffers. Active timestamps preserve wall-clock time.
+export const MAX_GIF_FRAMES_IN_FLIGHT = 2
 
 // A crop rectangle expressed as fractions (0-1) of the recorded display, so it is resolution
 // independent between the frozen selection image and the live capture stream.
@@ -55,4 +59,11 @@ export function frameDelayMs(fps: number): number {
 // makes boundary behavior deterministic and testable while the renderer owns the timer itself.
 export function countdownSecondsRemaining(deadlineMs: number, nowMs: number): number {
   return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000))
+}
+
+export function canQueueGifFrame(
+  framesInFlight: number,
+  limit = MAX_GIF_FRAMES_IN_FLIGHT
+): boolean {
+  return Number.isFinite(framesInFlight) && framesInFlight >= 0 && framesInFlight < Math.max(1, limit)
 }

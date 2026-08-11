@@ -1,5 +1,9 @@
 import './gif-record.css'
-import { countdownSecondsRemaining, type GifRecordPayload } from '../shared/gif'
+import {
+  canQueueGifFrame,
+  countdownSecondsRemaining,
+  type GifRecordPayload
+} from '../shared/gif'
 
 const bar = document.querySelector<HTMLElement>('#bar')!
 const timerEl = document.querySelector<HTMLElement>('#timer')!
@@ -19,6 +23,9 @@ let countingDown = false
 let paused = false
 let finishing = false
 let frameCount = 0
+let framesInFlight = 0
+let processedFrameCount = 0
+let skippedFrameCount = 0
 // Elapsed recording time, excluding paused spans.
 let activeSince = 0
 let accumulatedMs = 0
@@ -34,7 +41,15 @@ function elapsedMs(): number {
 
 function updateHud(): void {
   timerEl.textContent = formatTime(elapsedMs())
-  framesEl.textContent = `${frameCount} frame${frameCount === 1 ? '' : 's'}`
+  const skipped = skippedFrameCount > 0 ? ` · ${skippedFrameCount} skipped` : ''
+  framesEl.textContent = `${frameCount} frame${frameCount === 1 ? '' : 's'}${skipped}`
+}
+
+function updateFinalizingHud(): void {
+  timerEl.textContent = 'Finalizing…'
+  framesEl.textContent = processedFrameCount >= frameCount
+    ? `${frameCount} frames ready`
+    : `${processedFrameCount}/${frameCount} frames processed`
 }
 
 function stopStream(): void {
@@ -94,7 +109,13 @@ async function begin(payload: GifRecordPayload): Promise<void> {
 
   worker = new Worker(new URL('./gif-worker.ts', import.meta.url), { type: 'module' })
   worker.onmessage = (event: MessageEvent) => {
-    if (event.data?.type === 'done') void onEncoded(event.data.bytes as ArrayBuffer)
+    if (event.data?.type === 'frame-processed') {
+      framesInFlight = Math.max(0, framesInFlight - 1)
+      processedFrameCount = Math.min(frameCount, processedFrameCount + 1)
+      if (finishing) updateFinalizingHud()
+    } else if (event.data?.type === 'done') {
+      void onEncoded(event.data.bytes as ArrayBuffer, Number(event.data.frames) || 0)
+    }
   }
   worker.postMessage({ type: 'start', width: cropWidth, height: cropHeight, fps: payload.fps, quality: payload.quality })
 
@@ -102,6 +123,11 @@ async function begin(payload: GifRecordPayload): Promise<void> {
   const interval = 1000 / payload.fps
   const sampleFrame = (): void => {
     if (countingDown || paused || !recording || !worker) return
+    if (!canQueueGifFrame(framesInFlight)) {
+      skippedFrameCount += 1
+      updateHud()
+      return
+    }
     context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight)
     // Timestamp the pixels when they are sampled. setInterval is only a scheduling request: a
     // large crop or a busy renderer can make callbacks late, and stamping every frame with the
@@ -109,6 +135,7 @@ async function begin(payload: GifRecordPayload): Promise<void> {
     const timestampMs = elapsedMs()
     const { buffer } = context.getImageData(0, 0, cropWidth, cropHeight).data
     frameCount += 1
+    framesInFlight += 1
     worker.postMessage({ type: 'frame', data: buffer, timestampMs }, [buffer])
     updateHud()
   }
@@ -189,13 +216,15 @@ function stop(): void {
   pauseButton.disabled = true
   stopButton.disabled = true
   cancelButton.disabled = true
-  timerEl.textContent = 'Encoding…'
+  updateFinalizingHud()
   worker?.postMessage({ type: 'finish', timestampMs: stoppedAtMs })
 }
 
-async function onEncoded(bytes: ArrayBuffer): Promise<void> {
+async function onEncoded(bytes: ArrayBuffer, encodedFrames: number): Promise<void> {
   worker?.terminate()
   worker = null
+  timerEl.textContent = 'Saving…'
+  framesEl.textContent = `${encodedFrames} encoded frame${encodedFrames === 1 ? '' : 's'}`
   await window.capturoGif.saveRecording(bytes)
   // Main closes this window after the save dialog resolves.
 }

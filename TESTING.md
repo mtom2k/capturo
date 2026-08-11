@@ -8,7 +8,7 @@ Run the complete non-GUI gate with:
 npm run build
 ```
 
-This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. Settings tests verify the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero.
+This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. It also verifies the two-frame queue boundary, sparse/coalesced/full palette-path selection, and decoded sparse-frame compositing through Sharp. Settings tests verify the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero.
 
 ## Windows desktop matrix
 
@@ -80,6 +80,8 @@ Verify on at least 100% and one scaled DPI setting:
     Verify timing at **10, 15, 20, and 30 fps**, with special emphasis on 30 fps and a large region. Record a visible stopwatch or other known-duration motion for at least 10 active seconds. The saved GIF's total duration should match the control-bar active timer to GIF's 10 ms precision; it must not speed up when the renderer misses sampling deadlines. Pause for several seconds and resume: the paused wall-clock span must be absent, while the active motion before and after the pause remains correctly timed. Stop between sampling ticks and confirm the last visible frame is held through the Stop time rather than being shortened to a nominal frame.
 
     In Settings → GIF, test pre-timers of **0, 3, and 10 seconds**. At 3 and 10, the protected control bar must show every countdown number, Pause and Stop must remain disabled, Cancel must work, and the active timer/frame count must not begin until zero. The first captured frame should show the desktop state at zero, with no countdown chrome and no setup motion in the GIF. At 0, active recording must begin immediately. For `CAPTURO_GIF_RECORD_SMOKE`, the hard-coded pre-timer is 0 so its ~3-second output remains a ~3-second active recording.
+
+    Stress backpressure with a large region at **30 fps / 70% quality** for at least 30 seconds. If the worker cannot keep up, the control bar must report skipped ticks rather than becoming unresponsive or accumulating unchecked memory. Stop must switch to `Finalizing…`, show processed/total progress for no more than the two-frame bounded tail, then switch to `Saving…`. The saved GIF duration must still match active wall time even when ticks were skipped. Record the sampled count, skipped count, Stop-to-save-dialog time, output size, region dimensions, and peak process memory so future encoder changes can be compared against the same baseline.
 
     For pipeline-only automation, `CAPTURO_GIF_RECORD_SMOKE=1` records a fixed centre region for ~3 s and writes `%TEMP%\capturo-smoke.gif` with no dialog; opening that file confirms the record → encode → save path and the crop.
 

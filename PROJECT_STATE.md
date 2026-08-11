@@ -53,6 +53,8 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 - [x] GIF: FPS and quality settings, persisted
 - [x] GIF: configurable 0-10 second pre-timer before active capture (default 3 seconds)
 - [x] GIF: playback duration follows active sample timestamps, with unbiased centisecond rounding and no long-static-run truncation
+- [x] GIF: encoder backpressure caps transferred raw frames at two and reports skipped/finalizing progress
+- [x] GIF: localized changes quantize/map only changed pixels, with a 25% full-frame fallback threshold
 - [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.13.0 (per-platform work; see To do)
 - [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
@@ -64,7 +66,7 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 49/49 passed
+- `npm test`: 53/53 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -158,18 +160,26 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 - 2026-08-11 local Windows package and performance baseline:
   - `npm run dist:win` completed with the current unreleased changes after a green 49/49-test build, producing the installer and portable executable under the git-ignored `release/` directory
   - a real 27-second capture at 30 fps and 70% quality produced roughly 800 sampled frames and a ~22 MB GIF, but exposed a long post-Stop encoding wait
-  - read-only profiling identified the cause: the renderer can enqueue frames faster than the single worker quantizes and writes them, so Stop sits behind the accumulated worker queue; no optimization change has been implemented yet
+  - read-only profiling identified the cause: the renderer could enqueue frames faster than the single worker quantized and wrote them, so Stop sat behind the accumulated worker queue
+- 2026-08-11 GIF optimization (OPT1 and OPT2):
+  - the worker acknowledges completed frame work and the renderer caps in-flight frames at two; full queues skip sampling before canvas readback, while active timestamps preserve wall-clock playback duration
+  - the control bar reports skipped ticks during recording, processed/total progress during bounded finalization, and a distinct Saving state
+  - frames changing at most 25% of the region quantize/map only their compact changed-pixel set; broader changes use the existing full-frame path, identical frames still coalesce, and the final GIF no longer receives a redundant complete copy before transfer
+  - regression coverage asserts queue boundaries and sparse/coalesced/full strategy selection, then decodes a sparse animation through Sharp to verify changed and transparent-composited pixels; full gate green: typecheck, 53/53 tests, and production build; see D-020
+  - `npm run dist:win` then rebuilt both Windows artifacts from this optimized source after the same 53/53-test gate; `release/BUILD-INFO.txt` records their hashes and build time
+  - packaged-build validation at 30 fps and 70% quality produced a valid 1163x753 GIF with 529 distinct encoded frames over the complete 27.78-second timeline; all frames decoded cleanly, 80.9% used the expected 30/40 ms cadence, and the 2.41 MB output was about 89% smaller than the comparable ~22 MB pre-optimization capture
+  - the user accepted the improved Stop-to-save behavior after the repeat 27-second stress capture; size and throughput gains remain content-dependent
 
 ## Post-0.13.0 follow-up
 
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 
-### Next GIF optimization pass (planned, not implemented)
+### GIF optimization status
 
-- **OPT1:** add worker acknowledgements and a bounded two- or three-frame queue. When encoding cannot sustain the requested FPS, skip samples rather than accumulating an unbounded backlog; the active timestamps already preserve wall-clock playback duration. Add processed/queued progress so finalization is observable.
-- **OPT2:** detect changes before palette work, combine the identity/difference scans, and quantize/map only changed pixels. A synthetic 1920x1080 screen-style profile with ~6% changed pixels reduced that stage from 23.6 ms to 5.9 ms per frame; remeasure with real captures before treating that as a product guarantee.
-- After OPT1 and OPT2, profile a balanced `rgb444` path and direct final-buffer transfer before deciding whether the additional complexity of a multi-worker encoder is justified.
+- **OPT1 complete:** worker acknowledgements, a two-frame bound, pre-readback sample skipping, and finalization progress prevent recording-length-dependent queue growth.
+- **OPT2 complete:** the equality scan collects localized changes and palette work runs only on that compact set; a 25% threshold retains the full-frame path for widespread motion. A synthetic 1920x1080 screen-style profile with ~6% changed pixels reduced that stage from 23.6 ms to 5.9 ms per frame. The packaged validation above confirmed a substantial end-to-end size and saving improvement, but results remain content-dependent rather than a product guarantee.
+- The redundant final GIF copy is also removed. If a real 30 fps stress pass still needs more throughput, profile a balanced `rgb444` path before taking on the ordering and CPU complexity of a multi-worker encoder.
 
 ### Done in Phase 4
 

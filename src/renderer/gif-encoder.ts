@@ -3,6 +3,11 @@ import { frameDelayMs, paletteColorsForQuality } from '../shared/gif'
 
 // GIF stores each frame delay as an unsigned 16-bit centisecond value.
 const MAX_FRAME_DELAY_CS = 65535
+// Sparse desktop motion is the common case. Below this ratio, palette work is performed only
+// for changed pixels; above it, the existing full-frame path avoids large scratch copies.
+const SPARSE_FRAME_MAX_CHANGED_RATIO = 0.25
+
+export type GifFrameStrategy = 'coalesced' | 'sparse' | 'full'
 
 // Encodes a stream of RGBA frames into an animated GIF, one frame at a time so memory holds
 // only the growing compressed output rather than every raw frame — this is what makes long
@@ -20,6 +25,10 @@ export class GifRecordingEncoder {
   private readonly encoder = GIFEncoder()
   private readonly colors: number
   private readonly nominalDelay: number
+  private readonly pixelCount: number
+  private readonly sparsePixelLimit: number
+  private readonly changedPixels: Uint8Array
+  private readonly changedPositions: Uint32Array
   private framesWritten = 0
   private lastTimestampMs: number | null = null
   // GIF can only store whole centiseconds. Carry each rounding remainder into the next frame so
@@ -43,6 +52,10 @@ export class GifRecordingEncoder {
   ) {
     this.colors = paletteColorsForQuality(quality)
     this.nominalDelay = frameDelayMs(fps)
+    this.pixelCount = width * height
+    this.sparsePixelLimit = Math.max(1, Math.floor(this.pixelCount * SPARSE_FRAME_MAX_CHANGED_RATIO))
+    this.changedPixels = new Uint8Array(this.sparsePixelLimit * 4)
+    this.changedPositions = new Uint32Array(this.sparsePixelLimit)
   }
 
   // rgba is the frame's pixels, width*height*4 bytes. A frame identical to the pending one just
@@ -50,7 +63,7 @@ export class GifRecordingEncoder {
   // colour as content changes); pixels identical to the previously displayed frame are written
   // as a reserved transparent index with "do not dispose", so only what changed is re-encoded.
   // This is the main size win, especially for mostly-static content. See D-018.
-  addFrame(rgba: Uint8Array, timestampMs?: number): void {
+  addFrame(rgba: Uint8Array, timestampMs?: number): GifFrameStrategy {
     const timestamp = this.resolveTimestamp(timestampMs)
     if (this.pending && this.lastTimestampMs !== null) {
       // A sampled frame describes what should be displayed from its sample time until the next
@@ -58,40 +71,91 @@ export class GifRecordingEncoder {
       this.pending.durationMs += timestamp - this.lastTimestampMs
     }
 
-    if (this.pending && this.sameColour(rgba, this.pending.raw)) {
+    const previous = this.pending?.raw ?? null
+    const sparseChanges = previous ? this.collectSparseChanges(rgba, previous) : -1
+    if (sparseChanges === 0) {
       this.lastTimestampMs = timestamp
-      return
+      return 'coalesced'
     }
 
-    // Reserve one palette slot for transparency.
-    const palette = quantize(rgba, Math.max(2, this.colors - 1))
-    const index = applyPalette(rgba, palette)
-    const transparentIndex = palette.length
-    palette.push([0, 0, 0])
+    const frame = previous && sparseChanges > 0
+      ? this.indexSparseFrame(sparseChanges)
+      : this.indexFullFrame(rgba, previous)
 
-    // Difference against the previously displayed frame — the pending one, which is about to be
-    // written as this frame's predecessor.
-    if (this.pending) {
-      const prev = this.pending.raw
-      for (let i = 0, p = 0; i < index.length; i += 1, p += 4) {
-        if (rgba[p] === prev[p] && rgba[p + 1] === prev[p + 1] && rgba[p + 2] === prev[p + 2]) {
-          index[i] = transparentIndex
-        }
-      }
-      this.flushPending()
-    }
+    if (this.pending) this.flushPending()
 
     // On the first sample, cover the small span from recording start to that sample with the
     // first captured image. Later distinct samples start with zero duration; their duration is
     // learned when the next sample (or Stop) supplies a timestamp.
     this.pending = {
       raw: rgba.slice(),
-      index,
-      palette,
-      transparentIndex,
+      index: frame.index,
+      palette: frame.palette,
+      transparentIndex: frame.transparentIndex,
       durationMs: this.lastTimestampMs === null ? timestamp : 0
     }
     this.lastTimestampMs = timestamp
+    return sparseChanges > 0 ? 'sparse' : 'full'
+  }
+
+  // Returns 0 for an identical frame, a positive changed-pixel count for a sparse frame, and -1
+  // once the sparse threshold is exceeded. The early -1 keeps widespread motion on the normal
+  // full-frame path without allocating or copying an entire second representation.
+  private collectSparseChanges(rgba: Uint8Array, previous: Uint8Array): number {
+    let changed = 0
+    for (let pixel = 0, p = 0; pixel < this.pixelCount; pixel += 1, p += 4) {
+      if (rgba[p] === previous[p] && rgba[p + 1] === previous[p + 1] && rgba[p + 2] === previous[p + 2]) continue
+      if (changed >= this.sparsePixelLimit) return -1
+      this.changedPositions[changed] = pixel
+      const target = changed * 4
+      this.changedPixels[target] = rgba[p]
+      this.changedPixels[target + 1] = rgba[p + 1]
+      this.changedPixels[target + 2] = rgba[p + 2]
+      this.changedPixels[target + 3] = rgba[p + 3]
+      changed += 1
+    }
+    return changed
+  }
+
+  private indexSparseFrame(changed: number): {
+    index: Uint8Array
+    palette: GifPalette
+    transparentIndex: number
+  } {
+    // gifenc currently reads the complete backing ArrayBuffer, so slice to an exact buffer rather
+    // than passing a subarray of the reusable sparse scratch space.
+    const pixels = this.changedPixels.slice(0, changed * 4)
+    const palette = quantize(pixels, Math.max(2, this.colors - 1))
+    const changedIndex = applyPalette(pixels, palette)
+    const transparentIndex = palette.length
+    palette.push([0, 0, 0])
+
+    const index = new Uint8Array(this.pixelCount)
+    index.fill(transparentIndex)
+    for (let changedPixel = 0; changedPixel < changed; changedPixel += 1) {
+      index[this.changedPositions[changedPixel]] = changedIndex[changedPixel]
+    }
+    return { index, palette, transparentIndex }
+  }
+
+  private indexFullFrame(rgba: Uint8Array, previous: Uint8Array | null): {
+    index: Uint8Array
+    palette: GifPalette
+    transparentIndex: number
+  } {
+    const palette = quantize(rgba, Math.max(2, this.colors - 1))
+    const index = applyPalette(rgba, palette)
+    const transparentIndex = palette.length
+    palette.push([0, 0, 0])
+
+    if (previous) {
+      for (let i = 0, p = 0; i < index.length; i += 1, p += 4) {
+        if (rgba[p] === previous[p] && rgba[p + 1] === previous[p + 1] && rgba[p + 2] === previous[p + 2]) {
+          index[i] = transparentIndex
+        }
+      }
+    }
+    return { index, palette, transparentIndex }
   }
 
   // Writes the held frame to the encoder. repeat:0 (loop forever) is set once, on the first
@@ -132,13 +196,6 @@ export class GifRecordingEncoder {
     const centiseconds = Math.max(1, Math.round(withCarry / 10))
     this.delayCarryMs = withCarry - centiseconds * 10
     return centiseconds
-  }
-
-  private sameColour(a: Uint8Array, b: Uint8Array): boolean {
-    for (let p = 0; p < a.length; p += 4) {
-      if (a[p] !== b[p] || a[p + 1] !== b[p + 1] || a[p + 2] !== b[p + 2]) return false
-    }
-    return true
   }
 
   // The number of frames written to the GIF, which is at most the number of frames added:
