@@ -1,15 +1,15 @@
 import { GIFEncoder, quantize, applyPalette, type GifPalette } from 'gifenc'
 import { frameDelayMs, paletteColorsForQuality } from '../shared/gif'
 
-// A GIF per-frame delay is a 16-bit centisecond value, so it cannot exceed 65535 cs. Coalescing
-// a long static run into one frame accumulates delay, so cap it here to avoid a wraparound. A
-// static span longer than this (~10.9 min) simply loops a hair early, which is imperceptible.
-const MAX_FRAME_DELAY_MS = 65535 * 10
+// GIF stores each frame delay as an unsigned 16-bit centisecond value.
+const MAX_FRAME_DELAY_CS = 65535
 
 // Encodes a stream of RGBA frames into an animated GIF, one frame at a time so memory holds
-// only the growing compressed output rather than every raw frame — this is what makes an
-// unlimited-duration recording viable. Quality controls the palette size; FPS the frame
-// delay. Pure enough to unit-test with synthetic frames. See D-018.
+// only the growing compressed output rather than every raw frame — this is what makes long
+// recordings viable. Quality controls the palette size. Frame timing comes
+// from active recording timestamps supplied by the recorder, rather than assuming the renderer
+// kept up with its requested sampling interval. Pure enough to unit-test with synthetic frames.
+// See D-018.
 //
 // Frames are written with a one-frame lag: the most recent distinct frame is held pending
 // rather than written immediately, so a run of frames identical to it is coalesced by extending
@@ -19,8 +19,12 @@ const MAX_FRAME_DELAY_MS = 65535 * 10
 export class GifRecordingEncoder {
   private readonly encoder = GIFEncoder()
   private readonly colors: number
-  private readonly delay: number
+  private readonly nominalDelay: number
   private framesWritten = 0
+  private lastTimestampMs: number | null = null
+  // GIF can only store whole centiseconds. Carry each rounding remainder into the next frame so
+  // rates such as 30 fps alternate 30/40 ms instead of rounding every frame down to 30 ms.
+  private delayCarryMs = 0
 
   // The most recent distinct frame, built but not yet written so its delay can still grow.
   private pending: {
@@ -28,7 +32,7 @@ export class GifRecordingEncoder {
     index: Uint8Array
     palette: GifPalette
     transparentIndex: number
-    delay: number
+    durationMs: number
   } | null = null
 
   constructor(
@@ -38,7 +42,7 @@ export class GifRecordingEncoder {
     quality: number
   ) {
     this.colors = paletteColorsForQuality(quality)
-    this.delay = frameDelayMs(fps)
+    this.nominalDelay = frameDelayMs(fps)
   }
 
   // rgba is the frame's pixels, width*height*4 bytes. A frame identical to the pending one just
@@ -46,9 +50,16 @@ export class GifRecordingEncoder {
   // colour as content changes); pixels identical to the previously displayed frame are written
   // as a reserved transparent index with "do not dispose", so only what changed is re-encoded.
   // This is the main size win, especially for mostly-static content. See D-018.
-  addFrame(rgba: Uint8Array): void {
+  addFrame(rgba: Uint8Array, timestampMs?: number): void {
+    const timestamp = this.resolveTimestamp(timestampMs)
+    if (this.pending && this.lastTimestampMs !== null) {
+      // A sampled frame describes what should be displayed from its sample time until the next
+      // sample. Therefore the newly observed elapsed time belongs to the frame already pending.
+      this.pending.durationMs += timestamp - this.lastTimestampMs
+    }
+
     if (this.pending && this.sameColour(rgba, this.pending.raw)) {
-      this.pending.delay = Math.min(MAX_FRAME_DELAY_MS, this.pending.delay + this.delay)
+      this.lastTimestampMs = timestamp
       return
     }
 
@@ -70,7 +81,17 @@ export class GifRecordingEncoder {
       this.flushPending()
     }
 
-    this.pending = { raw: rgba.slice(), index, palette, transparentIndex, delay: this.delay }
+    // On the first sample, cover the small span from recording start to that sample with the
+    // first captured image. Later distinct samples start with zero duration; their duration is
+    // learned when the next sample (or Stop) supplies a timestamp.
+    this.pending = {
+      raw: rgba.slice(),
+      index,
+      palette,
+      transparentIndex,
+      durationMs: this.lastTimestampMs === null ? timestamp : 0
+    }
+    this.lastTimestampMs = timestamp
   }
 
   // Writes the held frame to the encoder. repeat:0 (loop forever) is set once, on the first
@@ -78,16 +99,39 @@ export class GifRecordingEncoder {
   // (unchanged) pixels show it through.
   private flushPending(): void {
     if (!this.pending) return
-    const { index, palette, transparentIndex, delay } = this.pending
-    this.encoder.writeFrame(index, this.width, this.height, {
-      palette,
-      delay,
-      transparent: true,
-      transparentIndex,
-      dispose: 1,
-      repeat: this.framesWritten === 0 ? 0 : undefined
-    })
-    this.framesWritten += 1
+    const { index, palette, transparentIndex, durationMs } = this.pending
+    let remainingCs = this.quantizeDelay(durationMs)
+
+    // A single GIF delay tops out at 655.35 seconds. Split a longer static run into repeated
+    // frames instead of clamping it and silently shortening the recording.
+    while (remainingCs > 0) {
+      const delayCs = Math.min(MAX_FRAME_DELAY_CS, remainingCs)
+      this.encoder.writeFrame(index, this.width, this.height, {
+        palette,
+        delay: delayCs * 10,
+        transparent: true,
+        transparentIndex,
+        dispose: 1,
+        repeat: this.framesWritten === 0 ? 0 : undefined
+      })
+      this.framesWritten += 1
+      remainingCs -= delayCs
+    }
+  }
+
+  private resolveTimestamp(timestampMs?: number): number {
+    const fallback = this.lastTimestampMs === null ? 0 : this.lastTimestampMs + this.nominalDelay
+    const requested = typeof timestampMs === 'number' && Number.isFinite(timestampMs)
+      ? Math.max(0, timestampMs)
+      : fallback
+    return this.lastTimestampMs === null ? requested : Math.max(this.lastTimestampMs, requested)
+  }
+
+  private quantizeDelay(durationMs: number): number {
+    const withCarry = Math.max(0, durationMs) + this.delayCarryMs
+    const centiseconds = Math.max(1, Math.round(withCarry / 10))
+    this.delayCarryMs = withCarry - centiseconds * 10
+    return centiseconds
   }
 
   private sameColour(a: Uint8Array, b: Uint8Array): boolean {
@@ -103,7 +147,14 @@ export class GifRecordingEncoder {
     return this.framesWritten + (this.pending ? 1 : 0)
   }
 
-  finish(): Uint8Array {
+  finish(timestampMs?: number): Uint8Array {
+    if (this.pending && this.lastTimestampMs !== null) {
+      const endTimestamp = timestampMs === undefined
+        ? this.lastTimestampMs + this.nominalDelay
+        : this.resolveTimestamp(timestampMs)
+      this.pending.durationMs += endTimestamp - this.lastTimestampMs
+      this.lastTimestampMs = endTimestamp
+    }
     this.flushPending()
     this.pending = null
     this.encoder.finish()

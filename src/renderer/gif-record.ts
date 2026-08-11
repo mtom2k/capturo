@@ -1,5 +1,5 @@
 import './gif-record.css'
-import type { GifRecordPayload } from '../shared/gif'
+import { countdownSecondsRemaining, type GifRecordPayload } from '../shared/gif'
 
 const bar = document.querySelector<HTMLElement>('#bar')!
 const timerEl = document.querySelector<HTMLElement>('#timer')!
@@ -12,7 +12,10 @@ const video = document.querySelector<HTMLVideoElement>('#video')!
 let worker: Worker | null = null
 let stream: MediaStream | null = null
 let sampleTimer: number | null = null
+let countdownTimer: number | null = null
+let autoStopTimer: number | null = null
 let recording = false
+let countingDown = false
 let paused = false
 let finishing = false
 let frameCount = 0
@@ -38,6 +41,14 @@ function stopStream(): void {
   if (sampleTimer !== null) {
     window.clearInterval(sampleTimer)
     sampleTimer = null
+  }
+  if (countdownTimer !== null) {
+    window.clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  if (autoStopTimer !== null) {
+    window.clearTimeout(autoStopTimer)
+    autoStopTimer = null
   }
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
@@ -88,23 +99,68 @@ async function begin(payload: GifRecordPayload): Promise<void> {
   worker.postMessage({ type: 'start', width: cropWidth, height: cropHeight, fps: payload.fps, quality: payload.quality })
 
   recording = true
-  activeSince = performance.now()
   const interval = 1000 / payload.fps
-  sampleTimer = window.setInterval(() => {
-    if (paused || !recording || !worker) return
+  const sampleFrame = (): void => {
+    if (countingDown || paused || !recording || !worker) return
     context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight)
+    // Timestamp the pixels when they are sampled. setInterval is only a scheduling request: a
+    // large crop or a busy renderer can make callbacks late, and stamping every frame with the
+    // nominal FPS would then make the GIF play faster than the recording happened in real time.
+    const timestampMs = elapsedMs()
     const { buffer } = context.getImageData(0, 0, cropWidth, cropHeight).data
     frameCount += 1
-    worker.postMessage({ type: 'frame', data: buffer }, [buffer])
+    worker.postMessage({ type: 'frame', data: buffer, timestampMs }, [buffer])
     updateHud()
-  }, interval)
-  updateHud()
+  }
+  const startActiveRecording = (): void => {
+    if (!recording) return
+    if (countdownTimer !== null) {
+      window.clearInterval(countdownTimer)
+      countdownTimer = null
+    }
+    countingDown = false
+    paused = false
+    accumulatedMs = 0
+    activeSince = performance.now()
+    bar.classList.remove('countdown')
+    pauseButton.disabled = false
+    stopButton.disabled = false
 
-  if (payload.autoStopMs) window.setTimeout(() => stop(), payload.autoStopMs)
+    // Capture the initial state immediately, then use the selected FPS as the requested sampling
+    // cadence. Actual elapsed timestamps remain authoritative when sampling is late.
+    sampleFrame()
+    sampleTimer = window.setInterval(sampleFrame, interval)
+    updateHud()
+    if (payload.autoStopMs) autoStopTimer = window.setTimeout(() => stop(), payload.autoStopMs)
+  }
+
+  const preTimerMs = payload.preTimerSeconds * 1000
+  if (preTimerMs <= 0) {
+    startActiveRecording()
+    return
+  }
+
+  countingDown = true
+  bar.classList.add('countdown')
+  pauseButton.disabled = true
+  stopButton.disabled = true
+  framesEl.textContent = 'Starting…'
+  const deadlineMs = performance.now() + preTimerMs
+  const updateCountdown = (): void => {
+    if (!recording) return
+    const remaining = countdownSecondsRemaining(deadlineMs, performance.now())
+    if (remaining === 0) {
+      startActiveRecording()
+      return
+    }
+    timerEl.textContent = String(remaining)
+  }
+  updateCountdown()
+  countdownTimer = window.setInterval(updateCountdown, 50)
 }
 
 function togglePause(): void {
-  if (!recording || finishing) return
+  if (!recording || countingDown || finishing) return
   if (paused) {
     paused = false
     activeSince = performance.now()
@@ -120,12 +176,13 @@ function togglePause(): void {
 }
 
 function stop(): void {
-  if (!recording || finishing) return
+  if (!recording || countingDown || finishing) return
   // Nothing captured (stopped instantly): just discard.
   if (frameCount === 0) {
     void window.capturoGif.cancelRecording()
     return
   }
+  const stoppedAtMs = elapsedMs()
   finishing = true
   recording = false
   stopStream()
@@ -133,7 +190,7 @@ function stop(): void {
   stopButton.disabled = true
   cancelButton.disabled = true
   timerEl.textContent = 'Encoding…'
-  worker?.postMessage({ type: 'finish' })
+  worker?.postMessage({ type: 'finish', timestampMs: stoppedAtMs })
 }
 
 async function onEncoded(bytes: ArrayBuffer): Promise<void> {
@@ -146,6 +203,7 @@ async function onEncoded(bytes: ArrayBuffer): Promise<void> {
 function cancel(): void {
   if (finishing) return
   recording = false
+  countingDown = false
   stopStream()
   worker?.terminate()
   worker = null

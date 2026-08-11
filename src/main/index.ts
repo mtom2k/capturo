@@ -538,7 +538,12 @@ function registerIpc(): void {
     }
     const gif = getSettings().gif
     closeSession()
-    openRecordingWindow(display, { crop, fps: gif.fps, quality: gif.quality })
+    openRecordingWindow(display, {
+      crop,
+      fps: gif.fps,
+      quality: gif.quality,
+      preTimerSeconds: gif.preTimerSeconds
+    })
     return true
   })
 
@@ -935,6 +940,7 @@ if (!app.requestSingleInstanceLock()) {
         crop: { x: 0.3, y: 0.3, width: 0.4, height: 0.4 },
         fps: 15,
         quality: 70,
+        preTimerSeconds: 0,
         autoStopMs: 3000
       })
     }

@@ -16,6 +16,8 @@ export type GifRecordPayload = {
   crop: CropRect
   fps: number
   quality: number
+  // Active capture begins only after this user-visible countdown completes.
+  preTimerSeconds: number
   // Smoke-test only: auto-stop after this many milliseconds.
   autoStopMs?: number
 }
@@ -26,7 +28,7 @@ export type CapturoGifApi = {
   // Called by the selection overlay: the user chose a region and pressed Start Recording.
   // Resolves to whether recording was accepted.
   startRecording: (sessionId: string, region: Rect) => Promise<boolean>
-  // Subscribed by the recording window to receive its crop/fps/quality.
+  // Subscribed by the recording window to receive its crop, encoding settings, and pre-timer.
   onRecordInitialize: (listener: (payload: GifRecordPayload) => void) => () => void
   // Called by the recording window with the finished GIF bytes; main saves (and copies).
   saveRecording: (bytes: ArrayBuffer) => Promise<GifSaveResult>
@@ -42,7 +44,15 @@ export function paletteColorsForQuality(quality: number): number {
   return Math.min(MAX_GIF_COLORS, Math.max(MIN_GIF_COLORS, colors))
 }
 
-// GIF frame delay in milliseconds for a given frame rate.
+// Nominal sampling interval in milliseconds for a given frame rate. Live recordings carry
+// actual active-elapsed timestamps; the encoder uses this only as a fallback for synthetic or
+// timestamp-free callers.
 export function frameDelayMs(fps: number): number {
   return Math.max(1, Math.round(1000 / Math.max(1, fps)))
+}
+
+// User-facing whole seconds remaining for an absolute countdown deadline. Keeping this pure
+// makes boundary behavior deterministic and testable while the renderer owns the timer itself.
+export function countdownSecondsRemaining(deadlineMs: number, nowMs: number): number {
+  return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000))
 }

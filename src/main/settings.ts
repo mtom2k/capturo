@@ -4,7 +4,7 @@
 // file on every change.
 //
 // This is the one file Capturo writes without an explicit Save, and it holds no captured
-// pixels: only the four preferences in CaptureSettings. See D-016.
+// pixels: only the validated preferences in Settings. See D-016 and D-019.
 
 import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'node:fs'

@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.12.0-blue)
+![version](https://img.shields.io/badge/version-0.13.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-No prebuilt binaries are published yet, so for now you build it yourself. It takes two commands, see [Building from source](#️-building-from-source).
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.13.0 publishes the installer; building from source remains available below.
 
-`npm run dist:win` puts two Windows artifacts in `release/`:
+`npm run dist:win` currently produces two local Windows artifacts in `release/`, although the official 0.13.0 release publishes the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.12.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.12.0-x64.exe` | Single executable. Run it from anywhere, nothing is installed. |
+| `Capturo-Setup-0.13.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.13.0-x64.exe` | Local packaging output; not published in the official 0.13.0 release. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -73,19 +73,20 @@ Right-click the tray icon and choose **Settings…**. It is deliberately small, 
 - **Notification.** Turn the toast after a copy or save on or off.
 - **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.
 
-The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, and a rebindable **GIF shortcut**, all persisted the same way.
+The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, a **pre-timer** from 0-10 seconds (3 seconds by default), and a rebindable **GIF shortcut**, all persisted the same way.
 
 Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options.
 
 ## 🎬 Recording a GIF
 
-> **New and still in progress.** GIF capture records and saves today. Copying a GIF to the
-> clipboard is not included — save it, then share the file. A hands-on pass is landing before it
-> ships in a release. Build from source to try it.
+> GIF capture shipped in 0.13.0. Copying a GIF to the clipboard is not included — save it, then
+> share the file.
 
-Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and a small control bar gives you **Pause/Resume**, **Stop**, and a running timer and frame count. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and save a `.gif`.
+Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and the protected control bar counts down before capture begins. The default pre-timer is 3 seconds; choose 0-10 seconds in Settings → GIF, with 0 disabling it. Once the countdown reaches zero, the bar switches to **Pause/Resume**, **Stop**, a running timer, and a frame count. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and save a `.gif`.
 
 The ring, the dimming, and the control bar are all excluded from the recording, so the GIF contains only your region. Recordings can be any length, and pixels that do not change between frames are not re-encoded, so a mostly-static recording stays small while keeping its quality. Frame rate and quality come from the GIF settings tab.
+
+Frame rate controls the requested sampling cadence. Playback timing follows the recording's active elapsed time, so a large region that cannot be sampled at the full requested rate still plays at real-world speed rather than speeding up; paused time is not included.
 
 ## 🌈 HDR displays
 
@@ -106,7 +107,7 @@ Capturo handles your screen pixels, so it keeps them local:
 - No network requests at all. Nothing is uploaded, ever.
 - No telemetry, no analytics, no crash reporting.
 - No account and no login.
-- Nothing is written to disk unless you choose **Save**.
+- Captured pixels are never written to disk unless you choose **Save**. Capturo writes only its small, pixel-free `settings.json` automatically.
 
 The renderer runs sandboxed with context isolation and no Node.js access. Every OS level action goes through a small set of explicit IPC handlers.
 

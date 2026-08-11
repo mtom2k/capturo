@@ -60,6 +60,19 @@ button {
   animation: none;
 }
 
+.record-bar.countdown .rec-dot {
+  background: #38bdf8;
+  animation: none;
+}
+
+.record-bar.countdown .rec-timer {
+  min-width: 18px;
+  color: #bae6fd;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }

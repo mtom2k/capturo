@@ -49,6 +49,15 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ gif: { quality: 63.4 } }).gif.quality).toBe(63)
   })
 
+  it('defaults, clamps, and rounds the GIF pre-timer into 0-10 seconds', () => {
+    expect(DEFAULT_SETTINGS.gif.preTimerSeconds).toBe(3)
+    expect(normalizeSettings({ gif: { preTimerSeconds: 0 } }).gif.preTimerSeconds).toBe(0)
+    expect(normalizeSettings({ gif: { preTimerSeconds: 7.6 } }).gif.preTimerSeconds).toBe(8)
+    expect(normalizeSettings({ gif: { preTimerSeconds: -4 } }).gif.preTimerSeconds).toBe(0)
+    expect(normalizeSettings({ gif: { preTimerSeconds: 99 } }).gif.preTimerSeconds).toBe(10)
+    expect(normalizeSettings({ gif: { preTimerSeconds: 'x' } }).gif.preTimerSeconds).toBe(3)
+  })
+
   it('preserves valid partial input and defaults the rest', () => {
     expect(normalizeSettings({ capture: { showNotification: false } })).toEqual({
       capture: { ...DEFAULT_SETTINGS.capture, showNotification: false },
@@ -67,9 +76,10 @@ describe('mergeSettings', () => {
   })
 
   it('overlays a gif update without touching capture', () => {
-    const merged = mergeSettings(DEFAULT_SETTINGS, { gif: { fps: 30 } })
+    const merged = mergeSettings(DEFAULT_SETTINGS, { gif: { fps: 30, preTimerSeconds: 5 } })
     expect(merged.gif.fps).toBe(30)
     expect(merged.gif.quality).toBe(DEFAULT_SETTINGS.gif.quality)
+    expect(merged.gif.preTimerSeconds).toBe(5)
     expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
   })
 })

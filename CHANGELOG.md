@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- GIF recording now has a configurable 0-10 second pre-timer, defaulting to 3 seconds. The
+  content-protected control bar counts down before the first frame and active timer begin; 0
+  disables the countdown.
+
+### Fixed
+
+- GIF playback now follows active recording time instead of assigning every sampled frame the
+  nominal FPS delay. Large or high-FPS regions therefore no longer play fast when canvas
+  sampling runs late. GIF centisecond rounding remainder is carried between frames, preventing
+  systematic drift at rates such as 30 fps; pause spans remain excluded; Stop preserves the
+  final visible frame's duration; and static spans beyond the per-frame delay limit are split
+  rather than truncated.
+
 ## 0.13.0 - 2026-08-09
 
 ### Added

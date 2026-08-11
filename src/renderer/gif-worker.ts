@@ -4,8 +4,8 @@
 import { GifRecordingEncoder } from './gif-encoder'
 
 type StartMessage = { type: 'start'; width: number; height: number; fps: number; quality: number }
-type FrameMessage = { type: 'frame'; data: ArrayBuffer }
-type FinishMessage = { type: 'finish' }
+type FrameMessage = { type: 'frame'; data: ArrayBuffer; timestampMs: number }
+type FinishMessage = { type: 'finish'; timestampMs: number }
 type WorkerMessage = StartMessage | FrameMessage | FinishMessage
 
 // tsconfig.web uses the DOM lib (not WebWorker), whose Window typing for `self` does not match
@@ -23,9 +23,9 @@ ctx.onmessage = (event) => {
   if (message.type === 'start') {
     encoder = new GifRecordingEncoder(message.width, message.height, message.fps, message.quality)
   } else if (message.type === 'frame' && encoder) {
-    encoder.addFrame(new Uint8Array(message.data))
+    encoder.addFrame(new Uint8Array(message.data), message.timestampMs)
   } else if (message.type === 'finish' && encoder) {
-    const bytes = encoder.finish()
+    const bytes = encoder.finish(message.timestampMs)
     const frames = encoder.frameCount
     // Copy out of the encoder's buffer so it can be transferred without detaching internals.
     const out = bytes.slice()

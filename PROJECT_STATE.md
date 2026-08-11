@@ -1,18 +1,18 @@
 # Project State
 
-Last updated: 2026-08-09
+Last updated: 2026-08-11
 
 ## Phase
 
-`0.13.0` is the last released build. GIF capture shipped: a region is selected, recorded live, and saved as an animated GIF, with a content-protected control bar, border, and shade, and with identical-frame coalescing on top of the transparent-pixel differencing. Copy-to-clipboard was deliberately deferred past 0.13.0 (see the to-do list below). The Windows release ships the NSIS installer only; the portable exe was dropped for this release.
+`0.13.0` is the last released build. GIF capture shipped: a region is selected, recorded live, and saved as an animated GIF, with a content-protected control bar, border, and shade, and with identical-frame coalescing on top of the transparent-pixel differencing. Current `main` contains unreleased follow-up work: playback timing follows actual active sample timestamps, and GIF recording has a configurable 0-10 second pre-timer that defaults to 3 seconds. Copy-to-clipboard was deliberately deferred past 0.13.0 (see the to-do list below). The official Windows release publishes the NSIS installer only; local packaging also produces a portable executable.
 
 ## Current build
 
-`0.13.0`. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`. The running app shows its version in the tray tooltip and tray menu. The published GitHub release is `v0.13.0` (installer only).
+The package version remains `0.13.0` while the timing and pre-timer changes sit under **Unreleased**. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`; local artifacts may therefore contain newer source than the published tag despite carrying the same package version. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.13.0` (installer only).
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
-## Target release
+## Completed 0.9.0 milestone
 
 `0.9.0` - the complete local capture, annotation, copy, and save workflow, HDR-correct native capture, and a minimal tray-opened settings window: save format (PNG/JPEG) with JPEG quality, a post-capture notification toggle, and a rebindable capture shortcut, plus a placeholder GIF tab for a future feature.
 
@@ -51,6 +51,8 @@ Last updated: 2026-08-09
 - [x] GIF: runs of identical frames coalesce into a single written frame (delay extended)
 - [x] GIF: content-protected control bar, border ring, and shade (absent from the capture)
 - [x] GIF: FPS and quality settings, persisted
+- [x] GIF: configurable 0-10 second pre-timer before active capture (default 3 seconds)
+- [x] GIF: playback duration follows active sample timestamps, with unbiased centisecond rounding and no long-static-run truncation
 - [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.13.0 (per-platform work; see To do)
 - [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
@@ -62,7 +64,7 @@ Last updated: 2026-08-09
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 13/13 passed
+- `npm test`: 49/49 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -144,12 +146,30 @@ Last updated: 2026-08-09
   - Escape now cancels a capture or GIF selection before any region is dragged. The selection overlays are shown with `showInactive()` (D-011) so they held no keyboard focus until the first click, and the renderer's window `keydown` never fired; `revealOverlay` now focuses the editor overlay once it is painted. Validated by the user on real hardware — Escape cancels immediately in both flows. Committed to `main` (`a64067a`)
   - identical-frame coalescing added to the GIF encoder: a run of frames identical to the pending one extends its delay rather than emitting a new full-palette frame, on top of the existing transparent-pixel differencing. Accumulated delay is capped at the GIF 16-bit centisecond max
   - automated gate green: `npm run typecheck`, `npm test` (40 tests, +2 coalescing cases in `gif`)
+- 2026-08-10 post-0.13.0 GIF timing fix:
+  - sampled frames now carry active elapsed timestamps from the recording renderer; the encoder assigns each actual delta to the preceding frame, so late sampling on large/high-FPS regions no longer shortens playback
+  - GIF's whole-centisecond delays use carried rounding remainder, preventing deterministic drift at 30 fps; Stop supplies the final active timestamp and paused spans remain excluded
+  - a coalesced static span beyond the 655.35-second per-frame delay limit is split into repeated frames instead of being clamped and shortened
+  - regression coverage parses encoded delays at every selectable FPS, irregular sampling, identical-frame coalescing, and an over-limit static span; full gate green: typecheck, 47/47 tests, and production build
+- 2026-08-10 GIF pre-timer:
+  - GIF Settings now persists a whole-second pre-timer from 0-10 seconds, defaulting to 3; 0 starts recording immediately
+  - after the display stream is ready, the content-protected control bar counts down with Pause and Stop disabled and Cancel available; the active timer, first frame, FPS sampler, and smoke auto-stop begin only at zero
+  - settings normalization/clamping and countdown deadline boundaries are covered by unit tests; full gate green: typecheck, 49/49 tests, and production build; see D-019
+- 2026-08-11 local Windows package and performance baseline:
+  - `npm run dist:win` completed with the current unreleased changes after a green 49/49-test build, producing the installer and portable executable under the git-ignored `release/` directory
+  - a real 27-second capture at 30 fps and 70% quality produced roughly 800 sampled frames and a ~22 MB GIF, but exposed a long post-Stop encoding wait
+  - read-only profiling identified the cause: the renderer can enqueue frames faster than the single worker quantizes and writes them, so Stop sits behind the accumulated worker queue; no optimization change has been implemented yet
 
-## To do (Phase 4 — finish and release GIF)
+## Post-0.13.0 follow-up
 
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
-- README section for GIF, bump to `0.13.0`, changelog entry, and cut the `v0.13.0` release.
+
+### Next GIF optimization pass (planned, not implemented)
+
+- **OPT1:** add worker acknowledgements and a bounded two- or three-frame queue. When encoding cannot sustain the requested FPS, skip samples rather than accumulating an unbounded backlog; the active timestamps already preserve wall-clock playback duration. Add processed/queued progress so finalization is observable.
+- **OPT2:** detect changes before palette work, combine the identity/difference scans, and quantize/map only changed pixels. A synthetic 1920x1080 screen-style profile with ~6% changed pixels reduced that stage from 23.6 ms to 5.9 ms per frame; remeasure with real captures before treating that as a product guarantee.
+- After OPT1 and OPT2, profile a balanced `rgb444` path and direct final-buffer transfer before deciding whether the additional complexity of a multi-worker encoder is justified.
 
 ### Done in Phase 4
 

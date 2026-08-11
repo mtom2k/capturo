@@ -8,7 +8,7 @@ Run the complete non-GUI gate with:
 npm run build
 ```
 
-This performs strict type checking, Vitest geometry tests, and a production build of main, preload, and renderer targets. Geometry tests cover reverse selection drags, movement clamping, minimum resize size, handle priority, cardinal locking, and 45-degree locking.
+This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. Settings tests verify the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero.
 
 ## Windows desktop matrix
 
@@ -54,7 +54,7 @@ Verify on at least 100% and one scaled DPI setting:
 
     Count consecutive frames whose difference exceeds the noise floor. One or two frames is a correct hard cut. A run of ten or more, especially one that decays smoothly toward zero, is an animation. The `file=` argument must be a bare relative filename, because `ffmpeg` treats `:` in a filter argument as an option separator.
 
-17. Right-click the tray and open **Settings…**. Confirm it opens once and refocuses rather than stacking a second window when reopened, that closing it leaves the tray process resident, and that the **Capture** and **GIF** tabs switch (GIF shows only the placeholder).
+17. Right-click the tray and open **Settings…**. Confirm it opens once and refocuses rather than stacking a second window when reopened, that closing it leaves the tray process resident, and that the **Capture** and **GIF** tabs switch. In GIF, verify frame rate, quality, the 0-10 second pre-timer, and the GIF shortcut persist after closing and reopening Settings.
 
 18. Exercise each capture setting and confirm it persists across an app restart (the values live in `settings.json` under the user-data folder):
 
@@ -76,6 +76,10 @@ Verify on at least 100% and one scaled DPI setting:
 22. **GIF capture (D-018).** From the tray **New GIF** or the GIF shortcut, drag a region and press **Start Recording**. During recording, confirm the emphasis chrome: a red border ring around the region, everything outside it dimmed, and a control bar with a live timer and frame counter — none of which are focus-stealing (the region stays interactive) and none of which trip Do Not Disturb. Record a few seconds of motion including moving the mouse, use **Pause/Resume**, then **Stop** and save.
 
     Open the saved `.gif` and confirm: it plays and loops; the **mouse cursor is present**; it contains only the region (no border, no shade, no control bar — the chrome is content-protected); and the file is reasonably small (static content should be well under a megabyte). Try low vs high **quality** and **FPS** in Settings → GIF and confirm the size/smoothness trade-off. Recording chrome cannot be seen in a screenshot tool (content protection hides it from all capture), so this step must be done by eye.
+
+    Verify timing at **10, 15, 20, and 30 fps**, with special emphasis on 30 fps and a large region. Record a visible stopwatch or other known-duration motion for at least 10 active seconds. The saved GIF's total duration should match the control-bar active timer to GIF's 10 ms precision; it must not speed up when the renderer misses sampling deadlines. Pause for several seconds and resume: the paused wall-clock span must be absent, while the active motion before and after the pause remains correctly timed. Stop between sampling ticks and confirm the last visible frame is held through the Stop time rather than being shortened to a nominal frame.
+
+    In Settings → GIF, test pre-timers of **0, 3, and 10 seconds**. At 3 and 10, the protected control bar must show every countdown number, Pause and Stop must remain disabled, Cancel must work, and the active timer/frame count must not begin until zero. The first captured frame should show the desktop state at zero, with no countdown chrome and no setup motion in the GIF. At 0, active recording must begin immediately. For `CAPTURO_GIF_RECORD_SMOKE`, the hard-coded pre-timer is 0 so its ~3-second output remains a ~3-second active recording.
 
     For pipeline-only automation, `CAPTURO_GIF_RECORD_SMOKE=1` records a fixed centre region for ~3 s and writes `%TEMP%\capturo-smoke.gif` with no dialog; opening that file confirms the record → encode → save path and the crop.
 

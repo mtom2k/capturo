@@ -31,11 +31,21 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
 - Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
 - Native HDR capture helper: `native/capturo-capture/main.cpp` (one-shot `--output` mode plus a persistent serve mode). Its lifecycle — spawn, warm at launch, batch request with timeout, restart, kill on quit — is `src/main/capture-helper.ts`. See D-015, D-017.
-- GIF capture: region-selection overlay `src/renderer/gif.ts` / `gif.html`; recording control bar `src/renderer/gif-record.ts` / `gif-record.html`; encoder + worker `src/renderer/gif-encoder.ts` / `gif-worker.ts` (uses `gifenc`); shared types and the pure quality/fps mapping in `src/shared/gif.ts`. The recording windows (selection teardown, control bar, content-protected border and shade, `setDisplayMediaRequestHandler`, save) live in `src/main/index.ts`. See D-018.
+- GIF capture: region-selection overlay `src/renderer/gif.ts` / `gif.html`; recording control bar `src/renderer/gif-record.ts` / `gif-record.html`; encoder + worker `src/renderer/gif-encoder.ts` / `gif-worker.ts` (uses `gifenc`); shared types and timing helpers in `src/shared/gif.ts`. The recording windows (selection teardown, control bar, content-protected border and shade, `setDisplayMediaRequestHandler`, save) live in `src/main/index.ts`. `GifSettings.preTimerSeconds` is validated to 0-10 seconds and defaults to 3. The stream is prepared before the countdown; frame sampling, the active timer, and smoke auto-stop begin only when it reaches zero. Frame timestamps then use active elapsed time from the recording renderer; the encoder assigns actual deltas to pending frames and carries GIF centisecond rounding error forward. Do not replace this with fixed nominal delays or start active time during the countdown. See D-018 and D-019.
+
+## Documentation handoff
+
+Documentation is part of the implementation, not a release-day cleanup. Before handing work to another developer or LLM, follow the document-routing checklist in `CONTRIBUTING.md`, update every file whose present-tense claims changed, and record new regression coverage in `TESTING.md`. Historical release notes stay historical; current-state sections must not keep superseded targets or unfinished-release language.
 
 ## Verification expectations
 
 Every behavior change should pass `npm run typecheck`, `npm test`, and `npm run build`. UI changes require at least one real capture smoke test. Update the functional checklist and known constraints in `PROJECT_STATE.md` before handing off.
+
+## Current performance follow-up
+
+The next planned work is GIF encoding optimization, not another timing rewrite. A real 27-second capture at 30 fps and 70% quality produced roughly 800 sampled frames and a ~22 MB GIF, then waited noticeably after Stop. The recorder currently posts every sampled RGBA buffer without worker acknowledgement, so a worker that cannot sustain the requested cadence accumulates a queue; the `finish` message must wait behind it.
+
+Take **OPT1** first: bound the worker queue to two or three frames, acknowledge processed frames, skip sampling while the bound is reached, and expose finalization progress. Skipped samples are compatible with the existing timestamp invariant: the preceding visible frame simply receives the longer real elapsed duration. Then take **OPT2**: compute the changed-pixel set before quantization, combine the identity and difference walks, and run palette work only over changed pixels. Keep a full-frame fallback for broadly changing content. `PROJECT_STATE.md` records the baseline and measured synthetic result. Neither optimization is implemented in the current commit.
 
 ## Platform follow-up
 

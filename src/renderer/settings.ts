@@ -22,6 +22,8 @@ const notifySwitch = document.querySelector<HTMLButtonElement>('#notify')!
 const gifFps = document.querySelector<HTMLSelectElement>('#gif-fps')!
 const gifQuality = document.querySelector<HTMLInputElement>('#gif-quality')!
 const gifQualityValue = document.querySelector<HTMLElement>('#gif-quality-value')!
+const gifPreTimer = document.querySelector<HTMLInputElement>('#gif-pre-timer')!
+const gifPreTimerValue = document.querySelector<HTMLElement>('#gif-pre-timer-value')!
 
 const isMac = navigator.userAgent.includes('Mac')
 const DEFAULT_HINT = 'Click, then press the keys.'
@@ -117,6 +119,8 @@ function render(settings: Settings): void {
   gifFps.value = String(settings.gif.fps)
   gifQuality.value = String(settings.gif.quality)
   gifQualityValue.textContent = `${settings.gif.quality}%`
+  gifPreTimer.value = String(settings.gif.preTimerSeconds)
+  gifPreTimerValue.textContent = settings.gif.preTimerSeconds === 0 ? 'Off' : `${settings.gif.preTimerSeconds}s`
 
   for (const field of fields) field.recorder.textContent = formatAccelerator(field.currentOf(settings), isMac)
 }
@@ -185,6 +189,11 @@ gifQuality.addEventListener('input', () => {
   gifQualityValue.textContent = `${gifQuality.value}%`
 })
 gifQuality.addEventListener('change', () => void apply({ gif: { quality: Number(gifQuality.value) } }))
+gifPreTimer.addEventListener('input', () => {
+  const seconds = Number(gifPreTimer.value)
+  gifPreTimerValue.textContent = seconds === 0 ? 'Off' : `${seconds}s`
+})
+gifPreTimer.addEventListener('change', () => void apply({ gif: { preTimerSeconds: Number(gifPreTimer.value) } }))
 
 for (const field of fields) {
   field.recorder.addEventListener('click', () => {

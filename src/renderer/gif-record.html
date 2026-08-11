@@ -9,11 +9,11 @@
   <body>
     <div id="bar" class="record-bar">
       <span class="rec-dot" id="dot"></span>
-      <span id="timer" class="rec-timer">0:00</span>
-      <span id="frames" class="rec-frames"></span>
+      <span id="timer" class="rec-timer">—</span>
+      <span id="frames" class="rec-frames">Preparing…</span>
       <span class="rec-spacer"></span>
-      <button id="pause" class="rec-btn" aria-label="Pause recording">Pause</button>
-      <button id="stop" class="rec-btn primary" aria-label="Stop and save">Stop</button>
+      <button id="pause" class="rec-btn" aria-label="Pause recording" disabled>Pause</button>
+      <button id="stop" class="rec-btn primary" aria-label="Stop and save" disabled>Stop</button>
       <button id="cancel" class="rec-btn" aria-label="Discard recording">Cancel</button>
     </div>
     <video id="video" muted playsinline></video>

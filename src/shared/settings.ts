@@ -23,6 +23,9 @@ export type GifSettings = {
   // Palette/dithering quality, 1-100. Higher keeps more colour detail at a larger size. GIF
   // stays at the region's native resolution regardless. See D-018.
   quality: number
+  // Countdown after Start Recording and before the first frame, in whole seconds. Zero disables
+  // the countdown.
+  preTimerSeconds: number
   // Electron accelerator that starts a GIF capture, e.g. 'CommandOrControl+Shift+3'.
   shortcut: string
 }
@@ -59,6 +62,8 @@ export const MAX_JPEG_QUALITY = 100
 
 export const MIN_GIF_QUALITY = 1
 export const MAX_GIF_QUALITY = 100
+export const MIN_GIF_PRE_TIMER_SECONDS = 0
+export const MAX_GIF_PRE_TIMER_SECONDS = 10
 export const GIF_FPS_OPTIONS = [10, 15, 20, 30] as const
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -71,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gif: {
     fps: 15,
     quality: 70,
+    preTimerSeconds: 3,
     shortcut: DEFAULT_GIF_SHORTCUT
   }
 }
@@ -83,7 +89,7 @@ function normalizeFormat(value: unknown): CaptureFormat {
   return value === 'jpeg' ? 'jpeg' : 'png'
 }
 
-function clampQuality(value: unknown, min: number, max: number, fallback: number): number {
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, Math.round(value)))
 }
@@ -108,7 +114,7 @@ function normalizeCapture(raw: unknown): CaptureSettings {
   const capture = isRecord(raw) ? raw : {}
   return {
     format: normalizeFormat(capture.format),
-    jpegQuality: clampQuality(capture.jpegQuality, MIN_JPEG_QUALITY, MAX_JPEG_QUALITY, DEFAULT_SETTINGS.capture.jpegQuality),
+    jpegQuality: clampInteger(capture.jpegQuality, MIN_JPEG_QUALITY, MAX_JPEG_QUALITY, DEFAULT_SETTINGS.capture.jpegQuality),
     showNotification: normalizeBoolean(capture.showNotification, DEFAULT_SETTINGS.capture.showNotification),
     captureShortcut: normalizeShortcut(capture.captureShortcut, DEFAULT_CAPTURE_SHORTCUT)
   }
@@ -118,7 +124,13 @@ function normalizeGif(raw: unknown): GifSettings {
   const gif = isRecord(raw) ? raw : {}
   return {
     fps: normalizeFps(gif.fps),
-    quality: clampQuality(gif.quality, MIN_GIF_QUALITY, MAX_GIF_QUALITY, DEFAULT_SETTINGS.gif.quality),
+    quality: clampInteger(gif.quality, MIN_GIF_QUALITY, MAX_GIF_QUALITY, DEFAULT_SETTINGS.gif.quality),
+    preTimerSeconds: clampInteger(
+      gif.preTimerSeconds,
+      MIN_GIF_PRE_TIMER_SECONDS,
+      MAX_GIF_PRE_TIMER_SECONDS,
+      DEFAULT_SETTINGS.gif.preTimerSeconds
+    ),
     shortcut: normalizeShortcut(gif.shortcut, DEFAULT_GIF_SHORTCUT)
   }
 }
