@@ -28,9 +28,15 @@ import {
 } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
 import type { CropRect, GifRecordPayload, GifSaveResult } from '../shared/gif'
-import { uncoveredStrips } from '../shared/geometry'
+import { integerRect, surroundingStrips, uncoveredStrips } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
-import { captureDisplays, helperAvailable, startCaptureHelper, stopCaptureHelper } from './capture-helper'
+import {
+  captureDisplays,
+  helperAvailable,
+  startCaptureHelper,
+  stopCaptureHelper,
+  suppressWindowBorder
+} from './capture-helper'
 
 type OverlayEntry = {
   window: BrowserWindow
@@ -542,7 +548,8 @@ function registerIpc(): void {
       crop,
       fps: gif.fps,
       quality: gif.quality,
-      preTimerSeconds: gif.preTimerSeconds
+      preTimerSeconds: gif.preTimerSeconds,
+      showFrameCount: gif.showFrameCount
     })
     return true
   })
@@ -641,15 +648,31 @@ function closeRecording(): void {
   for (const strip of shade) if (!strip.isDestroyed()) strip.destroy()
 }
 
+function nativeWindowHandle(window: BrowserWindow): bigint | null {
+  const handle = window.getNativeWindowHandle()
+  if (handle.length >= 8) return handle.readBigUInt64LE(0)
+  if (handle.length >= 4) return BigInt(handle.readUInt32LE(0))
+  return null
+}
+
+// Content-protected windows are intentionally invisible to screenshot tools, but DWM can
+// still draw a visible system border around them on Windows 11. Remove that border after the
+// renderer is ready and before the window is first shown. See D-021.
+async function prepareRecordingChrome(window: BrowserWindow): Promise<void> {
+  if (process.platform !== 'win32' || window.isDestroyed()) return
+  const handle = nativeWindowHandle(window)
+  if (handle !== null && !(await suppressWindowBorder(handle))) {
+    console.error('[recording-chrome] Windows DWM border suppression failed')
+  }
+}
+
 // A tiny transparent, click-through, content-protected window filling a rectangle. Used both
 // for the shade strips and (with a border) is close to the ring window. Loads inline HTML so
 // no renderer entry is needed; no preload since it is purely visual.
 function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
+  const bounds = integerRect(rect)
   const window = new BrowserWindow({
-    x: Math.round(rect.x),
-    y: Math.round(rect.y),
-    width: Math.max(1, Math.round(rect.width)),
-    height: Math.max(1, Math.round(rect.height)),
+    ...bounds,
     frame: false,
     thickFrame: false,
     transparent: true,
@@ -665,12 +688,23 @@ function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
     hasShadow: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
+  // BrowserWindow construction may expand a transparent frameless window on Windows. Reapply
+  // the requested outer bounds so adjacent shade strips and the selection ring remain exact.
+  window.setBounds(bounds)
   window.setAlwaysOnTop(true, 'screen-saver')
   window.setContentProtection(true)
   window.setIgnoreMouseEvents(true)
   const html = `<!doctype html><html><body style="margin:0;${bodyStyle}"></body></html>`
   void window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-  window.once('ready-to-show', () => window.showInactive())
+  window.once('ready-to-show', () => {
+    void prepareRecordingChrome(window).finally(() => {
+      if (!window.isDestroyed()) window.showInactive()
+      // Shade and ring renderers become ready independently. Whichever one shows last must not
+      // cover the ring where their edges meet, so reassert its z-order after every chrome show.
+      const border = recordingBorderWindow
+      if (border && !border.isDestroyed() && border.isVisible()) border.moveTop()
+    })
+  })
   return window
 }
 
@@ -678,7 +712,7 @@ function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
 // window) so it does not trip the full-screen classification that switches on Do Not Disturb,
 // the same reason the screenshot overlay tiles (D-013).
 function createShadeWindows(display: Electron.Display, region: Rect): BrowserWindow[] {
-  return uncoveredStrips(display.bounds, region).map((strip) =>
+  return surroundingStrips(display.bounds, region).map((strip) =>
     createChromeWindow(strip, 'background:rgba(5,9,16,0.5)')
   )
 }
@@ -734,11 +768,9 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
   const width = 340
   const height = 46
   const { x, y } = placeControlBar(display, region, width, height)
+  const bounds = integerRect({ x, y, width, height })
   const window = new BrowserWindow({
-    x,
-    y,
-    width,
-    height,
+    ...bounds,
     frame: false,
     thickFrame: false,
     transparent: true,
@@ -757,6 +789,7 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
       sandbox: true
     }
   })
+  window.setBounds(bounds)
   recordingWindow = window
   window.setAlwaysOnTop(true, 'screen-saver')
   // Keep the control bar out of the recording. On Windows 11 this uses
@@ -779,7 +812,11 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
   window.webContents.on('did-finish-load', () => {
     if (!window.isDestroyed() && recordingPayload) window.webContents.send('gif:record-init', recordingPayload)
   })
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => {
+    void prepareRecordingChrome(window).finally(() => {
+      if (!window.isDestroyed()) window.show()
+    })
+  })
 
   const devUrl = rendererUrl()
   if (devUrl) void window.loadURL(`${devUrl}/gif-record.html`)
@@ -941,6 +978,7 @@ if (!app.requestSingleInstanceLock()) {
         fps: 15,
         quality: 70,
         preTimerSeconds: 0,
+        showFrameCount: true,
         autoStopMs: 3000
       })
     }

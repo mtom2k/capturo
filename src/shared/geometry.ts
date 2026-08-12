@@ -2,6 +2,18 @@ import type { Point, Rect, ResizeHandle } from './types'
 
 export const MIN_SELECTION_SIZE = 8
 
+// BrowserWindow construction can add a few device-independent pixels on Windows even for a
+// frameless window. Keeping one canonical integer rectangle lets the main process reapply the
+// exact outer bounds after construction (see D-021).
+export function integerRect(rect: Rect): Rect {
+  return {
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height))
+  }
+}
+
 export function normalizeRect(start: Point, end: Point): Rect {
   return {
     x: Math.min(start.x, end.x),
@@ -121,6 +133,23 @@ export function uncoveredStrips(bounds: Rect, area: Rect): Rect[] {
     strips.push({ x: areaRight, y: area.y, width: boundsRight - areaRight, height: area.height })
   }
   return strips.filter((strip) => strip.width > 0 && strip.height > 0)
+}
+
+// Tiles the space around an interior rectangle with every exposed internal edge constrained
+// to that rectangle's perimeter. Unlike uncoveredStrips, the side strips span full height and
+// the top/bottom strips span only the area's width. Recording chrome uses this orientation so
+// a compositor edge can never continue horizontally beyond the red selection ring (D-021).
+export function surroundingStrips(bounds: Rect, area: Rect): Rect[] {
+  const areaRight = area.x + area.width
+  const areaBottom = area.y + area.height
+  const boundsRight = bounds.x + bounds.width
+  const boundsBottom = bounds.y + bounds.height
+  return [
+    { x: bounds.x, y: bounds.y, width: area.x - bounds.x, height: bounds.height },
+    { x: areaRight, y: bounds.y, width: boundsRight - areaRight, height: bounds.height },
+    { x: area.x, y: bounds.y, width: area.width, height: area.y - bounds.y },
+    { x: area.x, y: areaBottom, width: area.width, height: boundsBottom - areaBottom }
+  ].filter((strip) => strip.width > 0 && strip.height > 0)
 }
 
 export function translatePoint(point: Point, delta: Point): Point {

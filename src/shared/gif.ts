@@ -22,6 +22,8 @@ export type GifRecordPayload = {
   quality: number
   // Active capture begins only after this user-visible countdown completes.
   preTimerSeconds: number
+  // Hides frame sampling and encoding totals from the recording HUD when false.
+  showFrameCount: boolean
   // Smoke-test only: auto-stop after this many milliseconds.
   autoStopMs?: number
 }

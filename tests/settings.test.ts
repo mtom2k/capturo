@@ -58,6 +58,12 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ gif: { preTimerSeconds: 'x' } }).gif.preTimerSeconds).toBe(3)
   })
 
+  it('defaults and normalizes GIF frame-count visibility', () => {
+    expect(DEFAULT_SETTINGS.gif.showFrameCount).toBe(true)
+    expect(normalizeSettings({ gif: { showFrameCount: false } }).gif.showFrameCount).toBe(false)
+    expect(normalizeSettings({ gif: { showFrameCount: 'false' } }).gif.showFrameCount).toBe(true)
+  })
+
   it('preserves valid partial input and defaults the rest', () => {
     expect(normalizeSettings({ capture: { showNotification: false } })).toEqual({
       capture: { ...DEFAULT_SETTINGS.capture, showNotification: false },
@@ -80,6 +86,7 @@ describe('mergeSettings', () => {
     expect(merged.gif.fps).toBe(30)
     expect(merged.gif.quality).toBe(DEFAULT_SETTINGS.gif.quality)
     expect(merged.gif.preTimerSeconds).toBe(5)
+    expect(merged.gif.showFrameCount).toBe(true)
     expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
   })
 })

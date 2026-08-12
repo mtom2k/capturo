@@ -4,11 +4,11 @@ Last updated: 2026-08-11
 
 ## Phase
 
-`0.13.0` is the last released build. GIF capture shipped: a region is selected, recorded live, and saved as an animated GIF, with a content-protected control bar, border, and shade, and with identical-frame coalescing on top of the transparent-pixel differencing. Current `main` contains unreleased follow-up work: playback timing follows actual active sample timestamps, and GIF recording has a configurable 0-10 second pre-timer that defaults to 3 seconds. Copy-to-clipboard was deliberately deferred past 0.13.0 (see the to-do list below). The official Windows release publishes the NSIS installer only; local packaging also produces a portable executable.
+`0.14.0` is the current Windows release. It adds wall-clock-correct GIF playback, a configurable 0-10 second pre-timer, bounded encoder backpressure, sparse changed-pixel palette work, a toggleable frame counter, and corrected Windows recording chrome geometry. Copy-to-clipboard remains deferred (see the to-do list below). Windows x64 is the only tested and published platform: the official GitHub release contains the NSIS installer only, while local packaging also produces a portable executable. macOS remains untested and unsupported.
 
 ## Current build
 
-The package version remains `0.13.0` while the timing and pre-timer changes sit under **Unreleased**. Windows artifacts live in `release/`, described by `release/BUILD-INFO.txt`; local artifacts may therefore contain newer source than the published tag despite carrying the same package version. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.13.0` (installer only).
+The package version is `0.14.0`. Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`; the installer is the supported release asset and the portable executable is retained locally. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.14.0` (Windows x64 installer only). The binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -52,10 +52,12 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 - [x] GIF: content-protected control bar, border ring, and shade (absent from the capture)
 - [x] GIF: FPS and quality settings, persisted
 - [x] GIF: configurable 0-10 second pre-timer before active capture (default 3 seconds)
+- [x] GIF: persisted toggle to hide recording and encoding frame totals (shown by default)
 - [x] GIF: playback duration follows active sample timestamps, with unbiased centisecond rounding and no long-static-run truncation
 - [x] GIF: encoder backpressure caps transferred raw frames at two and reports skipped/finalizing progress
 - [x] GIF: localized changes quantize/map only changed pixels, with a 25% full-frame fallback threshold
-- [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.13.0 (per-platform work; see To do)
+- [x] GIF: exact Windows recording-chrome bounds with the DWM-owned grey border suppressed
+- [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.14.0 (per-platform work; see To do)
 - [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
 - [ ] Settings GUI smoke test on Windows
@@ -66,7 +68,7 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 53/53 passed
+- `npm test`: 58/58 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -168,9 +170,23 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
   - regression coverage asserts queue boundaries and sparse/coalesced/full strategy selection, then decodes a sparse animation through Sharp to verify changed and transparent-composited pixels; full gate green: typecheck, 53/53 tests, and production build; see D-020
   - `npm run dist:win` then rebuilt both Windows artifacts from this optimized source after the same 53/53-test gate; `release/BUILD-INFO.txt` records their hashes and build time
   - packaged-build validation at 30 fps and 70% quality produced a valid 1163x753 GIF with 529 distinct encoded frames over the complete 27.78-second timeline; all frames decoded cleanly, 80.9% used the expected 30/40 ms cadence, and the 2.41 MB output was about 89% smaller than the comparable ~22 MB pre-optimization capture
+- 2026-08-11 Windows GIF recording-chrome fix:
+  - diagnosed the uncapturable top/bottom grey bands as DWM-owned borders on the content-protected recording windows; every affected window reported a 2-physical-pixel visible-frame border despite `frame: false` and `thickFrame: false`
+  - extended the persistent native helper with a serialized `window-border` request that disables DWM non-client rendering and applies `DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` after renderer readiness and before first show; the stronger non-client policy was added after hardware feedback found a fainter residual line at the bottom, and content protection remains enabled
+  - a user-supplied simulation established that the intermittent residual extended well beyond the selection width and aligned with the top edge of the full-width bottom shade, not the ring; recording shade tiling now uses full-height sides plus selection-width top/bottom strips, and the ring is raised after every asynchronous chrome show so all internal shade edges remain beneath its red perimeter
+- 2026-08-11 GIF frame-count visibility:
+  - GIF Settings persists a `showFrameCount` toggle that defaults on for backward compatibility; when disabled, the protected control bar keeps its timer and generic Finalizing/Saving states but hides sampled, skipped, processed, ready, and encoded totals
+- 2026-08-11 Windows GIF recording-chrome verification:
+  - reapplied canonical integer outer bounds after each recording window is constructed; native smoke inspection now reports the centre-region ring at exactly 1030x582 rather than 1033x585 and the control bar at exactly 340x46 rather than 340x48
+  - native helper and production app build passed; 58/58 tests passed. The final absence of the content-protected cosmetic border must still be confirmed by eye because screenshot tools intentionally omit these windows (D-021)
+- 2026-08-11 GIF optimization acceptance:
   - the user accepted the improved Stop-to-save behavior after the repeat 27-second stress capture; size and throughput gains remain content-dependent
+- 2026-08-11 `0.14.0` Windows release gate:
+  - package and lockfile versions are both `0.14.0`; `npm install` reports zero vulnerabilities
+  - `npm run dist:win` passed the typecheck, 58/58-test, and production-build gate and produced fresh x64 installer and local portable artifacts; obsolete 0.13.0 artifacts were removed before regenerating `release/BUILD-INFO.txt`
+  - `Get-AuthenticodeSignature` reports `NotSigned`, so the release notes explicitly retain the unknown-publisher warning; only the Windows installer is published, and no untested macOS asset is produced
 
-## Post-0.13.0 follow-up
+## Post-0.14.0 follow-up
 
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
@@ -185,7 +201,7 @@ The package version remains `0.13.0` while the timing and pre-timer changes sit 
 
 - Runs of identical frames coalesce into a single written frame — the pending frame's delay is extended instead of emitting a new full-palette frame — on top of the transparent-pixel differencing, cutting per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
 
-### Deferred past 0.13.0
+### Deferred past 0.14.0
 
 - Copy the finished GIF to the clipboard. There is no clean, Electron-native, cross-platform way to put an animated GIF (or a `CF_HDROP` file drop) on the clipboard: Windows needs a file drop, macOS a GIF-data/file-URL pasteboard write, and the two share no code. A PowerShell `Set-Clipboard` shell-out was rejected as too heavy for a privacy-minimal app that otherwise spawns no external process but its own capture helper. When taken up, do it properly per platform — Windows via a `--clipboard-file` mode on the existing native helper; macOS via NSPasteboard once macOS is actually supported.
 

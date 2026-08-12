@@ -26,6 +26,7 @@ let frameCount = 0
 let framesInFlight = 0
 let processedFrameCount = 0
 let skippedFrameCount = 0
+let showFrameCount = true
 // Elapsed recording time, excluding paused spans.
 let activeSince = 0
 let accumulatedMs = 0
@@ -41,12 +42,14 @@ function elapsedMs(): number {
 
 function updateHud(): void {
   timerEl.textContent = formatTime(elapsedMs())
+  if (!showFrameCount) return
   const skipped = skippedFrameCount > 0 ? ` · ${skippedFrameCount} skipped` : ''
   framesEl.textContent = `${frameCount} frame${frameCount === 1 ? '' : 's'}${skipped}`
 }
 
 function updateFinalizingHud(): void {
   timerEl.textContent = 'Finalizing…'
+  if (!showFrameCount) return
   framesEl.textContent = processedFrameCount >= frameCount
     ? `${frameCount} frames ready`
     : `${processedFrameCount}/${frameCount} frames processed`
@@ -70,6 +73,8 @@ function stopStream(): void {
 }
 
 async function begin(payload: GifRecordPayload): Promise<void> {
+  showFrameCount = payload.showFrameCount
+  framesEl.hidden = !showFrameCount
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: payload.fps },
@@ -171,7 +176,7 @@ async function begin(payload: GifRecordPayload): Promise<void> {
   bar.classList.add('countdown')
   pauseButton.disabled = true
   stopButton.disabled = true
-  framesEl.textContent = 'Starting…'
+  if (showFrameCount) framesEl.textContent = 'Starting…'
   const deadlineMs = performance.now() + preTimerMs
   const updateCountdown = (): void => {
     if (!recording) return
@@ -224,7 +229,7 @@ async function onEncoded(bytes: ArrayBuffer, encodedFrames: number): Promise<voi
   worker?.terminate()
   worker = null
   timerEl.textContent = 'Saving…'
-  framesEl.textContent = `${encodedFrames} encoded frame${encodedFrames === 1 ? '' : 's'}`
+  if (showFrameCount) framesEl.textContent = `${encodedFrames} encoded frame${encodedFrames === 1 ? '' : 's'}`
   await window.capturoGif.saveRecording(bytes)
   // Main closes this window after the save dialog resolves.
 }

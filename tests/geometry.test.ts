@@ -1,12 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import {
   getResizeHandle,
+  integerRect,
   moveRect,
   normalizeRect,
   resizeRect,
   snapToAxis,
+  surroundingStrips,
   uncoveredStrips
 } from '../src/shared/geometry'
+
+describe('integerRect', () => {
+  it('rounds fractional window bounds consistently', () => {
+    expect(integerRect({ x: 10.4, y: -2.6, width: 99.5, height: 45.4 })).toEqual({
+      x: 10,
+      y: -3,
+      width: 100,
+      height: 45
+    })
+  })
+
+  it('never creates a zero-sized BrowserWindow', () => {
+    expect(integerRect({ x: 0, y: 0, width: 0.2, height: -4 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1
+    })
+  })
+})
 
 describe('normalizeRect', () => {
   it('normalizes a reverse drag', () => {
@@ -84,6 +106,34 @@ describe('uncoveredStrips', () => {
       { x: 0, y: 780, width: 1000, height: 20 },
       { x: 0, y: 20, width: 10, height: 760 },
       { x: 990, y: 20, width: 10, height: 760 }
+    ])
+  })
+})
+
+describe('surroundingStrips', () => {
+  it('keeps top and bottom internal edges within the selected width', () => {
+    expect(
+      surroundingStrips(
+        { x: 0, y: 0, width: 2560, height: 1440 },
+        { x: 768, y: 432, width: 1024, height: 576 }
+      )
+    ).toEqual([
+      { x: 0, y: 0, width: 768, height: 1440 },
+      { x: 1792, y: 0, width: 768, height: 1440 },
+      { x: 768, y: 0, width: 1024, height: 432 },
+      { x: 768, y: 1008, width: 1024, height: 432 }
+    ])
+  })
+
+  it('omits zero-sized strips when the area touches a display edge', () => {
+    expect(
+      surroundingStrips(
+        { x: 0, y: 0, width: 1000, height: 800 },
+        { x: 0, y: 100, width: 700, height: 700 }
+      )
+    ).toEqual([
+      { x: 700, y: 0, width: 300, height: 800 },
+      { x: 0, y: 0, width: 700, height: 100 }
     ])
   })
 })

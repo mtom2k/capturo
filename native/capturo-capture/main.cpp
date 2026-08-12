@@ -11,14 +11,16 @@
 // Two modes:
 //   One-shot (testing / fallback):
 //     capturo-capture.exe --output <file.png> [--origin-x X --origin-y Y] [--sdr-white-nits N]
-//   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin,
-//     "<originX>\t<originY>\t<outputPath>", and writes one JSON result line per request to
-//     stdout. The Direct3D device and DXGI desktop duplication are created once and kept
-//     alive across requests, so per-capture setup cost is paid only the first time. See D-017.
+//   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin:
+//     "<originX>\t<originY>\t<outputPath>" captures a display and
+//     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome.
+//     One JSON result line is written per request. The Direct3D device and DXGI desktop
+//     duplication are kept alive across requests. See D-017 and D-021.
 //
 // Every result is a single line of JSON on stdout.
 
 #include <windows.h>
+#include <dwmapi.h>
 #include <d3d11.h>
 #include <dxgi1_6.h>
 #include <wincodec.h>
@@ -35,6 +37,7 @@
 #include <vector>
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "user32.lib")
@@ -515,6 +518,44 @@ void WarmUp(Capturer& cap) {
     }
 }
 
+// Windows can draw DWM-owned non-client pixels even when Electron creates a transparent,
+// frameless window with thickFrame:false. Disable non-client rendering completely, then also
+// set Windows 11's border colour to NONE. Neither setting affects Capturo's client-area CSS.
+void SuppressWindowBorder(unsigned long long rawHandle) {
+    HWND window = reinterpret_cast<HWND>(static_cast<uintptr_t>(rawHandle));
+    if (!IsWindow(window)) {
+        std::fputs("{\"ok\":false,\"stage\":\"window\"}\n", stdout);
+        std::fflush(stdout);
+        return;
+    }
+
+    const DWMNCRENDERINGPOLICY policy = DWMNCRP_DISABLED;
+    const HRESULT policyResult = DwmSetWindowAttribute(
+        window,
+        DWMWA_NCRENDERING_POLICY,
+        &policy,
+        sizeof(policy));
+
+    constexpr DWORD kDwmwaBorderColor = 34;
+    constexpr COLORREF kDwmwaColorNone = 0xFFFFFFFE;
+    const COLORREF color = kDwmwaColorNone;
+    const HRESULT borderResult = DwmSetWindowAttribute(
+        window,
+        static_cast<DWMWINDOWATTRIBUTE>(kDwmwaBorderColor),
+        &color,
+        sizeof(color));
+    if (SUCCEEDED(policyResult) || SUCCEEDED(borderResult)) {
+        std::fputs("{\"ok\":true}\n", stdout);
+    } else {
+        std::printf(
+            "{\"ok\":false,\"stage\":\"DwmSetWindowAttribute\","
+            "\"policyHr\":\"0x%08lX\",\"borderHr\":\"0x%08lX\"}\n",
+            static_cast<unsigned long>(policyResult),
+            static_cast<unsigned long>(borderResult));
+    }
+    std::fflush(stdout);
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -536,14 +577,19 @@ int wmain(int argc, wchar_t** argv) {
         return 0;
     }
 
-    // Serve mode: the device and duplication are created once and reused. Requests arrive one
-    // per line on stdin as "<originX>\t<originY>\t<outputPath>"; one JSON result per line out.
+    // Serve mode: the device and duplication are created once and reused. Capture and window
+    // styling requests share the line-oriented protocol; one JSON result per line out.
     WarmUp(cap);
     std::string line;
     while (std::getline(std::cin, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
         const size_t t1 = line.find('\t');
+        if (t1 != std::string::npos && line.substr(0, t1) == "window-border") {
+            const unsigned long long handle = std::strtoull(line.substr(t1 + 1).c_str(), nullptr, 10);
+            SuppressWindowBorder(handle);
+            continue;
+        }
         const size_t t2 = t1 == std::string::npos ? std::string::npos : line.find('\t', t1 + 1);
         if (t1 == std::string::npos || t2 == std::string::npos) {
             std::fputs("{\"ok\":false,\"stage\":\"request\"}\n", stdout);

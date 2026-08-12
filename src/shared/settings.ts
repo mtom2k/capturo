@@ -26,6 +26,8 @@ export type GifSettings = {
   // Countdown after Start Recording and before the first frame, in whole seconds. Zero disables
   // the countdown.
   preTimerSeconds: number
+  // Whether the protected recording bar shows sampled, skipped, processed, and encoded counts.
+  showFrameCount: boolean
   // Electron accelerator that starts a GIF capture, e.g. 'CommandOrControl+Shift+3'.
   shortcut: string
 }
@@ -77,6 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
     fps: 15,
     quality: 70,
     preTimerSeconds: 3,
+    showFrameCount: true,
     shortcut: DEFAULT_GIF_SHORTCUT
   }
 }
@@ -131,6 +134,7 @@ function normalizeGif(raw: unknown): GifSettings {
       MAX_GIF_PRE_TIMER_SECONDS,
       DEFAULT_SETTINGS.gif.preTimerSeconds
     ),
+    showFrameCount: normalizeBoolean(gif.showFrameCount, DEFAULT_SETTINGS.gif.showFrameCount),
     shortcut: normalizeShortcut(gif.shortcut, DEFAULT_GIF_SHORTCUT)
   }
 }

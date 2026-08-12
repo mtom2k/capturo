@@ -2,14 +2,24 @@
 
 ## Unreleased
 
+## 0.14.0 - 2026-08-11
+
 ### Added
 
+- GIF Settings now includes a persisted **Frame count** toggle. Turning it off hides sampled,
+  skipped, processed, ready, and encoded frame totals from the protected recording bar while
+  retaining the timer and generic Finalizing/Saving states. Existing behavior remains the default.
 - GIF recording now has a configurable 0-10 second pre-timer, defaulting to 3 seconds. The
   content-protected control bar counts down before the first frame and active timer begin; 0
   disables the countdown.
 
 ### Fixed
 
+- Removed the Windows DWM-owned grey horizontal bands that could appear along GIF recording
+  chrome after **Start Recording**. Recording windows now reapply their exact outer bounds,
+  disable non-client rendering, and suppress the system border colour before first show. Shade
+  windows are tiled so their internal edges cannot extend beyond the red ring, which is kept
+  deterministically above them. The chrome remains content-protected and excluded from the GIF.
 - GIF playback now follows active recording time instead of assigning every sampled frame the
   nominal FPS delay. Large or high-FPS regions therefore no longer play fast when canvas
   sampling runs late. GIF centisecond rounding remainder is carried between frames, preventing
@@ -29,6 +39,13 @@
 - A packaged 30 fps, 70% quality validation capture retained its complete 27.78-second timeline,
   decoded without errors, and produced a 2.41 MB GIF versus roughly 22 MB in the comparable
   pre-optimization capture. Results vary with region size and screen activity.
+
+### Platform notes
+
+- This release is tested and published for Windows x64 only. The GitHub release contains the
+  interactive installer; the portable executable remains a local build output.
+- The Windows installer is not Authenticode-signed and may show an unknown-publisher warning.
+  macOS remains untested, unsigned, un-notarized, unsupported, and is not published.
 
 ## 0.13.0 - 2026-08-09
 

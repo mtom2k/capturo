@@ -3,9 +3,11 @@
 // and answers capture requests over stdin/stdout, so the per-capture setup cost is paid only
 // on the first (warm-up) run rather than every capture. See D-017.
 //
-// Protocol: one request per line on stdin, "<originX>\t<originY>\t<outputPath>"; one JSON
-// result line per request on stdout, in order. This module keeps a single batch in flight and
-// serializes callers, so a capture session's requests and their responses never interleave.
+// Protocol: one request per line on stdin. Capture requests are
+// "<originX>\t<originY>\t<outputPath>"; window-border requests are
+// "window-border\t<nativeHandle>". The helper writes one JSON result per request, in order.
+// This module keeps a single batch in flight and serializes callers so responses never
+// interleave.
 
 import { app } from 'electron'
 import { spawn, type ChildProcessByStdio } from 'node:child_process'
@@ -22,6 +24,7 @@ export type HelperResult = {
   width?: number
   height?: number
   stage?: string
+  hr?: string
   timings?: Record<string, number>
 }
 
@@ -133,26 +136,22 @@ export function stopCaptureHelper(): void {
   killChild()
 }
 
-// Captures the requested displays through the persistent helper. Rejects if the helper is
-// unavailable, already busy, times out, or dies — the caller then falls back to
-// desktopCapturer. Results are returned in request order.
-export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult[]> {
+// Sends one serialized protocol batch through the persistent helper. A timeout or broken pipe
+// tears down the process so the next request starts with a clean helper.
+function sendRequests(lines: string[], timeoutMs = REQUEST_TIMEOUT_MS): Promise<HelperResult[]> {
   const run = (): Promise<HelperResult[]> =>
     new Promise<HelperResult[]>((resolve, reject) => {
-      if (requests.length === 0) return resolve([])
+      if (lines.length === 0) return resolve([])
       if (!ensureStarted() || !child) return reject(new Error('capture helper unavailable'))
       if (pending) return reject(new Error('capture helper busy'))
 
       const timer = setTimeout(() => {
         rejectPending(new Error('capture helper timed out'))
-        killChild() // a hung helper is restarted on the next capture
-      }, REQUEST_TIMEOUT_MS)
-      pending = { expected: requests.length, results: [], resolve, reject, timer }
+        killChild() // a hung helper is restarted on the next request
+      }, timeoutMs)
+      pending = { expected: lines.length, results: [], resolve, reject, timer }
 
-      const payload =
-        requests
-          .map((request) => `${Math.round(request.originX)}\t${Math.round(request.originY)}\t${request.output}`)
-          .join('\n') + '\n'
+      const payload = lines.join('\n') + '\n'
       try {
         child.stdin.write(payload)
       } catch (error) {
@@ -167,4 +166,26 @@ export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult
     () => undefined
   )
   return result
+}
+
+// Captures the requested displays through the persistent helper. Rejects if the helper is
+// unavailable, already busy, times out, or dies — the caller then falls back to
+// desktopCapturer. Results are returned in request order.
+export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult[]> {
+  return sendRequests(
+    requests.map(
+      (request) => `${Math.round(request.originX)}\t${Math.round(request.originY)}\t${request.output}`
+    )
+  )
+}
+
+// Prevents Windows 11's DWM from drawing its own frame border around a frameless recording
+// window. Best-effort: callers should still show the window if the helper is unavailable.
+export async function suppressWindowBorder(nativeHandle: bigint): Promise<boolean> {
+  try {
+    const [result] = await sendRequests([`window-border\t${nativeHandle.toString()}`], 1000)
+    return result?.ok === true
+  } catch {
+    return false
+  }
 }
