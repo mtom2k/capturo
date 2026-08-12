@@ -48,11 +48,13 @@ The UI uses system fonts, solid neutral surfaces, one blue focus color, small ra
 
 Moving the capture rectangle changes only what will be cropped. Annotation geometry remains anchored to the frozen desktop image. This matches the expectation that moving a viewport does not move the content placed over the desktop.
 
-## D-009: Raster tray assets, vector source
+## D-009: Explicit raster application and tray assets
 
 **Status:** accepted
 
-The application and tray marks are maintained as deterministic SVG source, then converted into explicit PNG sizes at build time. Windows tray icons never depend on runtime SVG data-URL decoding, which can create a clickable but visually transparent notification-area entry.
+The application and tray marks are maintained as high-resolution canonical PNG sources, then converted into explicit output sizes at build time. Windows tray icons never depend on runtime SVG data-URL decoding, which can create a clickable but visually transparent notification-area entry.
+
+**Amended in 0.15.1:** `build/icon-source.png` is the sole canonical Capturo artwork. The icon generator only resizes that exact image into the 512px package icon, 256px Settings/taskbar/notification icon, and 16px/32px notification-area/menu-bar files. There is no secondary tray source, crop, mask, recoloring, or macOS template substitution. The visible Settings window receives its derivative explicitly through `BrowserWindow.icon`, notifications receive the same runtime resource, electron-builder uses the 512px derivative, and both Windows and macOS tray creation load the same full-color 16px derivative (with its `@2x` sibling available on high-DPI displays). Keep every brand surface derived from this one source rather than hand-editing generated PNGs.
 
 ## D-010: Present capture overlays only after first paint
 
@@ -225,3 +227,11 @@ The persistent Windows helper therefore accepts a serialized `window-border\t<na
 There was a related geometry defect: Windows constructed the nominal 1030x582 ring as 1033x585 and the 340x46 control bar as 340x48. Recording chrome now uses one pure integer-bounds normalizer and reapplies those exact outer bounds immediately after `BrowserWindow` construction, matching the established screenshot-overlay fix in D-012. Native window inspection verifies the requested sizes exactly. The cosmetic absence of the protected DWM border still requires an eyes-on-hardware check because capture tools intentionally omit these windows.
 
 **Amended after hardware feedback: hide shade edges structurally.** Colour suppression removed the original top band and weakened the bottom one; disabling non-client rendering did not eliminate the intermittent residual. A user-supplied simulation showed why: the line extended far beyond the selection and aligned exactly with the top edge of the full-width bottom shade window. The issue was therefore a compositor edge on a shade surface, not the red ring. GIF shade tiling now uses full-height left/right strips and selection-width top/bottom strips. Every internal shade edge is constrained to the selection perimeter, where the red ring covers it. Because each data-URL renderer reaches `ready-to-show` independently, every chrome show also raises the ring, removing nondeterministic z-order as a second route for the edge to leak through. Keep the DWM suppression as defence in depth, but do not rely on it as the structural fix.
+
+## D-022: Background transparency is a connected, non-destructive command
+
+A sampled background color must not act as a global replace: logos, highlights, and enclosed foreground details can legitimately contain the same color. The Transparent background tool therefore flood-fills outward from one seed through four-neighbor pixels that meet a Rec. 709-weighted RGB tolerance. It stores the seed, target color, current crop region, tolerance, and feather radius as a replayable command. The source bitmap is never mutated, and the existing command-stack Undo removes the operation.
+
+Transparency commands are replayed before visible annotations regardless of creation order. Otherwise applying background removal after drawing an arrow could erase matching pixels inside the arrow. Feathering blurs the connected removal mask and multiplies it into source alpha; it does not recolor the retained foreground. The editor exposes Before, After, and draggable Split views over a checkerboard while the command is pending, and caches only those two processed states to prevent repeated large-region flood fills without retaining every slider position.
+
+JPEG has no alpha channel. Once an applied transparency command exists, the renderer marks the capture as PNG-required and the main-process save handler forces both a `.png` path and PNG encoding, overriding the configured format and any typed JPEG extension. The clipboard continues receiving the renderer's lossless native image. This exception is explicit in the IPC rather than inferred from pixels, so an opaque capture whose selected color happened not to match still follows the user's deliberate transparency workflow.

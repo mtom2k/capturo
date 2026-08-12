@@ -44,14 +44,18 @@
         <button class="tool" data-tool="pixelate" aria-label="Pixelate" title="Pixelate (X)">
           <svg viewBox="0 0 20 20"><rect x="4" y="4" width="5" height="5"/><rect x="11" y="4" width="5" height="5"/><rect x="4" y="11" width="5" height="5"/><rect x="11" y="11" width="5" height="5"/></svg>
         </button>
+        <button class="tool" data-tool="transparent" aria-label="Make a connected background transparent" title="Transparent background (K): click a background color to remove its connected area">
+          <svg viewBox="0 0 20 20"><path d="M10 2.8s5.2 5.4 5.2 9.2a5.2 5.2 0 01-10.4 0C4.8 8.2 10 2.8 10 2.8z"/><path d="M5.8 10.2h8.4M6 13.2h8M8 7.2h4"/></svg>
+        </button>
         <span class="separator"></span>
+        <span id="png-flag" class="png-flag" title="Transparency requires PNG, so Capturo will save this capture as a PNG file" hidden>PNG</span>
         <button id="undo" class="action" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)">
           <svg viewBox="0 0 20 20"><path d="M7 6L3 10l4 4M4 10h7a5 5 0 015 5"/></svg>
         </button>
-        <button id="copy" class="action primary" aria-label="Copy screenshot" title="Copy (Ctrl/Cmd+C)">
+        <button id="copy" class="action primary" aria-label="Copy screenshot" title="Copy (Ctrl/Cmd+C); automatically applies a pending transparency preview">
           <svg viewBox="0 0 20 20"><rect x="7" y="6" width="9" height="10" rx="1"/><path d="M5 13H4V4h9v1"/></svg>
         </button>
-        <button id="save" class="action" aria-label="Save screenshot" title="Save (Ctrl/Cmd+S)">
+        <button id="save" class="action" aria-label="Save screenshot" title="Save (Ctrl/Cmd+S); automatically applies a pending transparency preview">
           <svg viewBox="0 0 20 20"><path d="M4 4h10l2 2v10H4zM7 4v5h6V4M7 16v-4h6v4"/></svg>
         </button>
         <button id="cancel" class="action" aria-label="Cancel screenshot" title="Cancel (Esc)">
@@ -110,6 +114,63 @@
           <button id="font-italic" class="text-style" aria-label="Italic text"><em>I</em></button>
         </div>
       </div>
+
+      <section id="transparent-panel" class="transparent-panel" aria-label="Transparent background settings" hidden>
+        <div class="transparent-header">
+          <div>
+            <strong>Transparent background</strong>
+            <p>Click a background pixel in the capture, then refine the match.</p>
+          </div>
+          <button id="transparent-close" class="panel-icon-button" type="button" aria-label="Close transparent background settings" title="Close without applying these transparency settings">&times;</button>
+        </div>
+
+        <div class="transparent-color-row">
+          <label class="color-picker-wrap" title="Choose the exact background color to match">
+            <span>Match color</span>
+            <input id="transparent-color" type="color" value="#ffffff" aria-label="Background color picker" title="Choose the exact background color to match" />
+          </label>
+          <label title="Enter the background color as a six-digit hexadecimal value">
+            <span>Hex</span>
+            <input id="transparent-hex" class="compact-text-input" type="text" value="#FFFFFF" maxlength="7" spellcheck="false" aria-label="Background color hex code" title="Enter a hex color such as #FFFFFF" />
+          </label>
+          <div class="rgb-inputs" role="group" aria-label="Background color RGB values" title="Enter red, green, and blue values from 0 to 255">
+            <label><span>R</span><input id="transparent-r" type="number" min="0" max="255" value="255" aria-label="Red value" title="Red channel, from 0 to 255" /></label>
+            <label><span>G</span><input id="transparent-g" type="number" min="0" max="255" value="255" aria-label="Green value" title="Green channel, from 0 to 255" /></label>
+            <label><span>B</span><input id="transparent-b" type="number" min="0" max="255" value="255" aria-label="Blue value" title="Blue channel, from 0 to 255" /></label>
+          </div>
+        </div>
+
+        <label class="panel-slider" title="Controls how similar a connected pixel's color must be to the selected background color">
+          <span><strong>Tolerance</strong><small>Include nearby color tones</small></span>
+          <input id="transparent-tolerance" type="range" min="0" max="100" step="1" value="12" aria-label="Background color tolerance percentage" title="0% matches only the exact color; higher values include more similar connected tones" />
+          <output id="transparent-tolerance-value">12%</output>
+        </label>
+        <label class="panel-slider" title="Softens the transition between transparent background and retained foreground pixels">
+          <span><strong>Edge feather</strong><small>Smooth the cutout boundary</small></span>
+          <input id="transparent-feather" type="range" min="0" max="10" step="1" value="1" aria-label="Transparent edge feather in pixels" title="0px makes a hard edge; up to 10px gradually blends the edge" />
+          <output id="transparent-feather-value">1px</output>
+        </label>
+
+        <div class="comparison-row">
+          <span>Preview</span>
+          <div class="comparison-buttons" role="group" aria-label="Transparency preview mode">
+            <button id="preview-before" type="button" title="Show the capture before the current transparency operation">Before</button>
+            <button id="preview-split" class="selected" type="button" title="Compare before on the left with transparent after on the right">Split</button>
+            <button id="preview-after" type="button" title="Show the transparent result on a checkerboard">After</button>
+          </div>
+        </div>
+        <label id="split-position-wrap" class="split-position" title="Move the divider between the before and after previews">
+          <span>Split position</span>
+          <input id="split-position" type="range" min="0" max="100" step="1" value="50" aria-label="Before and after split position" title="Drag this slider or the blue divider on the capture to choose how much of the original appears on the left" />
+          <output id="split-position-value">50%</output>
+        </label>
+
+        <div class="transparent-actions">
+          <span class="png-notice" title="Transparency needs an alpha channel; Capturo will override the normal screenshot format for this capture">PNG output required</span>
+          <button id="transparent-cancel" type="button" title="Discard this pending transparency operation">Cancel</button>
+          <button id="transparent-apply" class="panel-primary" type="button" disabled title="Apply this transparency operation; Ctrl/Cmd+Z can undo it">Apply</button>
+        </div>
+      </section>
 
     </div>
 

@@ -23,6 +23,7 @@ export type Tool =
   | 'text'
   | 'blur'
   | 'pixelate'
+  | 'transparent'
 
 export type Smoothing = 'low' | 'medium' | 'high'
 
@@ -69,12 +70,26 @@ export type TextAnnotation = AnnotationBase & {
   text: string
 }
 
+export type RgbColor = { r: number; g: number; b: number }
+
+// Transparency is stored as a non-destructive edit command. The renderer applies it to
+// source pixels before drawing visible annotations, so later labels and arrows stay opaque.
+export type TransparencyAnnotation = AnnotationBase & {
+  type: 'transparent'
+  seed: Point
+  region: Rect
+  target: RgbColor
+  tolerance: number
+  feather: number
+}
+
 export type Annotation =
   | PenAnnotation
   | SegmentAnnotation
   | ShapeAnnotation
   | StepAnnotation
   | TextAnnotation
+  | TransparencyAnnotation
 
 // A display is covered by one editor window over the work area plus a filler window for
 // each strip the work area leaves uncovered, typically the taskbar. Windows classifies a
@@ -124,6 +139,6 @@ export type CapturoApi = {
   captureFailed: (sessionId: string) => Promise<void>
   claimSession: (sessionId: string) => Promise<boolean>
   copyImage: (sessionId: string, dataUrl: string) => Promise<boolean>
-  saveImage: (sessionId: string, dataUrl: string) => Promise<SaveResult>
+  saveImage: (sessionId: string, dataUrl: string, forcePng?: boolean) => Promise<SaveResult>
   cancelSession: (sessionId: string) => Promise<void>
 }

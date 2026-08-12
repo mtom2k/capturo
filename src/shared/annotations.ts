@@ -14,6 +14,8 @@ function boundsFromPoints(points: Point[], padding = 0): Rect {
 export function annotationBounds(annotation: Annotation): Rect {
   const strokePadding = Math.max(2, annotation.style.lineWidth / 2)
   switch (annotation.type) {
+    case 'transparent':
+      return { ...annotation.region }
     case 'pen':
       return boundsFromPoints(annotation.points, strokePadding)
     case 'line':
@@ -80,6 +82,8 @@ function nearRectEdge(point: Point, rect: Rect, tolerance: number): boolean {
 
 export function hitTestAnnotation(annotation: Annotation, point: Point, tolerance: number): boolean {
   switch (annotation.type) {
+    case 'transparent':
+      return false
     case 'pen':
       return annotation.points.slice(1).some((end, index) =>
         distanceToSegment(point, annotation.points[index], end) <= tolerance + annotation.style.lineWidth / 2
@@ -111,6 +115,8 @@ export function hitTestAnnotation(annotation: Annotation, point: Point, toleranc
 
 export function translateAnnotation(annotation: Annotation, delta: Point): Annotation {
   switch (annotation.type) {
+    case 'transparent':
+      return annotation
     case 'pen':
       return { ...annotation, points: annotation.points.map((point) => translatePoint(point, delta)) }
     case 'line':
@@ -154,6 +160,8 @@ export function resizeAnnotation(annotation: Annotation, original: Rect, target:
   const scaleY = target.height / Math.max(1, original.height)
   const fontScale = Math.max(0.2, (Math.abs(scaleX) + Math.abs(scaleY)) / 2)
   switch (annotation.type) {
+    case 'transparent':
+      return annotation
     case 'pen':
       return { ...annotation, points: annotation.points.map((point) => mapPoint(point, original, target)) }
     case 'line':

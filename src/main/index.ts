@@ -102,11 +102,13 @@ function trayAsset(name: string): string {
 }
 
 function trayImage(): Electron.NativeImage | string {
-  if (!isMac) return trayAsset('tray-win-16.png')
-  const image = nativeImage.createFromPath(trayAsset('trayTemplate.png'))
-  if (image.isEmpty()) throw new Error('Capturo menu-bar icon could not be loaded')
-  image.setTemplateImage(true)
-  return image
+  return trayAsset('tray-icon.png')
+}
+
+function taskbarIcon(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'taskbar-icon.png')
+    : path.join(app.getAppPath(), 'build', 'taskbar-icon.png')
 }
 
 function closeSession(): void {
@@ -138,7 +140,7 @@ function revealOverlay(entry: OverlayEntry): void {
 
 function notify(title: string, body: string): void {
   if (!getSettings().capture.showNotification) return
-  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show()
+  if (Notification.isSupported()) new Notification({ title, body, silent: true, icon: taskbarIcon() }).show()
 }
 
 function rendererUrl(): string | null {
@@ -609,27 +611,34 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'capture:save',
-    async (event, sessionId: string, dataUrl: string): Promise<SaveResult> => {
+    async (event, sessionId: string, dataUrl: string, forcePng = false): Promise<SaveResult> => {
       const active = validSession(event, sessionId)
       const image = imageFromDataUrl(dataUrl)
       if (!active || !image) return { saved: false, canceled: false }
       const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
       const stamp = fileTimestamp()
       const settings = getSettings().capture
-      const jpeg = settings.format === 'jpeg'
+      const jpeg = !forcePng && settings.format === 'jpeg'
       const options: Electron.SaveDialogOptions = {
-        title: 'Save screenshot',
+        title: forcePng ? 'Save transparent screenshot as PNG' : 'Save screenshot',
         defaultPath: path.join(app.getPath('pictures'), `Capturo ${stamp}.${jpeg ? 'jpg' : 'png'}`),
-        filters: jpeg
+        filters: forcePng
+          ? [{ name: 'PNG image with transparency', extensions: ['png'] }]
+          : jpeg
           ? [{ name: 'JPEG image', extensions: ['jpg', 'jpeg'] }, { name: 'PNG image', extensions: ['png'] }]
           : [{ name: 'PNG image', extensions: ['png'] }, { name: 'JPEG image', extensions: ['jpg', 'jpeg'] }]
       }
       const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
       if (result.canceled || !result.filePath) return { saved: false, canceled: true }
-      await fs.writeFile(result.filePath, encodeCapture(image, result.filePath, settings))
+      const chosenPath = forcePng
+        ? (path.extname(result.filePath).toLowerCase() === '.png'
+            ? result.filePath
+            : `${result.filePath.slice(0, result.filePath.length - path.extname(result.filePath).length)}.png`)
+        : result.filePath
+      await fs.writeFile(chosenPath, forcePng ? image.toPNG() : encodeCapture(image, chosenPath, settings))
       closeSession()
-      notify('Screenshot saved', path.basename(result.filePath))
-      return { saved: true, canceled: false, filePath: result.filePath }
+      notify('Screenshot saved', path.basename(chosenPath))
+      return { saved: true, canceled: false, filePath: chosenPath }
     }
   )
 }
@@ -934,6 +943,7 @@ function openSettings(): void {
     maximizable: false,
     fullscreenable: false,
     title: 'Capturo Settings',
+    icon: taskbarIcon(),
     backgroundColor: '#050910',
     autoHideMenuBar: true,
     show: false,
@@ -962,6 +972,12 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('com.capturo.app')
     if (isMac) app.dock?.hide()
+    // Capturo does not expose spelling suggestions or a dictionary UI. Electron otherwise
+    // enables its spellchecker by default, which can make Windows initialise
+    // Microsoft/Spelling/neutral cache directories in the process working directory when the
+    // OS returns a malformed dictionary base path. Keep the service off before any renderer is
+    // created so those unrelated cache trees cannot reappear beside the source code.
+    electronSession.defaultSession.setSpellCheckerEnabled(false)
     loadSettings()
     // Warm the persistent capture helper now so the first capture pays no device/duplication
     // setup and no cold DLL load. See D-017.

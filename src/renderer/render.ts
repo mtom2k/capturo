@@ -1,5 +1,6 @@
 import type { Annotation, Point, Rect, Smoothing } from '../shared/types'
 import { annotationBounds } from '../shared/annotations'
+import { removeConnectedColor } from '../shared/transparency'
 
 type RenderOptions = {
   selection?: Rect | null
@@ -7,6 +8,13 @@ type RenderOptions = {
   shade?: boolean
   uiScale?: number
 }
+
+type TransparencyCacheEntry = {
+  signature: string
+  canvas: HTMLCanvasElement
+}
+
+const transparencyCache = new WeakMap<HTMLCanvasElement, TransparencyCacheEntry[]>()
 
 // The dim laid over the frozen desktop during a capture. Before a selection exists it
 // covers the whole screen, so invoking Capturo visibly enters capture mode; once a region is
@@ -97,6 +105,69 @@ function applyPixelate(context: CanvasRenderingContext2D, rect: Rect, lineWidth:
   context.restore()
 }
 
+function applyTransparency(
+  context: CanvasRenderingContext2D,
+  annotation: Extract<Annotation, { type: 'transparent' }>
+): void {
+  const left = Math.max(0, Math.floor(annotation.region.x))
+  const top = Math.max(0, Math.floor(annotation.region.y))
+  const right = Math.min(context.canvas.width, Math.ceil(annotation.region.x + annotation.region.width))
+  const bottom = Math.min(context.canvas.height, Math.ceil(annotation.region.y + annotation.region.height))
+  const width = right - left
+  const height = bottom - top
+  if (width < 1 || height < 1) return
+  const pixels = context.getImageData(left, top, width, height)
+  removeConnectedColor(pixels.data, width, height, {
+    seedX: annotation.seed.x - left,
+    seedY: annotation.seed.y - top,
+    target: annotation.target,
+    tolerance: annotation.tolerance,
+    feather: annotation.feather
+  })
+  context.putImageData(pixels, left, top)
+}
+
+function transparencySignature(annotations: Array<Extract<Annotation, { type: 'transparent' }>>): string {
+  return annotations.map((annotation) => [
+    annotation.id,
+    annotation.seed.x,
+    annotation.seed.y,
+    annotation.region.x,
+    annotation.region.y,
+    annotation.region.width,
+    annotation.region.height,
+    annotation.target.r,
+    annotation.target.g,
+    annotation.target.b,
+    annotation.tolerance,
+    annotation.feather
+  ].join(':')).join('|')
+}
+
+function transparencyComposite(
+  image: HTMLCanvasElement,
+  annotations: Array<Extract<Annotation, { type: 'transparent' }>>
+): HTMLCanvasElement {
+  const signature = transparencySignature(annotations)
+  const cached = transparencyCache.get(image) ?? []
+  const hit = cached.find((entry) => entry.signature === signature)
+  if (hit) {
+    transparencyCache.set(image, [...cached.filter((entry) => entry !== hit), hit])
+    return hit.canvas
+  }
+  const composite = document.createElement('canvas')
+  composite.width = image.width
+  composite.height = image.height
+  const compositeContext = composite.getContext('2d')
+  if (!compositeContext) return image
+  compositeContext.drawImage(image, 0, 0)
+  for (const annotation of annotations) applyTransparency(compositeContext, annotation)
+  // Two entries retain the live result and its Before counterpart during split preview;
+  // old slider states are released instead of accumulating full-size canvases.
+  transparencyCache.set(image, [...cached, { signature, canvas: composite }].slice(-2))
+  return composite
+}
+
 export function renderAnnotation(context: CanvasRenderingContext2D, annotation: Annotation): void {
   const { style } = annotation
   context.save()
@@ -107,6 +178,8 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
   context.lineJoin = 'round'
 
   switch (annotation.type) {
+    case 'transparent':
+      break
     case 'pen':
       drawPen(context, annotation)
       break
@@ -245,9 +318,20 @@ export function renderScene(
 ): void {
   context.save()
   context.clearRect(0, 0, context.canvas.width, context.canvas.height)
-  context.drawImage(image, 0, 0, context.canvas.width, context.canvas.height)
-  for (const annotation of annotations) renderAnnotation(context, annotation)
-  if (draft) renderAnnotation(context, draft)
+  // Background removal always runs against source pixels. This prevents a transparency
+  // edit from punching holes in arrows, labels, or other annotations created earlier.
+  const transparencyAnnotations = annotations.filter(
+    (annotation): annotation is Extract<Annotation, { type: 'transparent' }> => annotation.type === 'transparent'
+  )
+  if (draft?.type === 'transparent') transparencyAnnotations.push(draft)
+  const base = transparencyAnnotations.length > 0
+    ? transparencyComposite(image, transparencyAnnotations)
+    : image
+  context.drawImage(base, 0, 0, context.canvas.width, context.canvas.height)
+  for (const annotation of annotations) {
+    if (annotation.type !== 'transparent') renderAnnotation(context, annotation)
+  }
+  if (draft && draft.type !== 'transparent') renderAnnotation(context, draft)
   if (options.shade !== false) {
     // With a selection, dim everything outside it; before one exists, dim the whole screen
     // so the frozen desktop reads as capture mode rather than the live desktop.

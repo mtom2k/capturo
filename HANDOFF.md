@@ -27,6 +27,7 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Visual system: `src/renderer/styles.css`
 - Shared types and geometry: `src/shared/`
 - Annotation bounds, hit-testing, movement, and resizing: `src/shared/annotations.ts`
+- Connected-color flood fill, tolerance metric, and feather mask: `src/shared/transparency.ts`; command replay/cache and export ordering: `src/renderer/render.ts`; popup workflow and Before/After/Split preview: `src/renderer/editor.ts` / `index.html` / `styles.css`
 - Settings window UI: `src/renderer/settings.ts` / `settings.html` / `settings.css`
 - Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
 - Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
@@ -40,6 +41,8 @@ Documentation is part of the implementation, not a release-day cleanup. Before h
 ## Verification expectations
 
 Every behavior change should pass `npm run typecheck`, `npm test`, and `npm run build`. UI changes require at least one real capture smoke test. Update the functional checklist and known constraints in `PROJECT_STATE.md` before handing off.
+
+Transparency is an annotation-history command but is deliberately not selectable as a vector object. It must run against source pixels before every visible annotation, remain constrained to the crop region captured when sampled, and force PNG only when at least one applied transparency command remains. Do not bake it into `sourceImage`, globally replace matching colors, or let save fall back to JPEG. The render cache keeps only the live and Before composites; retaining every slider state would hold multiple full-size RGBA canvases. `Ctrl/Cmd+Z` removes the most recently applied transparency command through the existing history. Copy and Save must call `commitTransparencyDraft()` before export so the live preview is never silently omitted when the user skips the optional Apply button.
 
 ## Current performance state
 
@@ -79,4 +82,4 @@ The two toolbar rows are intentionally ordered primary-first and contextual-seco
 
 The renderer is a two-page build: `electron.vite.config.ts` lists both `index.html` (capture overlay) and `settings.html` (settings window) as Rollup inputs, and both emit into `out/renderer`. Dropping the second input, or renaming a page, breaks the settings window, which `src/main/index.ts` loads by filename (`settings.html`) in packaged builds and as `${ELECTRON_RENDERER_URL}/settings.html` in dev.
 
-`npm run icons` regenerates the application icon plus Windows/macOS tray PNGs from SVG sources under `build/`. Keep tray strokes heavy enough to survive at 16 px; do not restore runtime SVG decoding in the Electron main process.
+`npm run icons` regenerates every Capturo brand asset from the sole canonical `build/icon-source.png`: `build/icon.png`, `build/taskbar-icon.png`, and `build/tray/tray-icon.png` plus its `@2x` sibling. The Settings `BrowserWindow` and notifications receive the taskbar-sized derivative explicitly, electron-builder consumes the package icon, and Windows/macOS tray creation loads the same full-color tray derivative. Do not reintroduce a secondary logo, crop/mask/recolor one platform, hand-edit generated PNGs, or restore runtime SVG decoding. Inspect the actual 16px output after changing the canonical source.

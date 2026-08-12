@@ -20,7 +20,7 @@ Electron main process
 Capture renderer (temporary)
   - renders frozen desktop image
   - selects/moves/resizes capture region
-  - stores and renders vector annotation commands
+  - stores and renders vector annotation and non-destructive pixel-effect commands
   - exports a cropped PNG data URL
 ```
 
@@ -33,8 +33,8 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
-6. Copy and save exports render the base image plus annotation commands into an offscreen canvas, then crop to the selection.
-7. The main process writes the PNG to the clipboard or shows a native save dialog. Successful copy/save closes the capture session.
+6. Copy and save exports render the base image plus edit commands into an offscreen canvas, then crop to the selection.
+7. The main process writes the lossless bitmap to the clipboard or shows a native save dialog. If the command list contains transparency, Save forces a `.png` path and PNG bytes regardless of the stored JPEG preference. Successful copy/save closes the capture session.
 
 Capturo currently selects within one display at a time. This is deliberate: spanning displays with different scale factors requires a normalized virtual-desktop compositor and is outside the minimal first release.
 
@@ -50,6 +50,11 @@ Every command also exposes deterministic bounds and hit-testing through `src/sha
 - `step`: numbered circular marker; numbering follows creation order and its slider size is stored through the style's source-pixel font size
 - `text`: content, font family, font size, color
 - `blur` / `pixelate`: bounding rectangle applied to pixels already rendered beneath it
+- `transparent`: seed, crop region, target RGB color, perceptual tolerance, and feather radius; applied to source pixels before visible annotations
+
+The transparency command uses a four-neighbor flood fill, so only matching pixels connected to the sampled seed are removed. Matching uses a Rec. 709-weighted RGB distance exposed as 0-100% tolerance. The binary connected mask is softened with a bounded separable blur for 0-10px feathering, then multiplied into the original alpha. The source image is never mutated. Rendering partitions transparency commands ahead of visible annotations so background removal cannot punch holes through arrows or text, even if those annotations were created earlier.
+
+The renderer caches at most two processed composites per frozen source: the current After result and its Before counterpart for split comparison. Slider changes replace old entries instead of retaining every state. This matters because replaying a connected fill over a large crop on every pointer redraw would make the rest of the editor sluggish.
 
 Text entry is a temporary DOM textarea because it provides native keyboard, IME, multiline, and selection behavior. It does not share pointer capture with the canvas. Committing converts its content into a replayable text command; double-clicking an existing text command reopens the textarea for editing.
 
@@ -81,8 +86,8 @@ src/main/       Electron lifecycle, capture, tray, native integrations, settings
 src/preload/    contextBridge API (capture + settings + GIF)
 src/renderer/   capture/editor UI, settings window, GIF selection overlay + recording control bar,
                 canvas rendering, styles, GIF encoder + worker
-src/shared/     IPC, geometry, settings, and GIF types/logic shared across process boundaries
-tests/          deterministic unit tests for pure geometry/model/settings/GIF behavior
+src/shared/     IPC, geometry, settings, transparency, and GIF types/logic shared across process boundaries
+tests/          deterministic unit tests for pure geometry/model/settings/transparency/GIF behavior
 ```
 
 ## Security boundary

@@ -1,14 +1,16 @@
 # Project State
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 ## Phase
 
-`0.14.0` is the current Windows release. It adds wall-clock-correct GIF playback, a configurable 0-10 second pre-timer, bounded encoder backpressure, sparse changed-pixel palette work, a toggleable frame counter, and corrected Windows recording chrome geometry. Copy-to-clipboard remains deferred (see the to-do list below). Windows x64 is the only tested and published platform: the official GitHub release contains the NSIS installer only, while local packaging also produces a portable executable. macOS remains untested and unsupported.
+`0.15.1` is the current source and published Windows x64 release. It adds the non-destructive Transparent background screenshot tool described below. Windows x64 is the only tested platform; macOS remains untested and unsupported.
+
+Version 0.15.1 adds a non-destructive Transparent background screenshot tool with connected-pixel removal, sampled/hex/RGB target colors, perceptual tolerance, 0-10px feathering, checkerboard Before/After/Split preview, undo, automatic application on Copy/Save, and automatic PNG output. It also replaces the application and tray/menu-bar branding with the supplied purple Capturo artwork and disables Electron's unused spellchecker so Windows does not create malformed cache folders beside the source tree.
 
 ## Current build
 
-The package version is `0.14.0`. Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`; the installer is the supported release asset and the portable executable is retained locally. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.14.0` (Windows x64 installer only). The binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.15.1`. Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`; both the installer and portable executable are produced locally. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.15.1` (Windows x64 installer only). Local binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -32,6 +34,7 @@ The package version is `0.14.0`. Windows artifacts live in `release/` and are de
 - [x] Text with font family, size, bold, and italic
 - [x] Existing-object selection, movement, resizing, deletion, and property editing
 - [x] Blur and pixelate
+- [x] Connected-background transparency with tolerance, feathering, live comparison, undo, and forced PNG output
 - [x] Color palette
 - [x] Contextual customization bar below the primary toolbar
 - [x] Paint-gated, flash-free overlay presentation
@@ -39,6 +42,7 @@ The package version is `0.14.0`. Windows artifacts live in `release/` and are de
 - [x] Tiled overlays cover the whole display, taskbar included, without triggering Do Not Disturb
 - [x] Pixel-exact selection and export on scaled displays
 - [x] Version visible from the tray
+- [x] One supplied Capturo logo consistently drives executable, window/taskbar, tray/menu-bar, notification, and installer assets
 - [x] Undo
 - [x] Tray-opened settings window with Capture and GIF tabs
 - [x] Save as PNG or JPEG with a JPEG quality control (save-only; clipboard stays lossless)
@@ -68,7 +72,7 @@ The package version is `0.14.0`. Windows artifacts live in `release/` and are de
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 58/58 passed
+- `npm test`: 61/61 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -185,9 +189,21 @@ The package version is `0.14.0`. Windows artifacts live in `release/` and are de
   - package and lockfile versions are both `0.14.0`; `npm install` reports zero vulnerabilities
   - `npm run dist:win` passed the typecheck, 58/58-test, and production-build gate and produced fresh x64 installer and local portable artifacts; obsolete 0.13.0 artifacts were removed before regenerating `release/BUILD-INFO.txt`
   - `Get-AuthenticodeSignature` reports `NotSigned`, so the release notes explicitly retain the unknown-publisher warning; only the Windows installer is published, and no untested macOS asset is produced
+- 2026-08-11 `0.15.0` local Windows packaging gate:
+  - package and lockfile versions are both `0.15.0`; `npm run dist:win` passed type checking, all 61 tests, and the production build before producing fresh x64 setup and portable executables
+  - superseded 0.14.0 local executables were removed first, so `release/BUILD-INFO.txt` inventories only the two 0.15.0 artifacts; after replacing the canonical source with the final supplied 500px transparent logo and disabling the unused spellchecker, their SHA-256 values are `043e889f29a004d641318beb2bd4adc3b796a44a66d47f61a62a4df3404019ce` (setup) and `a7fbfce7c4807ca4a4ae8227f09ea527b0266989c06e97b84b31dc8ec93ddbb9` (portable)
+  - both executables report product version `0.15.0`; `Get-AuthenticodeSignature` reports `NotSigned` for each. These are local validation builds and have not been published to GitHub
+  - the final brand consolidation removes the secondary tray source, rounded-mask taskbar derivative, and macOS monochrome template; executable/installer, Settings taskbar window, notifications, Windows notification area, and macOS menu bar now derive unchanged from the one supplied `build/icon-source.png`
+  - the Settings window and notifications explicitly use the packaged 256px derivative, avoiding fallback to a legacy cached icon; macOS remains untested on Apple hardware
+- 2026-08-12 `0.15.1` Windows release gate:
+  - package and lockfile versions are both `0.15.1`; `npm install` reports zero vulnerabilities, and `npm run dist:win` passed type checking, all 61 tests, and the production build
+  - `release/BUILD-INFO.txt` inventories only the two 0.15.1 artifacts; their SHA-256 values are `2471b4ecc19de9b0ec92a8f37e88a29b1d5c3e6417537b0d8788118e4c9036f8` (setup) and `5b90ee0c02d6ea06f48009757739aabe9aca5240d9115ecf8d6b9937fb5a8eb6` (portable)
+  - both executables report product version `0.15.1`; `Get-AuthenticodeSignature` reports `NotSigned` for each, so the GitHub release publishes only the Windows x64 installer with an explicit unknown-publisher warning
+  - packaged taskbar and tray assets match their generated source hashes, and no malformed Unicode or renamed spelling-cache directories remain in the repository root
 
-## Post-0.14.0 follow-up
+## Post-0.15.1 follow-up
 
+- Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 

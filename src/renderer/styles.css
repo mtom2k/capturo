@@ -161,6 +161,18 @@ button {
   background: #353b45;
 }
 
+.png-flag {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 4px;
+  background: rgba(14, 116, 144, 0.22);
+  color: #7dd3fc;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 .options-bar {
   min-height: 34px;
   gap: 7px;
@@ -291,6 +303,246 @@ select:focus-visible {
   background: rgba(15, 23, 42, 0.88);
   line-height: 1.25;
   user-select: text;
+}
+
+.transparent-panel {
+  width: min(410px, calc(100vw - 16px));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: #171b22;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.48);
+  color: #f8fafc;
+}
+
+.transparent-header,
+.transparent-color-row,
+.comparison-row,
+.transparent-actions {
+  display: flex;
+  align-items: center;
+}
+
+.transparent-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.transparent-header strong {
+  font-size: 13px;
+}
+
+.transparent-header p {
+  margin: 3px 0 0;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.panel-icon-button {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.panel-icon-button:hover,
+.panel-icon-button:focus-visible {
+  outline: none;
+  background: #2a3039;
+}
+
+.transparent-color-row {
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.transparent-color-row label,
+.rgb-inputs label {
+  display: grid;
+  gap: 4px;
+  color: #aeb6c2;
+  font-size: 10px;
+}
+
+.color-picker-wrap input {
+  width: 34px;
+  height: 27px;
+  padding: 2px;
+  border: 1px solid #3a414c;
+  border-radius: 4px;
+  background: #20252d;
+  cursor: pointer;
+}
+
+.compact-text-input,
+.rgb-inputs input {
+  height: 27px;
+  border: 1px solid #3a414c;
+  border-radius: 4px;
+  outline: none;
+  background: #20252d;
+  color: #f8fafc;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-text-input {
+  width: 68px;
+  padding: 0 6px;
+  text-transform: uppercase;
+}
+
+.rgb-inputs {
+  display: flex;
+  gap: 4px;
+}
+
+.rgb-inputs input {
+  width: 45px;
+  padding: 0 3px;
+  text-align: center;
+}
+
+.compact-text-input:focus,
+.rgb-inputs input:focus {
+  border-color: #1683ff;
+}
+
+.panel-slider {
+  display: grid;
+  grid-template-columns: 112px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.panel-slider > span {
+  display: grid;
+  gap: 2px;
+}
+
+.panel-slider strong,
+.comparison-row > span,
+.split-position > span {
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.panel-slider small {
+  color: #7f8b9b;
+  font-size: 9px;
+}
+
+.panel-slider input[type="range"],
+.split-position input[type="range"] {
+  width: 100%;
+  accent-color: #1683ff;
+}
+
+.panel-slider output,
+.split-position output {
+  color: #f8fafc;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.comparison-row {
+  justify-content: space-between;
+  margin-top: 13px;
+}
+
+.comparison-buttons {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid #3a414c;
+  border-radius: 5px;
+}
+
+.comparison-buttons button,
+.transparent-actions button {
+  height: 27px;
+  padding: 0 9px;
+  border: 0;
+  background: #20252d;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.comparison-buttons button + button {
+  border-left: 1px solid #3a414c;
+}
+
+.comparison-buttons button.selected {
+  background: #1d4f85;
+  color: #ffffff;
+}
+
+.split-position {
+  display: grid;
+  grid-template-columns: 82px 1fr 35px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.transparent-actions {
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #2d333d;
+}
+
+.png-notice {
+  margin-right: auto;
+  color: #7dd3fc;
+  font-size: 10px;
+}
+
+.transparent-actions button {
+  border: 1px solid #3a414c;
+  border-radius: 4px;
+}
+
+.transparent-actions button:hover:not(:disabled),
+.transparent-actions button:focus-visible:not(:disabled) {
+  outline: none;
+  background: #2a3039;
+}
+
+.transparent-actions button.panel-primary {
+  border-color: #1677e8;
+  background: #1677e8;
+  color: #ffffff;
+}
+
+.transparent-actions button.panel-primary:hover:not(:disabled) {
+  background: #0f6bd5;
+}
+
+.transparent-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#capture-canvas.transparency-preview {
+  background-color: #d8dce3;
+  background-image:
+    linear-gradient(45deg, #ffffff 25%, transparent 25%),
+    linear-gradient(-45deg, #ffffff 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ffffff 75%),
+    linear-gradient(-45deg, transparent 75%, #ffffff 75%);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
 }
 
 .status {

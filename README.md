@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.14.0-blue)
+![version](https://img.shields.io/badge/version-0.15.1-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.14.0 publishes the installer; building from source remains available below.
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.15.1 is the current Windows x64 release.
 
-`npm run dist:win` currently produces two local Windows artifacts in `release/`, although the official 0.14.0 release publishes the installer only:
+`npm run dist:win` produces two local Windows 0.15.1 artifacts in `release/`. The official release publishes the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.14.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.14.0-x64.exe` | Local packaging output; not published in the official 0.14.0 release. |
+| `Capturo-Setup-0.15.1-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.15.1-x64.exe` | Portable executable for local validation. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -36,7 +36,7 @@ There is no macOS download, and there will not be one until somebody has actuall
 
 1. Click the Capturo tray icon, or press `Ctrl + Shift + 2` (`Cmd + Shift + 2` on macOS, in theory).
 2. The screen freezes. Drag to select a region. Drag inside it to move it, or grab an edge or corner to resize.
-3. Annotate with pen, line, arrow, rectangle, ellipse, numbered step, text, blur, or pixelate.
+3. Annotate with pen, line, arrow, rectangle, ellipse, numbered step, text, blur, pixelate, or remove a connected background with the Transparent tool.
 4. Pick the Select tool to click any existing annotation and move, resize, recolour, or restyle it. Double-click text to edit it. `Delete` removes what is selected.
 5. `Ctrl + C` copies to the clipboard, `Ctrl + S` saves a PNG, `Esc` cancels.
 
@@ -60,10 +60,17 @@ The toolbar sits under the selection. Tools are on the first row; the second row
 | `T` | Text | | | |
 | `B` | Blur | | | |
 | `X` | Pixelate | | | |
+| `K` | Transparent background | | | |
 
 ### 🎚️ Sizing
 
 Stroke width and numbered-step size are pixel sliders, 1 to 24px and 10 to 48px, and they update as you drag so you can judge the size against the screenshot underneath. Text keeps a list of preset sizes from 12px to 48px. Pick an existing annotation with the Select tool and the slider jumps to that object's size, so you can adjust something you already drew.
+
+### Transparent backgrounds
+
+Choose **Transparent background** (or press `K`), then click the background color inside the capture. Capturo removes only matching pixels connected to that point, so the same color elsewhere behind a separated foreground object is retained. Adjust **Tolerance** to include nearby tones and **Edge feather** from 0-10px to smooth the cutout. The popup also accepts hex and RGB values and offers Before, After, and Split previews over a checkerboard; drag the blue divider directly or use its slider.
+
+**Apply** adds one non-destructive operation to the normal undo history so you can keep editing, and `Ctrl/Cmd+Z` removes it. Apply is optional when exporting: pressing `Ctrl/Cmd+C`, `Ctrl/Cmd+S`, Copy, or Save automatically commits the pending transparency preview first. Capturo shows a small **PNG** flag while transparency is present. Save automatically uses PNG, overriding a JPEG preference or filename extension, because JPEG cannot preserve an alpha channel.
 
 ## ⚙️ Settings
 

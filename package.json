@@ -1,6 +1,6 @@
 {
   "name": "capturo",
-  "version": "0.14.0",
+  "version": "0.15.1",
   "description": "A fast, minimal screenshot and annotation tool for Windows.",
   "main": "./out/main/index.js",
   "author": "Capturo contributors",
@@ -37,6 +37,10 @@
         "filter": [
           "*.png"
         ]
+      },
+      {
+        "from": "build/taskbar-icon.png",
+        "to": "taskbar-icon.png"
       },
       {
         "from": "native/capturo-capture/build",

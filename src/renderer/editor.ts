@@ -24,6 +24,7 @@ import type {
   Point,
   Rect,
   ResizeHandle,
+  RgbColor,
   Smoothing,
   Tool
 } from '../shared/types'
@@ -56,6 +57,26 @@ const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
 const textEditor = document.querySelector<HTMLTextAreaElement>('#text-editor')!
 const status = document.querySelector<HTMLElement>('#status')!
+const pngFlag = document.querySelector<HTMLElement>('#png-flag')!
+const transparentPanel = document.querySelector<HTMLElement>('#transparent-panel')!
+const transparentClose = document.querySelector<HTMLButtonElement>('#transparent-close')!
+const transparentColorInput = document.querySelector<HTMLInputElement>('#transparent-color')!
+const transparentHexInput = document.querySelector<HTMLInputElement>('#transparent-hex')!
+const transparentRedInput = document.querySelector<HTMLInputElement>('#transparent-r')!
+const transparentGreenInput = document.querySelector<HTMLInputElement>('#transparent-g')!
+const transparentBlueInput = document.querySelector<HTMLInputElement>('#transparent-b')!
+const transparentToleranceSlider = document.querySelector<HTMLInputElement>('#transparent-tolerance')!
+const transparentToleranceValue = document.querySelector<HTMLOutputElement>('#transparent-tolerance-value')!
+const transparentFeatherSlider = document.querySelector<HTMLInputElement>('#transparent-feather')!
+const transparentFeatherValue = document.querySelector<HTMLOutputElement>('#transparent-feather-value')!
+const previewBeforeButton = document.querySelector<HTMLButtonElement>('#preview-before')!
+const previewSplitButton = document.querySelector<HTMLButtonElement>('#preview-split')!
+const previewAfterButton = document.querySelector<HTMLButtonElement>('#preview-after')!
+const splitPositionWrap = document.querySelector<HTMLElement>('#split-position-wrap')!
+const splitPositionSlider = document.querySelector<HTMLInputElement>('#split-position')!
+const splitPositionValue = document.querySelector<HTMLOutputElement>('#split-position-value')!
+const transparentCancel = document.querySelector<HTMLButtonElement>('#transparent-cancel')!
+const transparentApply = document.querySelector<HTMLButtonElement>('#transparent-apply')!
 
 type Interaction =
   | { mode: 'new-selection'; start: Point }
@@ -86,6 +107,13 @@ let fontStyle: AnnotationStyle['fontStyle'] = 'normal'
 let textOrigin: Point | null = null
 let textEditingId: string | null = null
 let busy = false
+let transparencyTarget: RgbColor = { r: 255, g: 255, b: 255 }
+let transparencyTolerance = 12
+let transparencyFeather = 1
+let transparencyPreview: 'before' | 'split' | 'after' = 'split'
+let transparencySplit = 50
+let beforeCanvas: HTMLCanvasElement | null = null
+let splitPreviewPointerId: number | null = null
 
 function id(): string {
   return crypto.randomUUID()
@@ -134,6 +162,64 @@ function replaceAnnotation(id: string, replacement: Annotation): void {
   annotations = annotations.map((annotation) => annotation.id === id ? replacement : annotation)
 }
 
+function hasTransparency(): boolean {
+  return annotations.some((annotation) => annotation.type === 'transparent') || draft?.type === 'transparent'
+}
+
+function drawTransparencySeed(): void {
+  if (draft?.type !== 'transparent') return
+  const radius = Math.max(5, 5 * imageScale().x)
+  context.save()
+  context.beginPath()
+  context.arc(draft.seed.x, draft.seed.y, radius, 0, Math.PI * 2)
+  context.fillStyle = 'rgba(15, 23, 42, 0.72)'
+  context.fill()
+  context.strokeStyle = '#ffffff'
+  context.lineWidth = Math.max(1, imageScale().x)
+  context.stroke()
+  context.beginPath()
+  context.arc(draft.seed.x, draft.seed.y, Math.max(1.5, radius * 0.28), 0, Math.PI * 2)
+  context.fillStyle = '#38bdf8'
+  context.fill()
+  context.restore()
+}
+
+function drawSplitPreview(): void {
+  if (!sourceImage || !selection || draft?.type !== 'transparent') return
+  if (!beforeCanvas) beforeCanvas = document.createElement('canvas')
+  if (beforeCanvas.width !== canvas.width || beforeCanvas.height !== canvas.height) {
+    beforeCanvas.width = canvas.width
+    beforeCanvas.height = canvas.height
+  }
+  const beforeContext = beforeCanvas.getContext('2d')
+  if (!beforeContext) return
+  renderScene(beforeContext, sourceImage, annotations, null, {
+    selection,
+    selectedAnnotation: selectedAnnotation(),
+    shade: true,
+    uiScale: imageScale().x
+  })
+  const divider = selection.x + selection.width * transparencySplit / 100
+  context.save()
+  context.beginPath()
+  context.rect(selection.x, selection.y, Math.max(0, divider - selection.x), selection.height)
+  context.clip()
+  context.drawImage(beforeCanvas, 0, 0)
+  context.restore()
+  context.save()
+  context.strokeStyle = '#38bdf8'
+  context.lineWidth = Math.max(1, 1.5 * imageScale().x)
+  context.beginPath()
+  context.moveTo(divider, selection.y)
+  context.lineTo(divider, selection.y + selection.height)
+  context.stroke()
+  context.fillStyle = '#38bdf8'
+  context.beginPath()
+  context.arc(divider, selection.y + selection.height / 2, Math.max(4, 5 * imageScale().x), 0, Math.PI * 2)
+  context.fill()
+  context.restore()
+}
+
 function annotationAt(point: Point): Annotation | null {
   const tolerance = 7 * imageScale().x
   return [...annotations].reverse().find((annotation) => hitTestAnnotation(annotation, point, tolerance)) ?? null
@@ -141,15 +227,22 @@ function annotationAt(point: Point): Annotation | null {
 
 function redraw(): void {
   if (!sourceImage) return
-  renderScene(context, sourceImage, annotations, draft, {
+  const pendingTransparency = draft?.type === 'transparent'
+  const shownDraft = pendingTransparency && transparencyPreview === 'before' ? null : draft
+  canvas.classList.toggle('transparency-preview', hasTransparency() && transparencyPreview !== 'before')
+  renderScene(context, sourceImage, annotations, shownDraft, {
     selection,
     selectedAnnotation: selectedAnnotation(),
     shade: true,
     uiScale: imageScale().x
   })
+  if (pendingTransparency && transparencyPreview === 'split') drawSplitPreview()
+  drawTransparencySeed()
   if (role === 'filler') return
   updateUiPosition()
   undoButton.disabled = annotations.length === 0
+  transparentApply.disabled = !pendingTransparency
+  pngFlag.hidden = !hasTransparency()
   publishScene()
 }
 
@@ -206,25 +299,109 @@ function setStatus(message: string): void {
 }
 
 function configureOptions(tool: Tool): void {
-  const usesColor = !['select', 'blur', 'pixelate'].includes(tool)
+  const usesColor = !['select', 'blur', 'pixelate', 'transparent'].includes(tool)
   colorOptions.hidden = !usesColor
-  lineWidthOption.hidden = tool === 'select' || tool === 'text' || tool === 'step'
+  lineWidthOption.hidden = tool === 'select' || tool === 'text' || tool === 'step' || tool === 'transparent'
   smoothingOption.hidden = tool !== 'pen'
   stepSizeOption.hidden = tool !== 'step'
   textOptions.hidden = tool !== 'text'
-  optionsBar.hidden = tool === 'select'
+  optionsBar.hidden = tool === 'select' || tool === 'transparent'
 }
 
 function setTool(tool: Tool): void {
+  if (activeTool === 'transparent' && tool !== 'transparent') {
+    draft = null
+    transparentPanel.hidden = true
+  }
   activeTool = tool
   selectedAnnotationId = null
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
     button.classList.toggle('selected', button.dataset.tool === tool)
   }
   configureOptions(tool)
+  if (tool === 'transparent') {
+    draft = null
+    transparentPanel.hidden = false
+    transparencyPreview = 'split'
+    updatePreviewButtons()
+    setStatus('Click the connected background color to remove')
+  }
   updateCursor()
   redraw()
   updateUiPosition()
+}
+
+function clampChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)))
+}
+
+function rgbToHex(value: RgbColor): string {
+  return `#${[value.r, value.g, value.b].map((channel) => clampChannel(channel).toString(16).padStart(2, '0')).join('')}`.toUpperCase()
+}
+
+function parseHex(value: string): RgbColor | null {
+  const match = value.trim().match(/^#?([0-9a-f]{6})$/i)
+  if (!match) return null
+  return {
+    r: Number.parseInt(match[1].slice(0, 2), 16),
+    g: Number.parseInt(match[1].slice(2, 4), 16),
+    b: Number.parseInt(match[1].slice(4, 6), 16)
+  }
+}
+
+function syncTransparencyColorInputs(): void {
+  const hex = rgbToHex(transparencyTarget)
+  transparentColorInput.value = hex
+  transparentHexInput.value = hex
+  transparentRedInput.value = String(transparencyTarget.r)
+  transparentGreenInput.value = String(transparencyTarget.g)
+  transparentBlueInput.value = String(transparencyTarget.b)
+}
+
+function updateTransparencyDraft(update: Partial<Extract<Annotation, { type: 'transparent' }>>): void {
+  if (draft?.type !== 'transparent') return
+  draft = { ...draft, ...update }
+  redraw()
+}
+
+function setTransparencyTarget(target: RgbColor): void {
+  transparencyTarget = {
+    r: clampChannel(target.r),
+    g: clampChannel(target.g),
+    b: clampChannel(target.b)
+  }
+  syncTransparencyColorInputs()
+  updateTransparencyDraft({ target: transparencyTarget })
+}
+
+function updatePreviewButtons(): void {
+  previewBeforeButton.classList.toggle('selected', transparencyPreview === 'before')
+  previewSplitButton.classList.toggle('selected', transparencyPreview === 'split')
+  previewAfterButton.classList.toggle('selected', transparencyPreview === 'after')
+  splitPositionWrap.hidden = transparencyPreview !== 'split'
+}
+
+function setTransparencyPreview(mode: 'before' | 'split' | 'after'): void {
+  transparencyPreview = mode
+  updatePreviewButtons()
+  redraw()
+}
+
+function closeTransparencyPanel(): void {
+  setTool('select')
+}
+
+function commitTransparencyDraft(): boolean {
+  if (draft?.type !== 'transparent') return false
+  annotations.push(draft)
+  draft = null
+  setTool('select')
+  return true
+}
+
+function applyTransparencyDraft(): void {
+  if (!commitTransparencyDraft()) return
+  setStatus('Background removed · PNG output enabled')
 }
 
 // Sliders carry a pixel size, so they show the value they are set to rather than snapping
@@ -288,7 +465,12 @@ function updateCursor(point?: Point): void {
     return
   }
   if (activeTool !== 'select') {
-    canvas.style.cursor = activeTool === 'text' ? 'text' : 'crosshair'
+    if (activeTool === 'transparent' && point && selection && draft?.type === 'transparent' && transparencyPreview === 'split') {
+      const divider = selection.x + selection.width * transparencySplit / 100
+      canvas.style.cursor = Math.abs(point.x - divider) <= 10 * imageScale().x ? 'ew-resize' : 'crosshair'
+    } else {
+      canvas.style.cursor = activeTool === 'text' ? 'text' : 'crosshair'
+    }
     return
   }
   if (!point) {
@@ -340,6 +522,29 @@ function createDraft(tool: Tool, point: Point): Annotation | null {
     return { id: id(), type: tool, style, rect: { x: point.x, y: point.y, width: 0, height: 0 } }
   }
   return null
+}
+
+function sampleTransparency(point: Point): void {
+  if (!sourceImage || !selection) return
+  const sampleContext = sourceImage.getContext('2d', { willReadFrequently: true })
+  if (!sampleContext) return
+  const x = Math.max(0, Math.min(sourceImage.width - 1, Math.floor(point.x)))
+  const y = Math.max(0, Math.min(sourceImage.height - 1, Math.floor(point.y)))
+  const pixel = sampleContext.getImageData(x, y, 1, 1).data
+  transparencyTarget = { r: pixel[0], g: pixel[1], b: pixel[2] }
+  syncTransparencyColorInputs()
+  const scale = imageScale()
+  draft = {
+    id: id(),
+    type: 'transparent',
+    style: styleSnapshot(),
+    seed: { x, y },
+    region: { ...selection },
+    target: { ...transparencyTarget },
+    tolerance: transparencyTolerance,
+    feather: transparencyFeather * ((scale.x + scale.y) / 2)
+  }
+  redraw()
 }
 
 function nextStepNumber(): number {
@@ -444,6 +649,19 @@ function pointerDown(event: PointerEvent): void {
 
   if (!pointInRect(point, selection)) return
   selectedAnnotationId = null
+  if (activeTool === 'transparent') {
+    if (draft?.type === 'transparent' && transparencyPreview === 'split') {
+      const divider = selection.x + selection.width * transparencySplit / 100
+      if (Math.abs(point.x - divider) <= 10 * imageScale().x) {
+        canvas.setPointerCapture(event.pointerId)
+        splitPreviewPointerId = event.pointerId
+        canvas.style.cursor = 'ew-resize'
+        return
+      }
+    }
+    sampleTransparency(point)
+    return
+  }
   if (activeTool === 'step') {
     annotations.push({ id: id(), type: 'step', style: styleSnapshot(), center: point, number: nextStepNumber() })
     redraw()
@@ -465,6 +683,13 @@ function pointerMove(event: PointerEvent): void {
   if (role === 'filler') return
   if (!payload || !sourceImage) return
   const rawPoint = clampPoint(pointFromEvent(event), imageBounds())
+  if (splitPreviewPointerId === event.pointerId && selection) {
+    transparencySplit = Math.round(Math.max(0, Math.min(100, (rawPoint.x - selection.x) / selection.width * 100)))
+    splitPositionSlider.value = String(transparencySplit)
+    splitPositionValue.textContent = `${transparencySplit}%`
+    redraw()
+    return
+  }
   if (!interaction) {
     updateCursor(rawPoint)
     return
@@ -527,6 +752,12 @@ function pointerMove(event: PointerEvent): void {
 }
 
 function pointerUp(event: PointerEvent): void {
+  if (splitPreviewPointerId === event.pointerId) {
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+    splitPreviewPointerId = null
+    updateCursor(pointFromEvent(event))
+    return
+  }
   if (role === 'filler' || !interaction) return
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
 
@@ -557,6 +788,7 @@ function exportedImage(): string | null {
 
 async function copyImage(): Promise<void> {
   if (busy || !payload) return
+  commitTransparencyDraft()
   const dataUrl = exportedImage()
   if (!dataUrl) return
   busy = true
@@ -569,10 +801,11 @@ async function copyImage(): Promise<void> {
 
 async function saveImage(): Promise<void> {
   if (busy || !payload) return
+  commitTransparencyDraft()
   const dataUrl = exportedImage()
   if (!dataUrl) return
   busy = true
-  const result = await window.capturo.saveImage(payload.sessionId, dataUrl)
+  const result = await window.capturo.saveImage(payload.sessionId, dataUrl, hasTransparency())
   if (!result.saved) {
     busy = false
     if (!result.canceled) setStatus('Could not save screenshot')
@@ -596,10 +829,14 @@ function handleShortcut(event: KeyboardEvent): void {
     return
   }
   if (!textEditor.hidden) return
+  if (event.target instanceof Element && event.target.closest('#transparent-panel') && event.key !== 'Escape') {
+    return
+  }
   const command = event.ctrlKey || event.metaKey
   if (event.key === 'Escape') {
     event.preventDefault()
-    if (selectedAnnotationId) selectAnnotation(null)
+    if (!transparentPanel.hidden) closeTransparencyPanel()
+    else if (selectedAnnotationId) selectAnnotation(null)
     else void cancelCapture()
     return
   }
@@ -640,7 +877,8 @@ function handleShortcut(event: KeyboardEvent): void {
     n: 'step',
     t: 'text',
     b: 'blur',
-    x: 'pixelate'
+    x: 'pixelate',
+    k: 'transparent'
   }
   const tool = shortcuts[event.key.toLowerCase()]
   if (tool && selection) setTool(tool)
@@ -783,7 +1021,47 @@ copyButton.addEventListener('click', () => void copyImage())
 saveButton.addEventListener('click', () => void saveImage())
 cancelButton.addEventListener('click', () => void cancelCapture())
 
-for (const element of [toolbar, optionsBar, dimensions]) {
+transparentClose.addEventListener('click', closeTransparencyPanel)
+transparentCancel.addEventListener('click', closeTransparencyPanel)
+transparentApply.addEventListener('click', applyTransparencyDraft)
+transparentColorInput.addEventListener('input', () => {
+  const parsed = parseHex(transparentColorInput.value)
+  if (parsed) setTransparencyTarget(parsed)
+})
+transparentHexInput.addEventListener('input', () => {
+  const parsed = parseHex(transparentHexInput.value)
+  if (parsed) setTransparencyTarget(parsed)
+})
+for (const input of [transparentRedInput, transparentGreenInput, transparentBlueInput]) {
+  input.addEventListener('input', () => {
+    setTransparencyTarget({
+      r: Number(transparentRedInput.value),
+      g: Number(transparentGreenInput.value),
+      b: Number(transparentBlueInput.value)
+    })
+  })
+}
+transparentToleranceSlider.addEventListener('input', () => {
+  transparencyTolerance = Number(transparentToleranceSlider.value)
+  transparentToleranceValue.textContent = `${transparencyTolerance}%`
+  updateTransparencyDraft({ tolerance: transparencyTolerance })
+})
+transparentFeatherSlider.addEventListener('input', () => {
+  transparencyFeather = Number(transparentFeatherSlider.value)
+  transparentFeatherValue.textContent = `${transparencyFeather}px`
+  const scale = imageScale()
+  updateTransparencyDraft({ feather: transparencyFeather * ((scale.x + scale.y) / 2) })
+})
+previewBeforeButton.addEventListener('click', () => setTransparencyPreview('before'))
+previewSplitButton.addEventListener('click', () => setTransparencyPreview('split'))
+previewAfterButton.addEventListener('click', () => setTransparencyPreview('after'))
+splitPositionSlider.addEventListener('input', () => {
+  transparencySplit = Number(splitPositionSlider.value)
+  splitPositionValue.textContent = `${transparencySplit}%`
+  redraw()
+})
+
+for (const element of [toolbar, optionsBar, dimensions, transparentPanel]) {
   element.addEventListener('pointerdown', (event) => event.stopPropagation())
 }
 

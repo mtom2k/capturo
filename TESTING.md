@@ -8,7 +8,7 @@ Run the complete non-GUI gate with:
 npm run build
 ```
 
-This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. It also verifies the two-frame queue boundary, sparse/coalesced/full palette-path selection, and decoded sparse-frame compositing through Sharp. Settings tests verify the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero.
+This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies that only the color-matching component connected to the seed is removed, nearby tones obey tolerance without crossing a non-matching barrier, and feathering produces a partial-alpha boundary. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. It also verifies the two-frame queue boundary, sparse/coalesced/full palette-path selection, and decoded sparse-frame compositing through Sharp. Settings tests verify the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero.
 
 ## Windows desktop matrix
 
@@ -37,11 +37,14 @@ Verify on at least 100% and one scaled DPI setting:
 6. Add text in every font family and size, including bold, italic, multiple lines, Escape cancel, and `Ctrl+Enter` commit.
 7. Apply blur and pixelate over fine text and confirm the exported image - not only the preview - contains the effect.
 8. Verify `Ctrl+C`, `Ctrl+S`, toolbar Copy, toolbar Save, Undo, and Escape.
+    - For Transparent background, use an image with an enclosed area that shares the sampled background color. Confirm only the connected outside background disappears and the enclosed matching area remains.
+    - Test tolerance at 0%, a useful mid value, and 100%; test feather at 0px and 10px. Hex, RGB, and native color inputs must stay synchronized, and every control must explain itself on hover.
+    - Check Before, After, and the draggable Split preview. Apply, then press `Ctrl+Z` and confirm the original pixels return. In separate captures, leave the preview pending and use `Ctrl+C`, toolbar Copy, `Ctrl+S`, and toolbar Save; each must automatically apply the preview before export. Configure JPEG in Settings and Save with a `.jpg` name: the resulting path and bytes must be PNG with an alpha channel. Paste Copy into an alpha-aware editor and confirm transparency is retained.
 9. Confirm copy, save, and cancel remove overlay renderers but leave the tray process alive.
 10. With Select active, click every annotation type, drag it, resize all eight handles, change each applicable property, and press Delete.
 11. Move the crop frame after placing annotations and confirm the crop moves while annotations stay at their original desktop coordinates.
 12. Type new text, commit with `Ctrl+Enter`, edit it by double-clicking with Select, and verify text in the exported PNG.
-13. Inspect the 16 px Windows tray mark on both light and dark taskbars; an empty but clickable slot is a failure.
+13. Confirm the exact supplied Capturo logo is consistent across the installed executable, installer UI, Settings title/taskbar window, Windows notification area, notifications, and—when tested—macOS menu bar. The 16px result must remain recognizable, and any secondary `C`-only mark, legacy black icon, monochrome substitute, empty slot, or stale cached artwork is a failure. Close every running Capturo process before judging a rebuilt taskbar icon.
 14. Confirm the contextual color/type/stroke controls appear below the primary tool row for every applicable tool and selected object.
 15. Drag the stroke slider from one end to the other and confirm the `px` readout tracks it, that the drawn size changes while dragging rather than only on release, and that the extremes are usable. Repeat for the numbered-step slider, placing markers at the smallest and largest sizes. Then select each existing object with the Select tool and confirm the slider moves to that object's size instead of resetting to the default, and that dragging it restyles the selected object.
 16. Record capture invocation at 60 fps from both the tray and hotkey. No unpainted black/background frame may appear before the frozen desktop overlay, and the overlay must arrive as a single hard cut with no zoom or cross-fade.

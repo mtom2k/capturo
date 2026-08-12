@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+## 0.15.1 - 2026-08-12
+
+### Added
+
+- Capturo now uses the final supplied 500px transparent logo across every brand surface. The executable/installer,
+  Settings taskbar window, Windows notification area, macOS menu bar, and notifications all
+  receive unchanged resized derivatives of `build/icon-source.png`; the previous secondary tray
+  mark, rounded-mask derivative, and monochrome template split have been removed.
+- Screenshot editing now includes a **Transparent background** tool. Click a background pixel
+  to remove only the connected area whose colors fall within a configurable perceptual tolerance,
+  or refine the target with a hex, RGB, or native color input. A 0-10 px feather control smooths
+  cutout edges, and Before, After, and draggable Split views update before the edit is applied.
+- Transparency is a non-destructive command in the existing undo history. Transparent captures
+  display a checkerboard preview and a PNG indicator; saving automatically uses `.png` even when
+  JPEG is the configured screenshot format so the alpha channel is not lost.
+- Copy and Save, including `Ctrl/Cmd+C` and `Ctrl/Cmd+S`, automatically commit a pending
+  transparency preview before exporting. The explicit Apply button remains available when the
+  user wants to continue editing instead of exporting immediately.
+
+### Fixed
+
+- Disabled Electron's unused built-in spellchecker before creating renderer windows. This
+  prevents Windows from leaving malformed Unicode `Microsoft/Spelling/neutral` cache folders in
+  Capturo's working directory; the two existing empty cache trees were removed.
+
+### Internal
+
+- Connected-color removal is covered by unit tests for isolated components, tolerance, and
+  feathered alpha. Processed composites are cached as a two-entry Before/After pair so normal
+  editor redraws do not repeat the flood fill.
+
+### Platform notes
+
+- This release is tested and published for Windows x64 only. The GitHub release contains the
+  interactive installer; the portable executable remains a local validation artifact.
+- The installer is not Authenticode-signed and may show an unknown-publisher warning. macOS
+  remains untested, unsigned, un-notarized, unsupported, and is not published.
+
 ## 0.14.0 - 2026-08-11
 
 ### Added

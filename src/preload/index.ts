@@ -24,7 +24,7 @@ const api: CapturoApi = {
   captureFailed: (sessionId) => ipcRenderer.invoke('capture:failed', sessionId),
   claimSession: (sessionId) => ipcRenderer.invoke('capture:claim', sessionId),
   copyImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy', sessionId, dataUrl),
-  saveImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:save', sessionId, dataUrl),
+  saveImage: (sessionId, dataUrl, forcePng) => ipcRenderer.invoke('capture:save', sessionId, dataUrl, forcePng),
   cancelSession: (sessionId) => ipcRenderer.invoke('capture:cancel', sessionId)
 }
 
