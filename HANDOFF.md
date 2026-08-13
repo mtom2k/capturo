@@ -30,7 +30,7 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Connected-color flood fill, tolerance metric, and feather mask: `src/shared/transparency.ts`; command replay/cache and export ordering: `src/renderer/render.ts`; popup workflow and Before/After/Split preview: `src/renderer/editor.ts` / `index.html` / `styles.css`
 - Settings window UI: `src/renderer/settings.ts` / `settings.html` / `settings.css`
 - Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
-- Settings persistence and application: `src/main/settings.ts`, plus the tray, shortcut, and save wiring in `src/main/index.ts`. See D-016.
+- Settings persistence and application: `src/main/settings.ts`, plus login-item, tray, shortcut, and save wiring in `src/main/index.ts`. `GlobalSettings.openAtStartup` defaults off; only packaged Windows/macOS builds may call Electron's login-item API, and failed changes must roll the persisted toggle back. See D-016.
 - Native HDR capture helper: `native/capturo-capture/main.cpp` (one-shot `--output` mode plus a persistent serve mode). Its lifecycle — spawn, warm at launch, batch request with timeout, restart, kill on quit — is `src/main/capture-helper.ts`. See D-015, D-017.
 - GIF capture: region-selection overlay `src/renderer/gif.ts` / `gif.html`; recording control bar `src/renderer/gif-record.ts` / `gif-record.html`; encoder + worker `src/renderer/gif-encoder.ts` / `gif-worker.ts` (uses `gifenc`); shared types and timing helpers in `src/shared/gif.ts`. The recording windows (selection teardown, control bar, content-protected border and shade, `setDisplayMediaRequestHandler`, save) live in `src/main/index.ts`. `GifSettings.preTimerSeconds` is validated to 0-10 seconds and defaults to 3; `showFrameCount` defaults true and only controls HUD visibility, never sampling, backpressure, or encoded output. The stream is prepared before the countdown; frame sampling, the active timer, and smoke auto-stop begin only when it reaches zero. Frame timestamps then use active elapsed time from the recording renderer; the encoder assigns actual deltas to pending frames and carries GIF centisecond rounding error forward. Do not replace this with fixed nominal delays or start active time during the countdown. See D-018 and D-019.
 
@@ -55,6 +55,8 @@ The encoder's equality scan collects at most 25% of the region into reusable cha
 Windows can be built and exercised from this repository's current host. The final macOS pass must verify Screen Recording permission recovery, Retina output, menu-bar behavior, clipboard copy, native Save As, signing, and notarization on real macOS hardware or a macOS CI runner.
 
 The development-only `CAPTURO_CAPTURE_ON_START=1` environment flag opens capture at launch and uses a temporary user-data scope. It exists for smoke automation and does not alter normal single-instance production behavior.
+
+`CAPTURO_SETTINGS_ON_START=1` likewise opens Settings at launch with temporary user data. Use it to exercise Global/Capture/GIF tab rendering and preference persistence without touching the installed app's settings or registering the development Electron executable as a login item.
 
 Set `CAPTURO_TIMING=1` to print capture-path phase timings to stderr: how long frames took to grab (with the native helper's own setup/acquire/convert/encode breakdown, which it always reports in its JSON) and how long overlays took to load. It is silent otherwise and is the way to quantify invocation latency.
 

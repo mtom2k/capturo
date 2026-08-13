@@ -11,7 +11,13 @@ describe('normalizeSettings', () => {
   it('returns defaults for garbage input', () => {
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS)
     expect(normalizeSettings('nonsense')).toEqual(DEFAULT_SETTINGS)
-    expect(normalizeSettings({ capture: 42, gif: 42 })).toEqual(DEFAULT_SETTINGS)
+    expect(normalizeSettings({ global: 42, capture: 42, gif: 42 })).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('defaults and normalizes open-on-startup', () => {
+    expect(DEFAULT_SETTINGS.global.openAtStartup).toBe(false)
+    expect(normalizeSettings({ global: { openAtStartup: true } }).global.openAtStartup).toBe(true)
+    expect(normalizeSettings({ global: { openAtStartup: 'true' } }).global.openAtStartup).toBe(false)
   })
 
   it('clamps and rounds JPEG quality into range', () => {
@@ -66,6 +72,7 @@ describe('normalizeSettings', () => {
 
   it('preserves valid partial input and defaults the rest', () => {
     expect(normalizeSettings({ capture: { showNotification: false } })).toEqual({
+      global: DEFAULT_SETTINGS.global,
       capture: { ...DEFAULT_SETTINGS.capture, showNotification: false },
       gif: DEFAULT_SETTINGS.gif
     })
@@ -78,6 +85,7 @@ describe('mergeSettings', () => {
     expect(merged.capture.format).toBe('jpeg')
     expect(merged.capture.jpegQuality).toBe(100)
     expect(merged.capture.showNotification).toBe(true)
+    expect(merged.global).toEqual(DEFAULT_SETTINGS.global)
     expect(merged.gif).toEqual(DEFAULT_SETTINGS.gif)
   })
 
@@ -88,5 +96,13 @@ describe('mergeSettings', () => {
     expect(merged.gif.preTimerSeconds).toBe(5)
     expect(merged.gif.showFrameCount).toBe(true)
     expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
+    expect(merged.global).toEqual(DEFAULT_SETTINGS.global)
+  })
+
+  it('overlays a global update without touching capture or GIF', () => {
+    const merged = mergeSettings(DEFAULT_SETTINGS, { global: { openAtStartup: true } })
+    expect(merged.global.openAtStartup).toBe(true)
+    expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
+    expect(merged.gif).toEqual(DEFAULT_SETTINGS.gif)
   })
 })

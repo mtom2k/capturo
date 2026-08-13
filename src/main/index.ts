@@ -80,6 +80,7 @@ let isQuitting = false
 const isMac = process.platform === 'darwin'
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
 const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
+const isSettingsSmokeInstance = process.env.CAPTURO_SETTINGS_ON_START === '1'
 // Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
 // the record → encode → save pipeline.
 const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
@@ -91,7 +92,7 @@ function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
-if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke) {
+if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
 
@@ -109,6 +110,27 @@ function taskbarIcon(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'taskbar-icon.png')
     : path.join(app.getAppPath(), 'build', 'taskbar-icon.png')
+}
+
+// Login-item registration is a privileged OS integration, so it stays in the main process.
+// Development runs deliberately do not register Electron itself as a startup application.
+function applyOpenAtStartup(enabled: boolean): boolean {
+  if (!app.isPackaged) return true
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return false
+  try {
+    if (process.platform === 'win32') {
+      // electron-builder's portable target runs the inner app from a temporary directory.
+      // Register the stable outer executable when that path is available.
+      const executablePath = process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath
+      app.setLoginItemSettings({ openAtLogin: enabled, path: executablePath })
+      return app.getLoginItemSettings({ path: executablePath }).openAtLogin === enabled
+    }
+    app.setLoginItemSettings({ openAtLogin: enabled })
+    return app.getLoginItemSettings().openAtLogin === enabled
+  } catch (error) {
+    console.error('Could not update open-on-startup setting', error)
+    return false
+  }
 }
 
 function closeSession(): void {
@@ -471,6 +493,13 @@ function registerIpc(): void {
     const before = getSettings()
     let next = updateSettings(update)
     let shortcutError: string | undefined
+    let startupError: string | undefined
+
+    if (next.global.openAtStartup !== before.global.openAtStartup &&
+        !applyOpenAtStartup(next.global.openAtStartup)) {
+      next = updateSettings({ global: { openAtStartup: before.global.openAtStartup } })
+      startupError = `Could not ${update.global?.openAtStartup ? 'enable' : 'disable'} Open on startup. Kept the previous setting.`
+    }
 
     if (next.capture.captureShortcut !== before.capture.captureShortcut &&
         !applyShortcut('capture', next.capture.captureShortcut)) {
@@ -482,7 +511,7 @@ function registerIpc(): void {
       shortcutError = `${formatAccelerator(update.gif?.shortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(before.gif.shortcut, isMac)}.`
     }
     refreshTray()
-    return { settings: next, shortcutError }
+    return { settings: next, shortcutError, startupError }
   })
 
   ipcMain.handle('capture:ready', (event, sessionId: string) => {
@@ -978,7 +1007,12 @@ if (!app.requestSingleInstanceLock()) {
     // OS returns a malformed dictionary base path. Keep the service off before any renderer is
     // created so those unrelated cache trees cannot reappear beside the source code.
     electronSession.defaultSession.setSpellCheckerEnabled(false)
-    loadSettings()
+    const loadedSettings = loadSettings()
+    // Reconcile the OS login item on every packaged launch so uninstall/reinstall or a moved
+    // executable cannot leave the persisted preference and the registered path out of sync.
+    if (!applyOpenAtStartup(loadedSettings.global.openAtStartup)) {
+      updateSettings({ global: { openAtStartup: false } })
+    }
     // Warm the persistent capture helper now so the first capture pays no device/duplication
     // setup and no cold DLL load. See D-017.
     startCaptureHelper()
@@ -986,6 +1020,7 @@ if (!app.requestSingleInstanceLock()) {
     registerDisplayMediaHandler()
     registerInitialShortcuts()
     createTray()
+    if (isSettingsSmokeInstance) openSettings()
     if (isSmokeInstance) void startCapture()
     if (isGifSmokeInstance) void startGifCapture()
     if (isGifRecordSmoke) {

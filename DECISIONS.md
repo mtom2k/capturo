@@ -142,7 +142,7 @@ Capturo is tray-first with no persistent window (D-002) and writes nothing to di
 
 The settings window is opened only from the tray and destroyed when closed. It is not a resident dashboard and does not change the steady state: with settings closed, Capturo is still one tray process and no window. This keeps D-002's intent — the icon still opens straight into capture, and nothing else is on screen between captures.
 
-Preferences persist to a single `settings.json` in `app.getPath('userData')`. This is the one thing Capturo writes without an explicit Save, and it is compatible with D-006 because it holds **no captured pixels**: only four values — save format, JPEG quality, the notification toggle, and the capture shortcut. A corrupt or half-written file is never fatal; `normalizeSettings` in `src/shared/settings.ts` turns any input into a complete, valid object, so the app always starts.
+Preferences persist to a single `settings.json` in `app.getPath('userData')`. This is the one thing Capturo writes without an explicit Save, and it is compatible with D-006 because it holds **no captured pixels**: only validated global, capture, and GIF preferences. A corrupt or half-written file is never fatal; `normalizeSettings` in `src/shared/settings.ts` turns any input into a complete, valid object, so the app always starts.
 
 The scope is kept small on purpose. Format and JPEG quality apply to **saved files only**. Copy-to-clipboard stays a lossless bitmap, which is the only meaningful thing to put on the Windows clipboard, so format and quality live entirely in the main process at save time and never reach the renderer. The renderer keeps producing a lossless PNG data URL; `capture:save` chooses the on-disk encoding, honouring an explicit `.jpg`/`.jpeg`/`.png` the user types into the save dialog over the stored default.
 
@@ -153,6 +153,8 @@ A rebindable capture shortcut is the one preference with a failure mode: the cho
 A second **GIF** tab ships as a disabled placeholder. It records intent — GIF capture is a planned future feature — without any capture or encoding logic in this change.
 
 **Amended by D-018 and D-019.** The GIF tab is no longer a placeholder. It persists frame rate, palette quality, GIF shortcut, and the 0-10 second recording pre-timer alongside the capture preferences; the file still contains settings only and no captured pixels.
+
+**Amended in 0.15.2.** Settings now begins with a **Global** tab whose Open on startup toggle defaults off. The renderer only sends the typed preference; the main process owns `app.setLoginItemSettings`, applies it only for packaged Windows/macOS builds, verifies the resulting OS state, and rolls back both UI and persistence when registration fails. The stored value is reconciled on each packaged launch so moving or reinstalling the executable cannot silently preserve a stale login-item path. Development runs never register Electron as a startup application.
 
 ## D-017: The capture helper is a persistent background process
 

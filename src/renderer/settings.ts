@@ -11,6 +11,10 @@ import { acceleratorFromKeyEvent, formatAccelerator } from '../shared/shortcut'
 const tabs = document.querySelectorAll<HTMLButtonElement>('.tab')
 const panels = document.querySelectorAll<HTMLElement>('.panel')
 
+// Global tab
+const openAtStartupSwitch = document.querySelector<HTMLButtonElement>('#open-at-startup')!
+const startupError = document.querySelector<HTMLElement>('#startup-error')!
+
 // Capture tab
 const formatButtons = document.querySelectorAll<HTMLButtonElement>('[data-format]')
 const qualityRow = document.querySelector<HTMLElement>('#quality-row')!
@@ -111,6 +115,9 @@ function setHint(field: ShortcutField, message: string, error = false): void {
 }
 
 function render(settings: Settings): void {
+  openAtStartupSwitch.classList.toggle('on', settings.global.openAtStartup)
+  openAtStartupSwitch.setAttribute('aria-checked', String(settings.global.openAtStartup))
+
   renderFormat(settings.capture.format)
   qualitySlider.value = String(settings.capture.jpegQuality)
   qualityValue.textContent = `${settings.capture.jpegQuality}%`
@@ -172,7 +179,16 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
 
 // --- Wiring ------------------------------------------------------------------------------
 
-for (const tab of tabs) tab.addEventListener('click', () => setTab(tab.dataset.tab ?? 'capture'))
+for (const tab of tabs) tab.addEventListener('click', () => setTab(tab.dataset.tab ?? 'global'))
+
+openAtStartupSwitch.addEventListener('click', () => {
+  startupError.hidden = true
+  void apply({ global: { openAtStartup: !openAtStartupSwitch.classList.contains('on') } }).then((result) => {
+    if (!result.startupError) return
+    startupError.textContent = result.startupError
+    startupError.hidden = false
+  })
+})
 
 for (const button of formatButtons) {
   button.addEventListener('click', () => void apply({ capture: { format: button.dataset.format as CaptureFormat } }))

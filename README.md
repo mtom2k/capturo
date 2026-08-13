@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.15.1-blue)
+![version](https://img.shields.io/badge/version-0.15.2-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.15.1 is the current Windows x64 release.
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.15.2 is the current source version; the latest published Windows x64 release remains v0.15.1 until 0.15.2 is explicitly packaged and released.
 
-`npm run dist:win` produces two local Windows 0.15.1 artifacts in `release/`. The official release publishes the installer only:
+For the current source version, `npm run dist:win` produces two local Windows 0.15.2 artifacts in `release/`. Official releases publish the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.15.1-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.15.1-x64.exe` | Portable executable for local validation. |
+| `Capturo-Setup-0.15.2-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.15.2-x64.exe` | Portable executable for local validation. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -76,6 +76,7 @@ Choose **Transparent background** (or press `K`), then click the background colo
 
 Right-click the tray icon and choose **Settings…**. It is deliberately small, and opens only when you ask for it: closing it leaves Capturo resident in the tray as before.
 
+- **Global → Open on startup.** Optionally launch Capturo into the notification area when you sign in to your device. It is off by default.
 - **Format.** Save as PNG (lossless) or JPEG. There is a **JPEG quality** slider for when you want smaller files. Format and quality apply to files you **Save**; **Copy** always puts a lossless image on the clipboard.
 - **Notification.** Turn the toast after a copy or save on or off.
 - **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.

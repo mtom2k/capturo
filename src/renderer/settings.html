@@ -9,11 +9,25 @@
   <body>
     <main class="settings">
       <nav class="tabs" role="tablist" aria-label="Settings sections">
-        <button class="tab selected" data-tab="capture" role="tab" aria-selected="true">Capture</button>
+        <button class="tab selected" data-tab="global" role="tab" aria-selected="true">Global</button>
+        <button class="tab" data-tab="capture" role="tab" aria-selected="false">Capture</button>
         <button class="tab" data-tab="gif" role="tab" aria-selected="false">GIF</button>
       </nav>
 
-      <section class="panel" data-panel="capture" role="tabpanel">
+      <section class="panel" data-panel="global" role="tabpanel">
+        <div class="row">
+          <div class="label">
+            <span>Open on startup</span>
+            <small>Start Capturo automatically when you sign in.</small>
+            <small class="setting-error" id="startup-error" hidden></small>
+          </div>
+          <button class="switch" id="open-at-startup" role="switch" aria-checked="false" aria-label="Open Capturo on startup" title="Launch Capturo in the notification area when you sign in to this device">
+            <span class="knob"></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="capture" role="tabpanel" hidden>
         <div class="row">
           <div class="label">
             <span>Format</span>

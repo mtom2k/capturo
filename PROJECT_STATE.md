@@ -1,16 +1,18 @@
 # Project State
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Phase
 
-`0.15.1` is the current source and published Windows x64 release. It adds the non-destructive Transparent background screenshot tool described below. Windows x64 is the only tested platform; macOS remains untested and unsupported.
+`0.15.2` is the current source version. The latest published Windows x64 release remains `v0.15.1`; Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+
+Version 0.15.2 adds a Global Settings section with an Open on startup toggle. The pure settings model, production build, visual layout, and packaged Windows login-item enable/disable behavior are verified; launch after a real sign-out/sign-in remains in the hands-on checklist below.
 
 Version 0.15.1 adds a non-destructive Transparent background screenshot tool with connected-pixel removal, sampled/hex/RGB target colors, perceptual tolerance, 0-10px feathering, checkerboard Before/After/Split preview, undo, automatic application on Copy/Save, and automatic PNG output. It also replaces the application and tray/menu-bar branding with the supplied purple Capturo artwork and disables Electron's unused spellchecker so Windows does not create malformed cache folders beside the source tree.
 
 ## Current build
 
-The package version is `0.15.1`. Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`; both the installer and portable executable are produced locally. The running app shows its package version in the tray tooltip and tray menu. The published GitHub release is `v0.15.1` (Windows x64 installer only). Local binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.15.2`. The production source build and a packaged unpacked-app smoke have been verified, but no 0.15.2 installer or portable executable has been produced or published yet. Existing Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`. The published GitHub release remains `v0.15.1` (Windows x64 installer only). Local binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -49,6 +51,7 @@ The package version is `0.15.1`. Windows artifacts live in `release/` and are de
 - [x] Post-capture notification toggle
 - [x] Rebindable capture shortcut with conflict fallback
 - [x] Settings persisted to `userData/settings.json` (no captured pixels)
+- [x] Global Open on startup preference defaults off, is isolated from development login items, and registers/removes the packaged Windows login item
 - [x] GIF: tray New GIF item and rebindable GIF shortcut open region selection
 - [x] GIF: record a region live (cursor included) and save a valid, correctly-cropped `.gif`
 - [x] GIF: inter-frame differencing keeps files small (static content ~30x smaller)
@@ -200,8 +203,13 @@ The package version is `0.15.1`. Windows artifacts live in `release/` and are de
   - `release/BUILD-INFO.txt` inventories only the two 0.15.1 artifacts; their SHA-256 values are `2471b4ecc19de9b0ec92a8f37e88a29b1d5c3e6417537b0d8788118e4c9036f8` (setup) and `5b90ee0c02d6ea06f48009757739aabe9aca5240d9115ecf8d6b9937fb5a8eb6` (portable)
   - both executables report product version `0.15.1`; `Get-AuthenticodeSignature` reports `NotSigned` for each, so the GitHub release publishes only the Windows x64 installer with an explicit unknown-publisher warning
   - packaged taskbar and tray assets match their generated source hashes, and no malformed Unicode or renamed spelling-cache directories remain in the repository root
+- 2026-08-13 `0.15.2` source verification gate:
+  - package and lockfile versions are both `0.15.2`; `npm install` reports zero vulnerabilities, and `npm run build` passes type checking, all 63 tests, and the production build
+  - the Global Settings layout was inspected at its exact 460x452 window size, and a packaged Windows unpacked-app smoke verified that enabling Open on startup creates the expected current-executable login entry and disabling it removes that entry
+  - the smoke left no login entry, temporary settings file, or Capturo process behind; a real sign-out/sign-in launch remains a hands-on check
+  - no 0.15.2 installer, portable executable, tag, or GitHub release has been created; `v0.15.1` remains the published Windows release
 
-## Post-0.15.1 follow-up
+## Post-0.15.2 follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).

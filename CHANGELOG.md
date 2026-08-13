@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.15.2 - 2026-08-13
+
+### Added
+
+- Settings now includes a **Global** section with an **Open on startup** toggle. It defaults
+  off, persists with the other preferences, and registers or removes Capturo as an OS login item
+  in packaged Windows and macOS builds. Development runs never register Electron itself.
+
 ## 0.15.1 - 2026-08-12
 
 ### Added

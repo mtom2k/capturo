@@ -1,6 +1,6 @@
 {
   "name": "capturo",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "A fast, minimal screenshot and annotation tool for Windows.",
   "main": "./out/main/index.js",
   "author": "Capturo contributors",

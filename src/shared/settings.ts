@@ -5,6 +5,11 @@
 
 export type CaptureFormat = 'png' | 'jpeg'
 
+export type GlobalSettings = {
+  // Whether the packaged app asks the OS to launch Capturo when the user signs in.
+  openAtStartup: boolean
+}
+
 export type CaptureSettings = {
   // Encoding used when saving to a file. Copy-to-clipboard is always a lossless bitmap and
   // is unaffected by this. See D-016.
@@ -33,12 +38,14 @@ export type GifSettings = {
 }
 
 export type Settings = {
+  global: GlobalSettings
   capture: CaptureSettings
   gif: GifSettings
 }
 
 // A partial update to any section, as sent from the settings window.
 export type SettingsUpdate = {
+  global?: Partial<GlobalSettings>
   capture?: Partial<CaptureSettings>
   gif?: Partial<GifSettings>
 }
@@ -49,6 +56,7 @@ export type SettingsUpdate = {
 export type SettingsUpdateResult = {
   settings: Settings
   shortcutError?: string
+  startupError?: string
 }
 
 export type CapturoSettingsApi = {
@@ -69,6 +77,9 @@ export const MAX_GIF_PRE_TIMER_SECONDS = 10
 export const GIF_FPS_OPTIONS = [10, 15, 20, 30] as const
 
 export const DEFAULT_SETTINGS: Settings = {
+  global: {
+    openAtStartup: false
+  },
   capture: {
     format: 'png',
     jpegQuality: 92,
@@ -123,6 +134,13 @@ function normalizeCapture(raw: unknown): CaptureSettings {
   }
 }
 
+function normalizeGlobal(raw: unknown): GlobalSettings {
+  const global = isRecord(raw) ? raw : {}
+  return {
+    openAtStartup: normalizeBoolean(global.openAtStartup, DEFAULT_SETTINGS.global.openAtStartup)
+  }
+}
+
 function normalizeGif(raw: unknown): GifSettings {
   const gif = isRecord(raw) ? raw : {}
   return {
@@ -145,6 +163,7 @@ function normalizeGif(raw: unknown): GifSettings {
 export function normalizeSettings(raw: unknown): Settings {
   const root = isRecord(raw) ? raw : {}
   return {
+    global: normalizeGlobal(root.global),
     capture: normalizeCapture(root.capture),
     gif: normalizeGif(root.gif)
   }
@@ -153,6 +172,7 @@ export function normalizeSettings(raw: unknown): Settings {
 // Merges a partial update over the current settings, then re-normalizes the result.
 export function mergeSettings(current: Settings, update: SettingsUpdate): Settings {
   return normalizeSettings({
+    global: { ...current.global, ...(update.global ?? {}) },
     capture: { ...current.capture, ...(update.capture ?? {}) },
     gif: { ...current.gif, ...(update.gif ?? {}) }
   })

@@ -103,6 +103,10 @@ button {
   font-size: 11px;
 }
 
+.label .setting-error {
+  color: #f97362;
+}
+
 /* Segmented PNG / JPEG control. */
 .segmented {
   display: flex;
