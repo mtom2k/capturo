@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo GIF Preview</title>
+  </head>
+  <body>
+    <main class="preview-shell">
+      <header class="preview-header">
+        <div>
+          <h1>GIF preview</h1>
+          <p>Review the complete animation before you keep or share it.</p>
+        </div>
+        <span id="size" class="size-badge">Preparing…</span>
+      </header>
+
+      <section class="preview-stage" aria-label="Recorded GIF preview">
+        <img id="preview" alt="Animated preview of the recorded GIF" />
+      </section>
+
+      <div class="preview-meta">
+        <span id="status" role="status" aria-live="polite">Ready to preview</span>
+        <span id="location" class="location" title="The GIF has not been saved yet">Not saved</span>
+      </div>
+
+      <footer class="actions" aria-label="GIF preview actions">
+        <button id="copy" class="button primary" title="Copy the animated GIF file to the clipboard (Ctrl+C)">Copy</button>
+        <button id="save" class="button" title="Choose where to save the GIF file (Ctrl+S)">Save</button>
+        <button id="open-folder" class="button" disabled title="Save the GIF first, then open its folder">Open folder</button>
+        <span class="spacer"></span>
+        <button id="retake" class="button" title="Discard this preview and select a new GIF region">Retake</button>
+        <button id="discard" class="button danger" title="Discard this preview without saving it (Esc)">Discard</button>
+      </footer>
+    </main>
+    <script type="module" src="./gif-preview.ts"></script>
+  </body>
+</html>

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CapturePayload, CapturoApi, Rect, SceneUpdate } from '../shared/types'
 import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
-import type { CapturoGifApi, GifRecordPayload } from '../shared/gif'
+import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -42,7 +42,17 @@ const gifApi: CapturoGifApi = {
     ipcRenderer.on('gif:record-init', handler)
     return () => ipcRenderer.removeListener('gif:record-init', handler)
   },
-  saveRecording: (bytes: ArrayBuffer) => ipcRenderer.invoke('gif:save', bytes),
+  showPreview: (bytes: ArrayBuffer) => ipcRenderer.invoke('gif:show-preview', bytes),
+  onPreviewInitialize(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, payload: GifPreviewPayload): void => listener(payload)
+    ipcRenderer.on('gif:preview-init', handler)
+    return () => ipcRenderer.removeListener('gif:preview-init', handler)
+  },
+  copyPreview: () => ipcRenderer.invoke('gif:preview-copy'),
+  savePreview: () => ipcRenderer.invoke('gif:preview-save'),
+  openPreviewFolder: () => ipcRenderer.invoke('gif:preview-open-folder'),
+  retakePreview: () => ipcRenderer.invoke('gif:preview-retake'),
+  discardPreview: () => ipcRenderer.invoke('gif:preview-discard'),
   cancelRecording: () => ipcRenderer.invoke('gif:cancel')
 }
 

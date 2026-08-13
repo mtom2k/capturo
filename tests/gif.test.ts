@@ -4,6 +4,9 @@ import {
   canQueueGifFrame,
   countdownSecondsRemaining,
   frameDelayMs,
+  hasGifSignature,
+  GIF_CLIPBOARD_FILE_MAX_AGE_MS,
+  isExpiredGifClipboardFile,
   MIN_GIF_COLORS,
   paletteColorsForQuality
 } from '../src/shared/gif'
@@ -47,6 +50,21 @@ function frameDelaysMs(bytes: Uint8Array): number[] {
 }
 
 describe('gif helpers', () => {
+  it('accepts only complete GIF87a and GIF89a signatures', () => {
+    expect(hasGifSignature(new TextEncoder().encode('GIF87a'))).toBe(true)
+    expect(hasGifSignature(new TextEncoder().encode('GIF89a payload'))).toBe(true)
+    expect(hasGifSignature(new TextEncoder().encode('GIF89'))).toBe(false)
+    expect(hasGifSignature(new TextEncoder().encode('PNG89a'))).toBe(false)
+  })
+
+  it('expires only Capturo-owned clipboard GIF files after 24 hours', () => {
+    const now = 1_000_000_000
+    expect(isExpiredGifClipboardFile('Capturo test.gif', now - GIF_CLIPBOARD_FILE_MAX_AGE_MS - 1, now)).toBe(true)
+    expect(isExpiredGifClipboardFile('Capturo test.gif', now - GIF_CLIPBOARD_FILE_MAX_AGE_MS, now)).toBe(false)
+    expect(isExpiredGifClipboardFile('other.gif', 0, now)).toBe(false)
+    expect(isExpiredGifClipboardFile('Capturo notes.txt', 0, now)).toBe(false)
+  })
+
   it('maps quality to a clamped palette size', () => {
     expect(paletteColorsForQuality(100)).toBe(256)
     expect(paletteColorsForQuality(50)).toBe(128)

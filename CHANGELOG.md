@@ -1,14 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 - 2026-08-13
+
+### Changed
+
+- Blur and Pixelate now use a dedicated **Intensity** control from 1-100% instead of exposing
+  the shared stroke **Size** slider. Higher percentages produce a stronger blur or larger
+  pixel blocks, and selecting an existing effect restores its own saved percentage.
+
+### Fixed
+
+- Wide GIFs now remain contained inside the preview stage instead of allowing the initially
+  focused action row to scroll the header or footer out of view.
+
+### Documentation
+
+- Added current GIF Settings and finished-preview screenshots to the README, alongside a
+  concise walkthrough of selection, protected recording chrome, preview, copy, save, reveal,
+  retake, and discard behavior.
 
 ## 0.15.2 - 2026-08-13
 
 ### Added
 
+- Stopping a GIF now opens an animated preview instead of immediately opening Save As. The
+  preview keeps the encoded bytes in memory and offers Copy, Save, Open folder, Retake, and
+  Discard actions, with `Ctrl/Cmd+C`, `Ctrl/Cmd+S`, and Escape shortcuts.
+- GIF Copy preserves animation. Windows places a real `.gif` file drop (`CF_HDROP`) on the
+  clipboard through Capturo's existing native helper rather than copying a decoded still frame.
+  An unsaved GIF is materialized in Capturo's temporary clipboard directory only when Copy is
+  requested; expired temporary copies are cleaned on a later launch.
 - Settings now includes a **Global** section with an **Open on startup** toggle. It defaults
   off, persists with the other preferences, and registers or removes Capturo as an OS login item
   in packaged Windows and macOS builds. Development runs never register Electron itself.
+
+### Changed
+
+- Saving from the GIF preview no longer closes the workflow, so the saved file can still be
+  copied, revealed in its folder, reviewed, or followed by a retake.
 
 ## 0.15.1 - 2026-08-12
 

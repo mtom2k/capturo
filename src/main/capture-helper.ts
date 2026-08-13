@@ -5,7 +5,8 @@
 //
 // Protocol: one request per line on stdin. Capture requests are
 // "<originX>\t<originY>\t<outputPath>"; window-border requests are
-// "window-border\t<nativeHandle>". The helper writes one JSON result per request, in order.
+// "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>".
+// The helper writes one JSON result per request, in order.
 // This module keeps a single batch in flight and serializes callers so responses never
 // interleave.
 
@@ -184,6 +185,17 @@ export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult
 export async function suppressWindowBorder(nativeHandle: bigint): Promise<boolean> {
   try {
     const [result] = await sendRequests([`window-border\t${nativeHandle.toString()}`], 1000)
+    return result?.ok === true
+  } catch {
+    return false
+  }
+}
+
+// Places a real file drop (CF_HDROP) on the Windows clipboard. Electron's image clipboard
+// APIs decode an animated GIF to a still image, so GIF copy must stay a native file operation.
+export async function copyFileToClipboard(filePath: string): Promise<boolean> {
+  try {
+    const [result] = await sendRequests([`clipboard-file\t${filePath}`], 2000)
     return result?.ok === true
   } catch {
     return false

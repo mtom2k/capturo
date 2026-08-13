@@ -27,11 +27,18 @@ import {
   type SettingsUpdateResult
 } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
-import type { CropRect, GifRecordPayload, GifSaveResult } from '../shared/gif'
+import {
+  hasGifSignature,
+  isExpiredGifClipboardFile,
+  type CropRect,
+  type GifPreviewActionResult,
+  type GifRecordPayload
+} from '../shared/gif'
 import { integerRect, surroundingStrips, uncoveredStrips } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 import {
   captureDisplays,
+  copyFileToClipboard,
   helperAvailable,
   startCaptureHelper,
   stopCaptureHelper,
@@ -72,6 +79,13 @@ let recordingBorderWindow: BrowserWindow | null = null
 let recordingShadeWindows: BrowserWindow[] = []
 let recordingTargetDisplayId: string | null = null
 let recordingPayload: GifRecordPayload | null = null
+type GifPreviewState = {
+  bytes: Buffer
+  savedPath: string | null
+  clipboardPath: string | null
+}
+let gifPreviewWindow: BrowserWindow | null = null
+let gifPreviewState: GifPreviewState | null = null
 // The accelerators currently registered with the OS, per action. Tracked so a rebind can
 // cleanly unregister the old one and roll back to it if the new one is rejected.
 const activeShortcuts: Partial<Record<ShortcutKind, string>> = {}
@@ -81,6 +95,9 @@ const isMac = process.platform === 'darwin'
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
 const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
 const isSettingsSmokeInstance = process.env.CAPTURO_SETTINGS_ON_START === '1'
+const isSettingsScreenshot = process.env.CAPTURO_SETTINGS_SCREENSHOT === '1'
+const isGifPreviewSmokeInstance = process.env.CAPTURO_GIF_PREVIEW_ON_START === '1'
+const isGifPreviewScreenshot = process.env.CAPTURO_GIF_PREVIEW_SCREENSHOT === '1'
 // Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
 // the record → encode → save pipeline.
 const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
@@ -88,11 +105,15 @@ const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 // runs stay quiet; used to measure the invocation latency end to end.
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
 
+// Documentation screenshots must also work on headless/virtualized Windows hosts where
+// Chromium cannot start a GPU process. This affects screenshot smoke runs only.
+if (isSettingsScreenshot || isGifPreviewScreenshot) app.disableHardwareAcceleration()
+
 function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
-if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance) {
+if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
 
@@ -441,6 +462,12 @@ function startCapture(): Promise<void> {
 }
 
 function startGifCapture(): Promise<void> {
+  if (gifPreviewWindow && !gifPreviewWindow.isDestroyed()) {
+    if (gifPreviewWindow.isMinimized()) gifPreviewWindow.restore()
+    gifPreviewWindow.show()
+    gifPreviewWindow.focus()
+    return Promise.resolve()
+  }
   return openSelectionOverlays('gif')
 }
 
@@ -585,32 +612,108 @@ function registerIpc(): void {
     return true
   })
 
-  // The recording window finished encoding and sent the GIF bytes. Save via a native dialog.
-  ipcMain.handle('gif:save', async (event, bytes: ArrayBuffer): Promise<GifSaveResult> => {
-    if (!recordingWindow || event.sender.id !== recordingWindow.webContents.id) return { saved: false, canceled: false }
-    // Smoke path: write to a fixed file and log it, so the record→encode→save pipeline can be
-    // exercised without the save dialog.
+  // The recording window finished encoding. Keep the bytes in memory and replace recording
+  // chrome with a review window; saving and copying are now explicit preview actions.
+  ipcMain.handle('gif:show-preview', async (event, bytes: ArrayBuffer): Promise<boolean> => {
+    if (!recordingWindow || event.sender.id !== recordingWindow.webContents.id) return false
+    const encoded = bytes instanceof ArrayBuffer ? Buffer.from(bytes) : Buffer.alloc(0)
+    if (!hasGifSignature(encoded)) {
+      closeRecording()
+      notify('GIF unavailable', 'Capturo could not finish this recording.')
+      return false
+    }
+    // Smoke automation deliberately retains its fixed-file output and does not open UI.
     if (isGifRecordSmoke) {
       const smokePath = path.join(app.getPath('temp'), 'capturo-smoke.gif')
-      await fs.writeFile(smokePath, Buffer.from(bytes))
-      console.error(`[gif-smoke] saved ${bytes.byteLength} bytes to ${smokePath}`)
+      await fs.writeFile(smokePath, encoded)
+      console.error(`[gif-smoke] saved ${encoded.byteLength} bytes to ${smokePath}`)
       closeRecording()
-      return { saved: true, canceled: false, filePath: smokePath }
+      return true
     }
-    const options: Electron.SaveDialogOptions = {
-      title: 'Save GIF',
-      defaultPath: path.join(app.getPath('pictures'), `Capturo ${fileTimestamp()}.gif`),
-      filters: [{ name: 'GIF image', extensions: ['gif'] }]
-    }
-    const result = await dialog.showSaveDialog(recordingWindow, options)
-    if (result.canceled || !result.filePath) {
-      closeRecording()
-      return { saved: false, canceled: true }
-    }
-    await fs.writeFile(result.filePath, Buffer.from(bytes))
     closeRecording()
-    notify('GIF saved', path.basename(result.filePath))
-    return { saved: true, canceled: false, filePath: result.filePath }
+    openGifPreview(encoded)
+    return true
+  })
+
+  ipcMain.handle('gif:preview-save', async (event): Promise<GifPreviewActionResult> => {
+    const preview = validGifPreview(event)
+    if (!preview || !gifPreviewWindow) return { ok: false, error: 'The GIF preview is no longer available.' }
+    const result = await dialog.showSaveDialog(gifPreviewWindow, {
+      title: 'Save GIF',
+      defaultPath: preview.savedPath ?? path.join(app.getPath('pictures'), `Capturo ${fileTimestamp()}.gif`),
+      filters: [{ name: 'GIF image', extensions: ['gif'] }]
+    })
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    const extension = path.extname(result.filePath)
+    const filePath = extension.toLowerCase() === '.gif'
+      ? result.filePath
+      : `${result.filePath.slice(0, result.filePath.length - extension.length)}.gif`
+    try {
+      await fs.writeFile(filePath, preview.bytes)
+      preview.savedPath = filePath
+      notify('GIF saved', path.basename(filePath))
+      return { ok: true, filePath }
+    } catch {
+      return { ok: false, error: 'Capturo could not write the GIF to that location.' }
+    }
+  })
+
+  ipcMain.handle('gif:preview-copy', async (event): Promise<GifPreviewActionResult> => {
+    const preview = validGifPreview(event)
+    if (!preview) return { ok: false, error: 'The GIF preview is no longer available.' }
+    try {
+      if (process.platform !== 'win32') {
+        clipboard.writeBuffer(isMac ? 'public.gif' : 'image/gif', preview.bytes)
+        return { ok: true }
+      }
+
+      let copyPath = preview.savedPath
+      if (copyPath) {
+        try {
+          await fs.access(copyPath)
+        } catch {
+          copyPath = null
+        }
+      }
+      if (!copyPath) {
+        const clipboardDirectory = path.join(app.getPath('temp'), 'Capturo', 'Clipboard')
+        await fs.mkdir(clipboardDirectory, { recursive: true })
+        copyPath = preview.clipboardPath ?? path.join(
+          clipboardDirectory,
+          `Capturo ${fileTimestamp()} ${randomUUID().slice(0, 8)}.gif`
+        )
+        await fs.writeFile(copyPath, preview.bytes)
+        preview.clipboardPath = copyPath
+      }
+      if (!(await copyFileToClipboard(copyPath))) {
+        return { ok: false, error: 'Capturo could not place the animated GIF file on the clipboard.' }
+      }
+      return { ok: true, filePath: copyPath }
+    } catch {
+      return { ok: false, error: 'Capturo could not prepare the GIF for copying.' }
+    }
+  })
+
+  ipcMain.handle('gif:preview-open-folder', async (event): Promise<GifPreviewActionResult> => {
+    const preview = validGifPreview(event)
+    if (!preview?.savedPath) return { ok: false, error: 'Save the GIF before opening its folder.' }
+    try {
+      await fs.access(preview.savedPath)
+      shell.showItemInFolder(preview.savedPath)
+      return { ok: true, filePath: preview.savedPath }
+    } catch {
+      return { ok: false, error: 'The saved GIF is no longer at that location.' }
+    }
+  })
+
+  ipcMain.handle('gif:preview-retake', (event) => {
+    if (!validGifPreview(event)) return
+    closeGifPreview()
+    setImmediate(() => void startGifCapture())
+  })
+
+  ipcMain.handle('gif:preview-discard', (event) => {
+    if (validGifPreview(event)) closeGifPreview()
   })
 
   ipcMain.handle('gif:cancel', (event) => {
@@ -684,6 +787,90 @@ function closeRecording(): void {
   if (window && !window.isDestroyed()) window.destroy()
   if (border && !border.isDestroyed()) border.destroy()
   for (const strip of shade) if (!strip.isDestroyed()) strip.destroy()
+}
+
+async function cleanupExpiredGifClipboardFiles(): Promise<void> {
+  const directory = path.join(app.getPath('temp'), 'Capturo', 'Clipboard')
+  try {
+    const entries = await fs.readdir(directory, { withFileTypes: true })
+    await Promise.all(entries.map(async (entry) => {
+      if (!entry.isFile()) return
+      const filePath = path.join(directory, entry.name)
+      const stats = await fs.stat(filePath)
+      if (isExpiredGifClipboardFile(entry.name, stats.mtimeMs)) await fs.unlink(filePath)
+    }))
+  } catch {
+    // The directory normally does not exist until an unsaved preview is copied.
+  }
+}
+
+function validGifPreview(event: Electron.IpcMainInvokeEvent): GifPreviewState | null {
+  if (!gifPreviewWindow || gifPreviewWindow.isDestroyed() || !gifPreviewState) return null
+  return event.sender.id === gifPreviewWindow.webContents.id ? gifPreviewState : null
+}
+
+function closeGifPreview(): void {
+  const window = gifPreviewWindow
+  gifPreviewWindow = null
+  gifPreviewState = null
+  if (window && !window.isDestroyed()) window.destroy()
+}
+
+function openGifPreview(bytes: Buffer): void {
+  closeGifPreview()
+  gifPreviewState = { bytes, savedPath: null, clipboardPath: null }
+
+  const window = new BrowserWindow({
+    width: 820,
+    height: 620,
+    minWidth: 620,
+    minHeight: 460,
+    title: 'Capturo GIF Preview',
+    icon: taskbarIcon(),
+    backgroundColor: '#080c13',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  gifPreviewWindow = window
+  window.on('closed', () => {
+    if (gifPreviewWindow === window) {
+      gifPreviewWindow = null
+      gifPreviewState = null
+    }
+  })
+  window.webContents.on('did-finish-load', () => {
+    if (window.isDestroyed() || gifPreviewWindow !== window || !gifPreviewState) return
+    const source = gifPreviewState.bytes
+    const payloadBytes = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength) as ArrayBuffer
+    window.webContents.send('gif:preview-init', { bytes: payloadBytes, byteLength: source.byteLength })
+    if (isGifPreviewScreenshot) {
+      setTimeout(() => {
+        if (window.isDestroyed()) return
+        void window.capturePage().then((image) => {
+          const output = path.join(app.getPath('temp'), 'capturo-gif-preview-smoke.png')
+          return fs.writeFile(output, image.toPNG()).then(() => {
+            console.error(`[gif-preview-smoke] screenshot ${output}`)
+          })
+        })
+      }, 1000)
+    }
+  })
+  window.once('ready-to-show', () => {
+    if (!window.isDestroyed()) {
+      window.show()
+      window.focus()
+    }
+  })
+
+  const devUrl = rendererUrl()
+  if (devUrl) void window.loadURL(`${devUrl}/gif-preview.html`)
+  else void window.loadFile(path.join(__dirname, '../renderer/gif-preview.html'))
 }
 
 function nativeWindowHandle(window: BrowserWindow): bigint | null {
@@ -988,6 +1175,20 @@ function openSettings(): void {
     if (settingsWindow === window) settingsWindow = null
   })
   window.once('ready-to-show', () => window.show())
+  if (isSettingsScreenshot) {
+    window.webContents.once('did-finish-load', () => {
+      void window.webContents.executeJavaScript(
+        "document.querySelector('[data-tab=\"gif\"]')?.click()"
+      ).then(() => new Promise<void>((resolve) => setTimeout(resolve, 250)))
+        .then(() => window.capturePage())
+        .then((image) => {
+          const output = path.join(app.getPath('temp'), 'capturo-gif-settings-smoke.png')
+          return fs.writeFile(output, image.toPNG()).then(() => {
+            console.error(`[settings-smoke] screenshot ${output}`)
+          })
+        })
+    })
+  }
 
   const devUrl = rendererUrl()
   if (devUrl) void window.loadURL(`${devUrl}/settings.html`)
@@ -1007,6 +1208,7 @@ if (!app.requestSingleInstanceLock()) {
     // OS returns a malformed dictionary base path. Keep the service off before any renderer is
     // created so those unrelated cache trees cannot reappear beside the source code.
     electronSession.defaultSession.setSpellCheckerEnabled(false)
+    void cleanupExpiredGifClipboardFiles()
     const loadedSettings = loadSettings()
     // Reconcile the OS login item on every packaged launch so uninstall/reinstall or a moved
     // executable cannot leave the persisted preference and the registered path out of sync.
@@ -1021,6 +1223,11 @@ if (!app.requestSingleInstanceLock()) {
     registerInitialShortcuts()
     createTray()
     if (isSettingsSmokeInstance) openSettings()
+    if (isGifPreviewSmokeInstance) {
+      void fs.readFile(path.join(app.getPath('temp'), 'capturo-smoke.gif'))
+        .then((bytes) => openGifPreview(bytes))
+        .catch(() => console.error('[gif-preview-smoke] %TEMP%\\capturo-smoke.gif is unavailable'))
+    }
     if (isSmokeInstance) void startCapture()
     if (isGifSmokeInstance) void startGifCapture()
     if (isGifRecordSmoke) {
@@ -1042,6 +1249,7 @@ if (!app.requestSingleInstanceLock()) {
     isQuitting = true
     closeSession()
     closeRecording()
+    closeGifPreview()
     stopCaptureHelper()
     globalShortcut.unregisterAll()
   })

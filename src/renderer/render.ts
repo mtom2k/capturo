@@ -72,7 +72,23 @@ function drawArrowHead(context: CanvasRenderingContext2D, start: Point, end: Poi
   context.stroke()
 }
 
-function applyBlur(context: CanvasRenderingContext2D, rect: Rect, lineWidth: number): void {
+function clampedIntensity(intensity: number): number {
+  return Math.max(1, Math.min(100, Number.isFinite(intensity) ? intensity : 50))
+}
+
+function clampedEffectScale(scale: number): number {
+  return Number.isFinite(scale) && scale > 0 ? scale : 1
+}
+
+export function blurRadiusForIntensity(intensity: number, scale = 1): number {
+  return (1 + ((clampedIntensity(intensity) - 1) / 99) * 31) * clampedEffectScale(scale)
+}
+
+export function pixelBlockForIntensity(intensity: number, scale = 1): number {
+  return Math.max(1, Math.round((2 + ((clampedIntensity(intensity) - 1) / 99) * 62) * clampedEffectScale(scale)))
+}
+
+function applyBlur(context: CanvasRenderingContext2D, rect: Rect, intensity: number, scale: number): void {
   if (rect.width < 2 || rect.height < 2) return
   const temporary = document.createElement('canvas')
   temporary.width = Math.max(1, Math.round(rect.width))
@@ -84,14 +100,14 @@ function applyBlur(context: CanvasRenderingContext2D, rect: Rect, lineWidth: num
   context.beginPath()
   context.rect(rect.x, rect.y, rect.width, rect.height)
   context.clip()
-  context.filter = `blur(${Math.max(5, lineWidth * 2)}px)`
+  context.filter = `blur(${blurRadiusForIntensity(intensity, scale)}px)`
   context.drawImage(temporary, rect.x, rect.y, rect.width, rect.height)
   context.restore()
 }
 
-function applyPixelate(context: CanvasRenderingContext2D, rect: Rect, lineWidth: number): void {
+function applyPixelate(context: CanvasRenderingContext2D, rect: Rect, intensity: number, scale: number): void {
   if (rect.width < 2 || rect.height < 2) return
-  const block = Math.max(8, Math.round(lineWidth * 3))
+  const block = pixelBlockForIntensity(intensity, scale)
   const temporary = document.createElement('canvas')
   temporary.width = Math.max(1, Math.ceil(rect.width / block))
   temporary.height = Math.max(1, Math.ceil(rect.height / block))
@@ -234,10 +250,10 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
       break
     }
     case 'blur':
-      applyBlur(context, annotation.rect, style.lineWidth)
+      applyBlur(context, annotation.rect, style.effectIntensity ?? 50, style.effectScale ?? 1)
       break
     case 'pixelate':
-      applyPixelate(context, annotation.rect, style.lineWidth)
+      applyPixelate(context, annotation.rect, style.effectIntensity ?? 50, style.effectScale ?? 1)
       break
   }
   context.restore()

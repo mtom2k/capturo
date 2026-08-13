@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.15.2-blue)
+![version](https://img.shields.io/badge/version-0.16.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.15.2 is the current source version; the latest published Windows x64 release remains v0.15.1 until 0.15.2 is explicitly packaged and released.
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.16.0 is the current source version; the latest published Windows x64 release remains v0.15.1 until 0.16.0 is explicitly packaged and released.
 
-For the current source version, `npm run dist:win` produces two local Windows 0.15.2 artifacts in `release/`. Official releases publish the installer only:
+For the current source version, `npm run dist:win` produces two local Windows 0.16.0 artifacts in `release/`. Official releases publish the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.15.2-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.15.2-x64.exe` | Portable executable for local validation. |
+| `Capturo-Setup-0.16.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.16.0-x64.exe` | Portable executable for local validation. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -66,6 +66,8 @@ The toolbar sits under the selection. Tools are on the first row; the second row
 
 Stroke width and numbered-step size are pixel sliders, 1 to 24px and 10 to 48px, and they update as you drag so you can judge the size against the screenshot underneath. Text keeps a list of preset sizes from 12px to 48px. Pick an existing annotation with the Select tool and the slider jumps to that object's size, so you can adjust something you already drew.
 
+Blur and Pixelate use **Intensity** rather than Size. Their 1-100% slider updates live: a low percentage lightly obscures the area, while a high percentage applies a wider blur or larger pixel blocks. Selecting an existing Blur or Pixelate region restores its saved intensity for adjustment.
+
 ### Transparent backgrounds
 
 Choose **Transparent background** (or press `K`), then click the background color inside the capture. Capturo removes only matching pixels connected to that point, so the same color elsewhere behind a separated foreground object is retained. Adjust **Tolerance** to include nearby tones and **Edge feather** from 0-10px to smooth the cutout. The popup also accepts hex and RGB values and offers Before, After, and Split previews over a checkerboard; drag the blue divider directly or use its slider.
@@ -83,20 +85,25 @@ Right-click the tray icon and choose **Settings…**. It is deliberately small, 
 
 The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, a **pre-timer** from 0-10 seconds (3 seconds by default), a toggle for showing frame totals in the recording bar, and a rebindable **GIF shortcut**, all persisted the same way.
 
+![GIF recording settings](./docs/gif-settings.png)
+
 Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options.
 
 ## 🎬 Recording a GIF
 
-> GIF capture shipped in 0.13.0. Copying a GIF to the clipboard is not included — save it, then
-> share the file.
+Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and the protected control bar counts down before capture begins. The default pre-timer is 3 seconds; choose 0-10 seconds in Settings → GIF, with 0 disabling it. Once the countdown reaches zero, the bar switches to **Pause/Resume**, **Stop**, a running timer, and—when enabled in GIF Settings—a frame count. Disabling **Frame count** also hides processed and encoded totals during finalization. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and open the animated preview.
 
-Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and the protected control bar counts down before capture begins. The default pre-timer is 3 seconds; choose 0-10 seconds in Settings → GIF, with 0 disabling it. Once the countdown reaches zero, the bar switches to **Pause/Resume**, **Stop**, a running timer, and—when enabled in GIF Settings—a frame count. Disabling **Frame count** also hides processed and encoded totals during finalization and saving. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and save a `.gif`.
+![Finished GIF preview with copy, save, folder, retake, and discard actions](./docs/gif-preview.png)
+
+The preview replaces the old immediate Save As prompt. Use **Copy** (`Ctrl/Cmd+C`) to place the animated GIF on the clipboard, **Save** (`Ctrl/Cmd+S`) to choose a permanent location, **Open folder** to reveal a saved GIF, **Retake** to discard the preview and select a new region, or **Discard** (`Esc`) to close it. Saving leaves the preview open. Open folder becomes available after a successful save.
+
+On Windows, Copy places the actual `.gif` file on the clipboard, so the animation is preserved rather than flattened to one image. If the preview has not been saved, Capturo writes a temporary clipboard file only when Copy is pressed; it remains available after the preview closes so paste still works, and expired copies are cleaned on a later launch. The normal preview itself stays in memory until Save or Copy is explicitly chosen.
 
 The ring, the dimming, and the control bar are all excluded from the recording, so the GIF contains only your region. Recordings can be any length, and pixels that do not change between frames are not re-encoded, so a mostly-static recording stays small while keeping its quality. Frame rate and quality come from the GIF settings tab.
 
 Frame rate controls the requested sampling cadence. Playback timing follows the recording's active elapsed time, so a large region that cannot be sampled at the full requested rate still plays at real-world speed rather than speeding up; paused time is not included.
 
-Capturo keeps only two frames in flight to the encoder. If a large or complex region cannot sustain the selected FPS, the control bar can report skipped sampling ticks instead of allowing an ever-growing encoding backlog; those gaps still retain their real elapsed duration. After Stop, the bar can show bounded finalization progress and then switches to Saving. The numeric reports are hidden when **Frame count** is off, but the same bounded processing still happens.
+Capturo keeps only two frames in flight to the encoder. If a large or complex region cannot sustain the selected FPS, the control bar can report skipped sampling ticks instead of allowing an ever-growing encoding backlog; those gaps still retain their real elapsed duration. After Stop, the bar can show bounded finalization progress and then switches to Opening preview. The numeric reports are hidden when **Frame count** is off, but the same bounded processing still happens.
 
 ## 🌈 HDR displays
 
@@ -117,7 +124,7 @@ Capturo handles your screen pixels, so it keeps them local:
 - No network requests at all. Nothing is uploaded, ever.
 - No telemetry, no analytics, no crash reporting.
 - No account and no login.
-- Captured pixels are never written to disk unless you choose **Save**. Capturo writes only its small, pixel-free `settings.json` automatically.
+- Captured pixels are never written to disk unless you choose **Save** or explicitly copy an unsaved GIF. Windows GIF Copy needs a temporary `.gif` file because the clipboard carries a file path; Capturo retains it so paste works after the preview closes and cleans expired copies on a later launch. Outside that action, Capturo writes only its small, pixel-free `settings.json` automatically.
 
 The renderer runs sandboxed with context isolation and no Node.js access. Every OS level action goes through a small set of explicit IPC handlers.
 

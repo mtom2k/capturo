@@ -4,15 +4,15 @@ Last updated: 2026-08-13
 
 ## Phase
 
-`0.15.2` is the current source version. The latest published Windows x64 release remains `v0.15.1`; Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+`0.16.0` is the current source version. The latest published Windows x64 release remains `v0.15.1`; Windows x64 is the only tested platform, and macOS remains untested and unsupported.
 
-Version 0.15.2 adds a Global Settings section with an Open on startup toggle. The pure settings model, production build, visual layout, and packaged Windows login-item enable/disable behavior are verified; launch after a real sign-out/sign-in remains in the hands-on checklist below.
+Version 0.16.0 gives Blur and Pixelate a dedicated 1-100% Intensity control whose strength increases consistently and is stored per effect. It also refreshes the user documentation with current GIF Settings and finished-preview screenshots. Version 0.15.2 replaced the immediate post-recording GIF Save As dialog with an animated preview offering Copy, Save, Open folder, Retake, and Discard. Windows GIF Copy uses a native `CF_HDROP` file entry so animation is preserved. It also added the Global Settings section with an Open on startup toggle; launch after a real sign-out/sign-in remains in the hands-on checklist below.
 
 Version 0.15.1 adds a non-destructive Transparent background screenshot tool with connected-pixel removal, sampled/hex/RGB target colors, perceptual tolerance, 0-10px feathering, checkerboard Before/After/Split preview, undo, automatic application on Copy/Save, and automatic PNG output. It also replaces the application and tray/menu-bar branding with the supplied purple Capturo artwork and disables Electron's unused spellchecker so Windows does not create malformed cache folders beside the source tree.
 
 ## Current build
 
-The package version is `0.15.2`. The production source build and a packaged unpacked-app smoke have been verified, but no 0.15.2 installer or portable executable has been produced or published yet. Existing Windows artifacts live in `release/` and are described by `release/BUILD-INFO.txt`. The published GitHub release remains `v0.15.1` (Windows x64 installer only). Local binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.16.0`. The existing Windows x64 setup and portable executables in `release/` remain local `0.15.2` artifacts and are described by `release/BUILD-INFO.txt`; they include the GIF preview but predate the Blur/Pixelate intensity change. Run `npm run dist:win` before binary-testing or publishing 0.16.0. The published GitHub release remains `v0.15.1` (Windows x64 installer only). Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -35,7 +35,7 @@ The package version is `0.15.2`. The production source build and a packaged unpa
 - [x] Pixel sliders for stroke width and numbered-step size
 - [x] Text with font family, size, bold, and italic
 - [x] Existing-object selection, movement, resizing, deletion, and property editing
-- [x] Blur and pixelate
+- [x] Blur and pixelate with independent 1-100% intensity controls
 - [x] Connected-background transparency with tolerance, feathering, live comparison, undo, and forced PNG output
 - [x] Color palette
 - [x] Contextual customization bar below the primary toolbar
@@ -53,7 +53,7 @@ The package version is `0.15.2`. The production source build and a packaged unpa
 - [x] Settings persisted to `userData/settings.json` (no captured pixels)
 - [x] Global Open on startup preference defaults off, is isolated from development login items, and registers/removes the packaged Windows login item
 - [x] GIF: tray New GIF item and rebindable GIF shortcut open region selection
-- [x] GIF: record a region live (cursor included) and save a valid, correctly-cropped `.gif`
+- [x] GIF: record a region live (cursor included) and preview a valid, correctly-cropped animation before export
 - [x] GIF: inter-frame differencing keeps files small (static content ~30x smaller)
 - [x] GIF: runs of identical frames coalesce into a single written frame (delay extended)
 - [x] GIF: content-protected control bar, border ring, and shade (absent from the capture)
@@ -64,7 +64,8 @@ The package version is `0.15.2`. The production source build and a packaged unpa
 - [x] GIF: encoder backpressure caps transferred raw frames at two and reports skipped/finalizing progress
 - [x] GIF: localized changes quantize/map only changed pixels, with a 25% full-frame fallback threshold
 - [x] GIF: exact Windows recording-chrome bounds with the DWM-owned grey border suppressed
-- [ ] GIF: copy the finished GIF to the clipboard — deferred past 0.14.0 (per-platform work; see To do)
+- [x] GIF: post-recording preview with Copy, Save, Open folder, Retake, and Discard
+- [x] GIF: Windows animated-file clipboard copy through native `CF_HDROP`
 - [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
 - [ ] Settings GUI smoke test on Windows
@@ -204,12 +205,28 @@ The package version is `0.15.2`. The production source build and a packaged unpa
   - both executables report product version `0.15.1`; `Get-AuthenticodeSignature` reports `NotSigned` for each, so the GitHub release publishes only the Windows x64 installer with an explicit unknown-publisher warning
   - packaged taskbar and tray assets match their generated source hashes, and no malformed Unicode or renamed spelling-cache directories remain in the repository root
 - 2026-08-13 `0.15.2` source verification gate:
-  - package and lockfile versions are both `0.15.2`; `npm install` reports zero vulnerabilities, and `npm run build` passes type checking, all 63 tests, and the production build
+  - package and lockfile versions are both `0.15.2`; `npm install` reports zero vulnerabilities, and the initial source gate passed type checking, all 63 tests, and the production build
   - the Global Settings layout was inspected at its exact 460x452 window size, and a packaged Windows unpacked-app smoke verified that enabling Open on startup creates the expected current-executable login entry and disabling it removes that entry
   - the smoke left no login entry, temporary settings file, or Capturo process behind; a real sign-out/sign-in launch remains a hands-on check
-  - no 0.15.2 installer, portable executable, tag, or GitHub release has been created; `v0.15.1` remains the published Windows release
+  - this initial gate preceded the GIF preview work and local Windows packaging recorded below; `v0.15.1` remains the published GitHub release
+- 2026-08-13 unreleased GIF preview verification:
+  - the native Windows helper rebuild passed, including its new serialized `clipboard-file` request; a real `CF_HDROP` smoke reported the existing `%TEMP%\capturo-smoke.gif` as a `.gif` FileDropList item with the expected 12,737-byte length
+  - `npm run build` passes strict type checking, all 65 tests, and the production build; added regressions reject incomplete/non-GIF signatures before preview creation and constrain temporary cleanup to expired Capturo-owned GIF files
+  - the dev-only preview smoke rendered the animated `%TEMP%\capturo-smoke.gif`, reported its 12.4 KB size and unsaved state, kept Open folder disabled, and produced `%TEMP%\capturo-gif-preview-smoke.png` for visual inspection; the smoke process tree and native helper were stopped afterward
+  - hands-on Save dialog, post-preview paste into Explorer, Retake, and Discard remain in the GUI checklist
+- 2026-08-13 `0.15.2` local Windows packaging gate:
+  - `npm run dist:win` passed type checking, all 65 tests, and the production build before producing fresh Windows x64 setup and portable executables; `release/BUILD-INFO.txt` inventories only those two 0.15.2 artifacts
+  - the setup SHA-256 is `16789ffa0a19c84a22d8f316b0a71a6d1df9f5702f3d4c046568fdc164c939cf`; the portable SHA-256 is `b6b0c54796536c3cc32c7d77020415ef1891360501e781115e28074d33e2f115`
+  - both executables report product and file version `0.15.2`; `Get-AuthenticodeSignature` reports `NotSigned` for each
+  - the packaged native helper hash exactly matches the freshly compiled helper, confirming the `CF_HDROP` GIF-copy implementation is included; no tag or GitHub release was created
+  - the portable executable launched with isolated preview-smoke settings, rendered the packaged GIF preview, and refreshed `%TEMP%\capturo-gif-preview-smoke.png`; its process tree was stopped after verification
+- 2026-08-13 v0.16.0 Blur/Pixelate intensity gate:
+  - Blur and Pixelate no longer expose or consume stroke Size; each stores its own 1-100% Intensity and restores it when selected
+  - pure mappings are strictly monotonic across representative percentages, clamp invalid input, and preserve visible strength at scaled source-pixel densities: Blur spans 1-32 CSS-pixel-equivalent radius and Pixelate spans 2-64 CSS-pixel-equivalent blocks
+  - `npm run build` passes strict type checking, all 70 tests, and the production build; hands-on comparison over fine text at 1%, 50%, and 100% remains in the GUI checklist
+  - the unpacked production app rendered the current GIF Settings and animated GIF Preview surfaces into `docs/gif-settings.png` and `docs/gif-preview.png`; the preview smoke also exposed and verified a containment fix for wide GIFs, keeping the header and full action row visible
 
-## Post-0.15.2 follow-up
+## Open follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
@@ -225,14 +242,11 @@ The package version is `0.15.2`. The production source build and a packaged unpa
 
 - Runs of identical frames coalesce into a single written frame — the pending frame's delay is extended instead of emitting a new full-palette frame — on top of the transparent-pixel differencing, cutting per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
 
-### Deferred past 0.14.0
-
-- Copy the finished GIF to the clipboard. There is no clean, Electron-native, cross-platform way to put an animated GIF (or a `CF_HDROP` file drop) on the clipboard: Windows needs a file drop, macOS a GIF-data/file-URL pasteboard write, and the two share no code. A PowerShell `Set-Clipboard` shell-out was rejected as too heavy for a privacy-minimal app that otherwise spawns no external process but its own capture helper. When taken up, do it properly per platform — Windows via a `--clipboard-file` mode on the existing native helper; macOS via NSPasteboard once macOS is actually supported.
-
 ## Known constraints
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
 - macOS screen capture requires user-granted Screen Recording permission.
+- Animated GIF clipboard behavior is implemented on Windows as a file drop and its native protocol is verified; an end-to-end paste from the preview remains in the hands-on checklist. The macOS raw-GIF pasteboard fallback remains unverified with real applications.
 - macOS build, sign, and notarization must run on macOS; they cannot be validated from the Windows development host.
 - Local Windows artifacts are not Authenticode-signed unless signing credentials are supplied to `electron-builder`.

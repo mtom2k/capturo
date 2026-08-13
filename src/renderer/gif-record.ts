@@ -228,10 +228,10 @@ function stop(): void {
 async function onEncoded(bytes: ArrayBuffer, encodedFrames: number): Promise<void> {
   worker?.terminate()
   worker = null
-  timerEl.textContent = 'Saving…'
+  timerEl.textContent = 'Opening preview…'
   if (showFrameCount) framesEl.textContent = `${encodedFrames} encoded frame${encodedFrames === 1 ? '' : 's'}`
-  await window.capturoGif.saveRecording(bytes)
-  // Main closes this window after the save dialog resolves.
+  await window.capturoGif.showPreview(bytes)
+  // Main replaces this recording window with the preview.
 }
 
 function cancel(): void {

@@ -13,7 +13,8 @@
 //     capturo-capture.exe --output <file.png> [--origin-x X --origin-y Y] [--sdr-white-nits N]
 //   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin:
 //     "<originX>\t<originY>\t<outputPath>" captures a display and
-//     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome.
+//     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome and
+//     "clipboard-file\t<absolutePath>" places that file on the clipboard as CF_HDROP.
 //     One JSON result line is written per request. The Direct3D device and DXGI desktop
 //     duplication are kept alive across requests. See D-017 and D-021.
 //
@@ -21,6 +22,8 @@
 
 #include <windows.h>
 #include <dwmapi.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #include <d3d11.h>
 #include <dxgi1_6.h>
 #include <wincodec.h>
@@ -28,6 +31,7 @@
 #include <DirectXPackedVector.h>
 
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -556,6 +560,70 @@ void SuppressWindowBorder(unsigned long long rawHandle) {
     std::fflush(stdout);
 }
 
+void CopyFileToClipboard(const std::wstring& filePath) {
+    const SIZE_T pathBytes = (filePath.size() + 2) * sizeof(wchar_t);
+    const SIZE_T allocationBytes = sizeof(DROPFILES) + pathBytes;
+    HGLOBAL memory = GlobalAlloc(GHND | GMEM_SHARE, allocationBytes);
+    if (!memory) {
+        std::fputs("{\"ok\":false,\"stage\":\"GlobalAlloc\"}\n", stdout);
+        std::fflush(stdout);
+        return;
+    }
+
+    auto* drop = static_cast<DROPFILES*>(GlobalLock(memory));
+    if (!drop) {
+        GlobalFree(memory);
+        std::fputs("{\"ok\":false,\"stage\":\"GlobalLock\"}\n", stdout);
+        std::fflush(stdout);
+        return;
+    }
+    drop->pFiles = sizeof(DROPFILES);
+    drop->fWide = TRUE;
+    auto* destination = reinterpret_cast<wchar_t*>(reinterpret_cast<BYTE*>(drop) + sizeof(DROPFILES));
+    std::memcpy(destination, filePath.c_str(), (filePath.size() + 1) * sizeof(wchar_t));
+    destination[filePath.size() + 1] = L'\0';
+    GlobalUnlock(memory);
+
+    HWND clipboardOwner = CreateWindowExW(
+        0, L"STATIC", L"Capturo Clipboard", 0,
+        0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+    bool opened = false;
+    for (int attempt = 0; attempt < 5 && !opened; ++attempt) {
+        opened = OpenClipboard(clipboardOwner) != FALSE;
+        if (!opened) Sleep(25);
+    }
+    if (!opened) {
+        if (clipboardOwner) DestroyWindow(clipboardOwner);
+        GlobalFree(memory);
+        std::fputs("{\"ok\":false,\"stage\":\"OpenClipboard\"}\n", stdout);
+        std::fflush(stdout);
+        return;
+    }
+
+    const bool copied = EmptyClipboard() != FALSE && SetClipboardData(CF_HDROP, memory) != nullptr;
+    if (copied) {
+        const UINT preferredDropEffect = RegisterClipboardFormatW(L"Preferred DropEffect");
+        HGLOBAL effectMemory = GlobalAlloc(GHND, sizeof(DWORD));
+        if (preferredDropEffect != 0 && effectMemory) {
+            auto* effect = static_cast<DWORD*>(GlobalLock(effectMemory));
+            if (effect) {
+                *effect = 1; // DROPEFFECT_COPY
+                GlobalUnlock(effectMemory);
+                if (!SetClipboardData(preferredDropEffect, effectMemory)) GlobalFree(effectMemory);
+            } else {
+                GlobalFree(effectMemory);
+            }
+        } else if (effectMemory) {
+            GlobalFree(effectMemory);
+        }
+    }
+    CloseClipboard();
+    if (clipboardOwner) DestroyWindow(clipboardOwner);
+    if (!copied) GlobalFree(memory); // The clipboard owns memory after successful SetClipboardData.
+    std::fputs(copied ? "{\"ok\":true}\n" : "{\"ok\":false,\"stage\":\"SetClipboardData\"}\n", stdout);
+    std::fflush(stdout);
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -588,6 +656,10 @@ int wmain(int argc, wchar_t** argv) {
         if (t1 != std::string::npos && line.substr(0, t1) == "window-border") {
             const unsigned long long handle = std::strtoull(line.substr(t1 + 1).c_str(), nullptr, 10);
             SuppressWindowBorder(handle);
+            continue;
+        }
+        if (t1 != std::string::npos && line.substr(0, t1) == "clipboard-file") {
+            CopyFileToClipboard(Utf8ToWide(line.substr(t1 + 1)));
             continue;
         }
         const size_t t2 = t1 == std::string::npos ? std::string::npos : line.find('\t', t1 + 1);

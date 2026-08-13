@@ -9,6 +9,7 @@ export const MAX_GIF_COLORS = 256
 // sustain the requested sampling cadence, the recorder skips samples instead of building an
 // unbounded queue of full-resolution RGBA buffers. Active timestamps preserve wall-clock time.
 export const MAX_GIF_FRAMES_IN_FLIGHT = 2
+export const GIF_CLIPBOARD_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 // A crop rectangle expressed as fractions (0-1) of the recorded display, so it is resolution
 // independent between the frozen selection image and the live capture stream.
@@ -28,7 +29,17 @@ export type GifRecordPayload = {
   autoStopMs?: number
 }
 
-export type GifSaveResult = { saved: boolean; canceled: boolean; filePath?: string }
+export type GifPreviewPayload = {
+  bytes: ArrayBuffer
+  byteLength: number
+}
+
+export type GifPreviewActionResult = {
+  ok: boolean
+  canceled?: boolean
+  filePath?: string
+  error?: string
+}
 
 export type CapturoGifApi = {
   // Called by the selection overlay: the user chose a region and pressed Start Recording.
@@ -36,10 +47,29 @@ export type CapturoGifApi = {
   startRecording: (sessionId: string, region: Rect) => Promise<boolean>
   // Subscribed by the recording window to receive its crop, encoding settings, and pre-timer.
   onRecordInitialize: (listener: (payload: GifRecordPayload) => void) => () => void
-  // Called by the recording window with the finished GIF bytes; main saves (and copies).
-  saveRecording: (bytes: ArrayBuffer) => Promise<GifSaveResult>
+  // Hands finished bytes to the main process, which replaces the recording chrome with the
+  // post-recording preview. No file is written until the user chooses Save or Copy.
+  showPreview: (bytes: ArrayBuffer) => Promise<boolean>
+  onPreviewInitialize: (listener: (payload: GifPreviewPayload) => void) => () => void
+  copyPreview: () => Promise<GifPreviewActionResult>
+  savePreview: () => Promise<GifPreviewActionResult>
+  openPreviewFolder: () => Promise<GifPreviewActionResult>
+  retakePreview: () => Promise<void>
+  discardPreview: () => Promise<void>
   // Called by the recording window to abandon the recording.
   cancelRecording: () => Promise<void>
+}
+
+export function hasGifSignature(bytes: ArrayBuffer | Uint8Array): boolean {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  if (view.byteLength < 6) return false
+  const version = String.fromCharCode(...view.subarray(0, 6))
+  return version === 'GIF87a' || version === 'GIF89a'
+}
+
+export function isExpiredGifClipboardFile(name: string, modifiedMs: number, nowMs = Date.now()): boolean {
+  return name.startsWith('Capturo ') && name.endsWith('.gif') &&
+    Number.isFinite(modifiedMs) && nowMs - modifiedMs > GIF_CLIPBOARD_FILE_MAX_AGE_MS
 }
 
 // Quality (1-100) maps to GIF palette size — fewer colours means smaller files. The GIF keeps

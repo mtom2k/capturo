@@ -30,6 +30,10 @@ export type Smoothing = 'low' | 'medium' | 'high'
 export type AnnotationStyle = {
   color: string
   lineWidth: number
+  // Blur and pixelate strength as a user-facing percentage, independent of stroke size.
+  effectIntensity: number
+  // Source-pixel multiplier captured when the effect is created, for consistent DPI strength.
+  effectScale: number
   fontFamily: string
   fontSize: number
   fontWeight: 'normal' | 'bold'

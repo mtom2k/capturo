@@ -11,6 +11,8 @@ import type { AnnotationStyle, TextAnnotation } from '../src/shared/types'
 const style: AnnotationStyle = {
   color: '#ef4444',
   lineWidth: 4,
+  effectIntensity: 50,
+  effectScale: 1,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 20,
   fontWeight: 'normal',

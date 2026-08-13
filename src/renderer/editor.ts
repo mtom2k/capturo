@@ -39,11 +39,14 @@ const optionsBar = document.querySelector<HTMLElement>('#options-bar')!
 const toolbar = document.querySelector<HTMLElement>('#toolbar')!
 const colorOptions = document.querySelector<HTMLElement>('#color-options')!
 const lineWidthOption = document.querySelector<HTMLElement>('#line-width-option')!
+const effectIntensityOption = document.querySelector<HTMLElement>('#effect-intensity-option')!
 const smoothingOption = document.querySelector<HTMLElement>('#smoothing-option')!
 const stepSizeOption = document.querySelector<HTMLElement>('#step-size-option')!
 const textOptions = document.querySelector<HTMLElement>('#text-options')!
 const lineWidthSlider = document.querySelector<HTMLInputElement>('#line-width')!
 const lineWidthValue = document.querySelector<HTMLElement>('#line-width-value')!
+const effectIntensitySlider = document.querySelector<HTMLInputElement>('#effect-intensity')!
+const effectIntensityValue = document.querySelector<HTMLElement>('#effect-intensity-value')!
 const smoothingSelect = document.querySelector<HTMLSelectElement>('#smoothing')!
 const stepSizeSlider = document.querySelector<HTMLInputElement>('#step-size')!
 const stepSizeValue = document.querySelector<HTMLElement>('#step-size-value')!
@@ -98,6 +101,7 @@ let selectedAnnotationId: string | null = null
 let claimed = false
 let color = '#ef4444'
 let lineWidth = 4
+let effectIntensity = 50
 let smoothing: Smoothing = 'medium'
 let stepSize = 18
 let fontFamily = 'system-ui, sans-serif'
@@ -146,6 +150,8 @@ function styleSnapshot(): AnnotationStyle {
   return {
     color,
     lineWidth: lineWidth * pixelScale,
+    effectIntensity,
+    effectScale: pixelScale,
     fontFamily,
     fontSize: (activeTool === 'step' ? stepSize : fontSize) * scale.y,
     fontWeight,
@@ -302,6 +308,8 @@ function configureOptions(tool: Tool): void {
   const usesColor = !['select', 'blur', 'pixelate', 'transparent'].includes(tool)
   colorOptions.hidden = !usesColor
   lineWidthOption.hidden = tool === 'select' || tool === 'text' || tool === 'step' || tool === 'transparent'
+  if (tool === 'blur' || tool === 'pixelate') lineWidthOption.hidden = true
+  effectIntensityOption.hidden = tool !== 'blur' && tool !== 'pixelate'
   smoothingOption.hidden = tool !== 'pen'
   stepSizeOption.hidden = tool !== 'step'
   textOptions.hidden = tool !== 'text'
@@ -404,7 +412,7 @@ function applyTransparencyDraft(): void {
   setStatus('Background removed · PNG output enabled')
 }
 
-// Sliders carry a pixel size, so they show the value they are set to rather than snapping
+// Pixel-size sliders show the value they are set to rather than snapping
 // to a named step. Selecting an existing object can produce a fractional size, which is
 // rounded for display only; the object keeps its exact size until the slider is moved.
 function setSlider(slider: HTMLInputElement, readout: HTMLElement, value: number): void {
@@ -432,6 +440,7 @@ function selectAnnotation(annotation: Annotation | null): void {
   const pixelScale = (scale.x + scale.y) / 2
   color = annotation.style.color
   lineWidth = annotation.style.lineWidth / pixelScale
+  effectIntensity = annotation.style.effectIntensity ?? 50
   smoothing = annotation.style.smoothing
   fontFamily = annotation.style.fontFamily
   fontSize = annotation.style.fontSize / scale.y
@@ -442,6 +451,8 @@ function selectAnnotation(annotation: Annotation | null): void {
     swatch.classList.toggle('selected', swatch.dataset.color === color)
   }
   setSlider(lineWidthSlider, lineWidthValue, lineWidth)
+  effectIntensitySlider.value = String(Math.max(1, Math.min(100, Math.round(effectIntensity))))
+  effectIntensityValue.textContent = `${effectIntensitySlider.value}%`
   smoothingSelect.value = smoothing
   fontFamilySelect.value = fontFamily
   closestOption(fontSizeSelect, fontSize)
@@ -978,12 +989,17 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-color]'
   })
 }
 
-// Sliders update while being dragged so the size can be judged against the screenshot.
+// Sliders update while being dragged so size or effect intensity can be judged live.
 lineWidthSlider.addEventListener('input', () => {
   lineWidth = Number(lineWidthSlider.value)
   lineWidthValue.textContent = `${lineWidth}px`
   const scale = imageScale()
   updateSelectedStyle({ lineWidth: lineWidth * ((scale.x + scale.y) / 2) })
+})
+effectIntensitySlider.addEventListener('input', () => {
+  effectIntensity = Number(effectIntensitySlider.value)
+  effectIntensityValue.textContent = `${effectIntensity}%`
+  updateSelectedStyle({ effectIntensity })
 })
 smoothingSelect.addEventListener('change', () => {
   smoothing = smoothingSelect.value as Smoothing
