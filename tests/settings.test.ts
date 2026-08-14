@@ -20,6 +20,15 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ global: { openAtStartup: 'true' } }).global.openAtStartup).toBe(false)
   })
 
+  it('keeps automatic update checks explicitly opt-in', () => {
+    expect(DEFAULT_SETTINGS.global.automaticallyCheckForUpdates).toBe(false)
+    expect(DEFAULT_SETTINGS.global.lastUpdateCheckAt).toBe(0)
+    expect(normalizeSettings({ global: { automaticallyCheckForUpdates: true } }).global.automaticallyCheckForUpdates).toBe(true)
+    expect(normalizeSettings({ global: { automaticallyCheckForUpdates: 'true' } }).global.automaticallyCheckForUpdates).toBe(false)
+    expect(normalizeSettings({ global: { lastUpdateCheckAt: 1234 } }).global.lastUpdateCheckAt).toBe(1234)
+    expect(normalizeSettings({ global: { lastUpdateCheckAt: -1 } }).global.lastUpdateCheckAt).toBe(0)
+  })
+
   it('clamps and rounds JPEG quality into range', () => {
     expect(normalizeSettings({ capture: { jpegQuality: 200 } }).capture.jpegQuality).toBe(100)
     expect(normalizeSettings({ capture: { jpegQuality: 5 } }).capture.jpegQuality).toBe(60)
@@ -100,8 +109,12 @@ describe('mergeSettings', () => {
   })
 
   it('overlays a global update without touching capture or GIF', () => {
-    const merged = mergeSettings(DEFAULT_SETTINGS, { global: { openAtStartup: true } })
+    const merged = mergeSettings(DEFAULT_SETTINGS, {
+      global: { openAtStartup: true, automaticallyCheckForUpdates: true, lastUpdateCheckAt: 1234 }
+    })
     expect(merged.global.openAtStartup).toBe(true)
+    expect(merged.global.automaticallyCheckForUpdates).toBe(true)
+    expect(merged.global.lastUpdateCheckAt).toBe(1234)
     expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
     expect(merged.gif).toEqual(DEFAULT_SETTINGS.gif)
   })

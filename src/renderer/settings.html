@@ -25,6 +25,27 @@
             <span class="knob"></span>
           </button>
         </div>
+
+        <div class="row">
+          <div class="label">
+            <span>Automatic update checks</span>
+            <small>Check stable GitHub Releases after launch and once per day.</small>
+          </div>
+          <button class="switch" id="automatic-update-check" role="switch" aria-checked="false" aria-label="Automatically check for Capturo updates" title="When enabled, packaged Capturo contacts GitHub after launch and no more than once every 24 hours; it never downloads or installs an update">
+            <span class="knob"></span>
+          </button>
+        </div>
+
+        <div class="row">
+          <div class="label update-label">
+            <span>Updates</span>
+            <small id="update-status" role="status" aria-live="polite">Checks the latest stable Capturo release on GitHub.</small>
+          </div>
+          <div class="update-actions">
+            <button class="settings-button" id="check-updates" title="Check GitHub for the latest published stable Capturo release">Check for updates</button>
+            <button class="settings-button" id="view-update" hidden title="Open the official Capturo release page in your browser">View release</button>
+          </div>
+        </div>
       </section>
 
       <section class="panel" data-panel="capture" role="tabpanel" hidden>

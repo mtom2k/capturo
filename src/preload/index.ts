@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CapturePayload, CapturoApi, Rect, SceneUpdate } from '../shared/types'
 import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
 import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
+import type { CapturoUpdatesApi } from '../shared/updates'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -56,6 +57,14 @@ const gifApi: CapturoGifApi = {
   cancelRecording: () => ipcRenderer.invoke('gif:cancel')
 }
 
+// Exposed to Settings only in normal use. The main process validates the sender before opening
+// the release page, and the API never accepts an arbitrary URL from the renderer.
+const updatesApi: CapturoUpdatesApi = {
+  check: () => ipcRenderer.invoke('updates:check'),
+  openReleasesPage: () => ipcRenderer.invoke('updates:open-releases')
+}
+
 contextBridge.exposeInMainWorld('capturo', api)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
 contextBridge.exposeInMainWorld('capturoGif', gifApi)
+contextBridge.exposeInMainWorld('capturoUpdates', updatesApi)

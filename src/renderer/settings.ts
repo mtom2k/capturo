@@ -14,6 +14,10 @@ const panels = document.querySelectorAll<HTMLElement>('.panel')
 // Global tab
 const openAtStartupSwitch = document.querySelector<HTMLButtonElement>('#open-at-startup')!
 const startupError = document.querySelector<HTMLElement>('#startup-error')!
+const automaticUpdateCheckSwitch = document.querySelector<HTMLButtonElement>('#automatic-update-check')!
+const checkUpdatesButton = document.querySelector<HTMLButtonElement>('#check-updates')!
+const viewUpdateButton = document.querySelector<HTMLButtonElement>('#view-update')!
+const updateStatus = document.querySelector<HTMLElement>('#update-status')!
 
 // Capture tab
 const formatButtons = document.querySelectorAll<HTMLButtonElement>('[data-format]')
@@ -117,6 +121,8 @@ function setHint(field: ShortcutField, message: string, error = false): void {
 function render(settings: Settings): void {
   openAtStartupSwitch.classList.toggle('on', settings.global.openAtStartup)
   openAtStartupSwitch.setAttribute('aria-checked', String(settings.global.openAtStartup))
+  automaticUpdateCheckSwitch.classList.toggle('on', settings.global.automaticallyCheckForUpdates)
+  automaticUpdateCheckSwitch.setAttribute('aria-checked', String(settings.global.automaticallyCheckForUpdates))
 
   renderFormat(settings.capture.format)
   qualitySlider.value = String(settings.capture.jpegQuality)
@@ -188,6 +194,45 @@ openAtStartupSwitch.addEventListener('click', () => {
     startupError.textContent = result.startupError
     startupError.hidden = false
   })
+})
+
+automaticUpdateCheckSwitch.addEventListener('click', () => {
+  void apply({
+    global: {
+      automaticallyCheckForUpdates: !automaticUpdateCheckSwitch.classList.contains('on')
+    }
+  })
+})
+
+checkUpdatesButton.addEventListener('click', () => {
+  checkUpdatesButton.disabled = true
+  checkUpdatesButton.textContent = 'Checking…'
+  viewUpdateButton.hidden = true
+  updateStatus.classList.remove('success', 'error')
+  updateStatus.textContent = 'Contacting GitHub Releases…'
+  void window.capturoUpdates.check().then((result) => {
+    if (result.status === 'available') {
+      updateStatus.textContent = `Version ${result.latestVersion} is available. You have ${result.currentVersion}.`
+      updateStatus.classList.add('success')
+      viewUpdateButton.hidden = false
+    } else if (result.status === 'up-to-date') {
+      updateStatus.textContent = `Capturo ${result.currentVersion} is up to date.`
+      updateStatus.classList.add('success')
+    } else {
+      updateStatus.textContent = result.message
+      if (result.status === 'error') updateStatus.classList.add('error')
+    }
+  }).catch(() => {
+    updateStatus.textContent = 'The update check could not be completed.'
+    updateStatus.classList.add('error')
+  }).finally(() => {
+    checkUpdatesButton.disabled = false
+    checkUpdatesButton.textContent = 'Check for updates'
+  })
+})
+
+viewUpdateButton.addEventListener('click', () => {
+  void window.capturoUpdates.openReleasesPage()
 })
 
 for (const button of formatButtons) {

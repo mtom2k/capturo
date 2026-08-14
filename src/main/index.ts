@@ -28,6 +28,11 @@ import {
 } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
 import {
+  CAPTURO_RELEASES_URL,
+  nextAutomaticUpdateDelay,
+  type UpdateCheckResult
+} from '../shared/updates'
+import {
   hasGifSignature,
   isExpiredGifClipboardFile,
   type CropRect,
@@ -44,6 +49,7 @@ import {
   stopCaptureHelper,
   suppressWindowBorder
 } from './capture-helper'
+import { checkGithubForUpdate } from './updates'
 
 type OverlayEntry = {
   window: BrowserWindow
@@ -86,6 +92,10 @@ type GifPreviewState = {
 }
 let gifPreviewWindow: BrowserWindow | null = null
 let gifPreviewState: GifPreviewState | null = null
+let automaticUpdateTimer: ReturnType<typeof setTimeout> | null = null
+let updateCheckInFlight: Promise<UpdateCheckResult> | null = null
+let availableUpdateVersion: string | null = null
+let lastNotifiedUpdateVersion: string | null = null
 // The accelerators currently registered with the OS, per action. Tracked so a rebind can
 // cleanly unregister the old one and roll back to it if the new one is rejected.
 const activeShortcuts: Partial<Record<ShortcutKind, string>> = {}
@@ -96,6 +106,11 @@ const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
 const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
 const isSettingsSmokeInstance = process.env.CAPTURO_SETTINGS_ON_START === '1'
 const isSettingsScreenshot = process.env.CAPTURO_SETTINGS_SCREENSHOT === '1'
+const requestedSettingsScreenshotTab = process.env.CAPTURO_SETTINGS_SCREENSHOT_TAB
+const settingsScreenshotTab = ['global', 'capture', 'gif'].includes(requestedSettingsScreenshotTab ?? '')
+  ? requestedSettingsScreenshotTab!
+  : 'gif'
+const isSettingsUpdateCheckSmoke = process.env.CAPTURO_SETTINGS_CHECK_UPDATES === '1'
 const isGifPreviewSmokeInstance = process.env.CAPTURO_GIF_PREVIEW_ON_START === '1'
 const isGifPreviewScreenshot = process.env.CAPTURO_GIF_PREVIEW_SCREENSHOT === '1'
 // Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
@@ -104,6 +119,9 @@ const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 // Opt-in phase timings for the capture path, printed to stderr. Off by default so normal
 // runs stay quiet; used to measure the invocation latency end to end.
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
+const AUTOMATIC_UPDATE_INITIAL_DELAY_MS = 15_000
+const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
+const AUTOMATIC_UPDATE_BUSY_RETRY_MS = 5 * 60 * 1000
 
 // Documentation screenshots must also work on headless/virtualized Windows hosts where
 // Chromium cannot start a GPU process. This affects screenshot smoke runs only.
@@ -184,6 +202,93 @@ function revealOverlay(entry: OverlayEntry): void {
 function notify(title: string, body: string): void {
   if (!getSettings().capture.showNotification) return
   if (Notification.isSupported()) new Notification({ title, body, silent: true, icon: taskbarIcon() }).show()
+}
+
+function updateCheckBlockedByCapture(): boolean {
+  return session !== null || recordingWindow !== null
+}
+
+async function openCapturoReleases(): Promise<boolean> {
+  try {
+    await shell.openExternal(CAPTURO_RELEASES_URL)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function showUpdateAvailable(result: Extract<UpdateCheckResult, { status: 'available' }>): void {
+  availableUpdateVersion = result.latestVersion
+  refreshTray()
+  if (lastNotifiedUpdateVersion === result.latestVersion || !Notification.isSupported()) return
+  lastNotifiedUpdateVersion = result.latestVersion
+  const notification = new Notification({
+    title: `Capturo ${result.latestVersion} is available`,
+    body: 'Open the official GitHub release to review and download it.',
+    silent: true,
+    icon: taskbarIcon()
+  })
+  notification.on('click', () => void openCapturoReleases())
+  notification.show()
+}
+
+function performUpdateCheck(): Promise<UpdateCheckResult> {
+  const currentVersion = app.getVersion()
+  if (!app.isPackaged) {
+    return Promise.resolve({
+      status: 'unavailable',
+      currentVersion,
+      message: 'Update checks are available in packaged Capturo builds.'
+    })
+  }
+  if (updateCheckBlockedByCapture()) {
+    return Promise.resolve({
+      status: 'unavailable',
+      currentVersion,
+      message: 'Finish the active capture or recording, then check again.'
+    })
+  }
+  if (!updateCheckInFlight) {
+    updateCheckInFlight = checkGithubForUpdate(currentVersion).then((result) => {
+      updateSettings({ global: { lastUpdateCheckAt: Date.now() } })
+      if (result.status === 'available') showUpdateAvailable(result)
+      else if (result.status === 'up-to-date') {
+        availableUpdateVersion = null
+        refreshTray()
+      }
+      return result
+    }).finally(() => {
+      updateCheckInFlight = null
+    })
+  }
+  return updateCheckInFlight
+}
+
+function automaticUpdateDelay(minimumMs: number): number {
+  return nextAutomaticUpdateDelay(
+    getSettings().global.lastUpdateCheckAt,
+    Date.now(),
+    minimumMs,
+    AUTOMATIC_UPDATE_INTERVAL_MS
+  )
+}
+
+function cancelAutomaticUpdateCheck(): void {
+  if (automaticUpdateTimer) clearTimeout(automaticUpdateTimer)
+  automaticUpdateTimer = null
+}
+
+function scheduleAutomaticUpdateCheck(delayMs = AUTOMATIC_UPDATE_INTERVAL_MS): void {
+  cancelAutomaticUpdateCheck()
+  if (!app.isPackaged || !getSettings().global.automaticallyCheckForUpdates || isQuitting) return
+  automaticUpdateTimer = setTimeout(() => {
+    automaticUpdateTimer = null
+    if (updateCheckBlockedByCapture()) {
+      scheduleAutomaticUpdateCheck(AUTOMATIC_UPDATE_BUSY_RETRY_MS)
+      return
+    }
+    void performUpdateCheck().finally(() => scheduleAutomaticUpdateCheck())
+  }, delayMs)
 }
 
 function rendererUrl(): string | null {
@@ -512,6 +617,24 @@ function encodeCapture(image: Electron.NativeImage, filePath: string, settings: 
 function registerIpc(): void {
   ipcMain.handle('settings:get', () => getSettings())
 
+  ipcMain.handle('updates:check', (event): Promise<UpdateCheckResult> => {
+    if (!settingsWindow || settingsWindow.isDestroyed() ||
+        event.sender.id !== settingsWindow.webContents.id) {
+      return Promise.resolve({
+        status: 'error',
+        currentVersion: app.getVersion(),
+        message: 'The update check is only available from Capturo Settings.'
+      })
+    }
+    return performUpdateCheck()
+  })
+
+  ipcMain.handle('updates:open-releases', (event): Promise<boolean> => {
+    if (!settingsWindow || settingsWindow.isDestroyed() ||
+        event.sender.id !== settingsWindow.webContents.id) return Promise.resolve(false)
+    return openCapturoReleases()
+  })
+
   // A settings change is persisted immediately. A shortcut change additionally re-registers
   // the global accelerator; if the OS rejects the new one, the stored shortcut and the live
   // registration are both rolled back to the previous working value and the reason is
@@ -526,6 +649,11 @@ function registerIpc(): void {
         !applyOpenAtStartup(next.global.openAtStartup)) {
       next = updateSettings({ global: { openAtStartup: before.global.openAtStartup } })
       startupError = `Could not ${update.global?.openAtStartup ? 'enable' : 'disable'} Open on startup. Kept the previous setting.`
+    }
+
+    if (next.global.automaticallyCheckForUpdates !== before.global.automaticallyCheckForUpdates) {
+      if (next.global.automaticallyCheckForUpdates) scheduleAutomaticUpdateCheck(automaticUpdateDelay(1_000))
+      else cancelAutomaticUpdateCheck()
     }
 
     if (next.capture.captureShortcut !== before.capture.captureShortcut &&
@@ -1129,6 +1257,9 @@ function refreshTray(): void {
       { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
       { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
       { label: 'Settings…', click: () => openSettings() },
+      ...(availableUpdateVersion
+        ? [{ label: `Update available: v${availableUpdateVersion}`, click: () => void openCapturoReleases() }]
+        : []),
       { type: 'separator' },
       { label: `Version ${version}`, enabled: false },
       { label: 'Quit Capturo', click: () => { isQuitting = true; app.quit() } }
@@ -1178,11 +1309,12 @@ function openSettings(): void {
   if (isSettingsScreenshot) {
     window.webContents.once('did-finish-load', () => {
       void window.webContents.executeJavaScript(
-        "document.querySelector('[data-tab=\"gif\"]')?.click()"
-      ).then(() => new Promise<void>((resolve) => setTimeout(resolve, 250)))
+        `document.querySelector('[data-tab="${settingsScreenshotTab}"]')?.click();` +
+        (isSettingsUpdateCheckSmoke ? "document.querySelector('#check-updates')?.click();" : '')
+      ).then(() => new Promise<void>((resolve) => setTimeout(resolve, isSettingsUpdateCheckSmoke ? 2_000 : 250)))
         .then(() => window.capturePage())
         .then((image) => {
-          const output = path.join(app.getPath('temp'), 'capturo-gif-settings-smoke.png')
+          const output = path.join(app.getPath('temp'), `capturo-${settingsScreenshotTab}-settings-smoke.png`)
           return fs.writeFile(output, image.toPNG()).then(() => {
             console.error(`[settings-smoke] screenshot ${output}`)
           })
@@ -1222,6 +1354,7 @@ if (!app.requestSingleInstanceLock()) {
     registerDisplayMediaHandler()
     registerInitialShortcuts()
     createTray()
+    scheduleAutomaticUpdateCheck(automaticUpdateDelay(AUTOMATIC_UPDATE_INITIAL_DELAY_MS))
     if (isSettingsSmokeInstance) openSettings()
     if (isGifPreviewSmokeInstance) {
       void fs.readFile(path.join(app.getPath('temp'), 'capturo-smoke.gif'))
@@ -1250,6 +1383,7 @@ if (!app.requestSingleInstanceLock()) {
     closeSession()
     closeRecording()
     closeGifPreview()
+    cancelAutomaticUpdateCheck()
     stopCaptureHelper()
     globalShortcut.unregisterAll()
   })

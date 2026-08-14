@@ -107,6 +107,55 @@ button {
   color: #f97362;
 }
 
+.update-label {
+  min-width: 0;
+}
+
+.update-label small {
+  max-width: 245px;
+  line-height: 1.35;
+}
+
+.update-label small.success {
+  color: #72d59a;
+}
+
+.update-label small.error {
+  color: #f97362;
+}
+
+.update-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+
+.settings-button {
+  min-width: 82px;
+  padding: 6px 10px;
+  border: 1px solid #3a414c;
+  border-radius: 6px;
+  background: #171b22;
+  color: #f8fafc;
+  font-size: 12px;
+}
+
+.settings-button:hover {
+  border-color: #4b5563;
+  background: #20252d;
+}
+
+.settings-button:focus-visible {
+  outline: 2px solid #1683ff;
+  outline-offset: 1px;
+}
+
+.settings-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* Segmented PNG / JPEG control. */
 .segmented {
   display: flex;

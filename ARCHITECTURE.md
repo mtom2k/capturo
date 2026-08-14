@@ -66,11 +66,15 @@ Blur and Pixelate are not geometric stroke sizes. Their `effectIntensity` is sto
 
 ## Settings
 
-Preferences are opened on demand from the tray and never form part of the steady state: the settings window is a normal framed `BrowserWindow`, reused if already open and destroyed on close. It loads the second renderer entry point (`settings.html`) through the same sandboxed, context-isolated preload as the capture overlays, and communicates only through the explicit `settings:get` / `settings:update` IPC handlers. See D-016.
+Preferences are opened on demand from the tray and never form part of the steady state: the settings window is a normal framed `BrowserWindow`, reused if already open and destroyed on close. It loads the second renderer entry point (`settings.html`) through the same sandboxed, context-isolated preload as the capture overlays, and communicates only through the explicit `settings:get` / `settings:update`, `updates:check`, and `updates:open-releases` IPC handlers. See D-016 and D-025.
 
-The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only settings file Capturo writes, and it holds no captured pixels — only the global open-on-startup preference, capture format/quality/notification/shortcut preferences, and GIF frame-rate/quality/pre-timer/frame-count-visibility/shortcut preferences. Capture format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding either shortcut re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS.
+The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only settings file Capturo writes, and it holds no captured pixels — only the global open-on-startup/update-check preferences and last-check timestamp, capture format/quality/notification/shortcut preferences, and GIF frame-rate/quality/pre-timer/frame-count-visibility/shortcut preferences. Capture format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding either shortcut re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS.
 
 Open on startup is also applied in the main process. Packaged Windows and macOS builds call Electron's login-item API when the preference changes and reconcile it again on every launch; a rejected change rolls the stored toggle back and returns an inline error to Settings. Development builds persist and render the value for UI work but deliberately do not register the Electron development executable with the operating system.
+
+Update checks are stable-release notifications, not an installer (D-025). `src/main/updates.ts` performs one bounded HTTPS GET to GitHub's public `releases/latest` API with no authentication or application data. Pure validation in `src/shared/updates.ts` accepts only non-draft, non-prerelease `vMAJOR.MINOR.PATCH` releases and compares them with `app.getVersion()`. Manual checks are available only from the Settings sender; automatic checks are packaged-build-only, disabled by default, delayed after startup, persisted to at most once per 24 hours across restarts, and deferred while screenshot/GIF capture or encoding is active. A newer version adds a fixed official-release action to the tray and a local notification. The sandboxed renderer cannot provide a URL, download bytes, or initiate installation.
+
+The endpoint must remain publicly readable. `mtom2k/capturo` is public and its anonymous `releases/latest` endpoint is the production feed; Capturo intentionally carries no GitHub token because a credential shipped in a desktop binary is not secret. If releases ever move to a dedicated public repository, migrate the API constant in `src/main/updates.ts` and browser URL in `src/shared/updates.ts` together and repeat the packaged network smoke.
 
 ## GIF capture
 
@@ -87,13 +91,13 @@ For a distinct frame whose changed pixels cover at most 25% of the region, the e
 ## Source layout
 
 ```text
-src/main/       Electron lifecycle, capture, tray, native integrations, settings + capture-helper,
+src/main/       Electron lifecycle, capture, tray, native integrations, settings/update checks + capture-helper,
                 GIF recording windows (selection, chrome, preview, file actions)
 src/preload/    contextBridge API (capture + settings + GIF)
 src/renderer/   capture/editor UI, settings window, GIF selection + recording + preview windows,
                 canvas rendering, styles, GIF encoder + worker
-src/shared/     IPC, geometry, settings, transparency, and GIF types/logic shared across process boundaries
-tests/          deterministic unit tests for pure geometry/model/settings/transparency/GIF behavior
+src/shared/     IPC, geometry, settings, update-version validation, transparency, and GIF logic
+tests/          deterministic unit tests for pure geometry/model/settings/update/transparency/GIF behavior
 ```
 
 ## Security boundary
@@ -102,7 +106,7 @@ tests/          deterministic unit tests for pure geometry/model/settings/transp
 - `contextIsolation: true`
 - `sandbox: true`
 - no remote content
-- no telemetry or network requests
+- no telemetry or captured-data network requests; optional version checks contact only GitHub Releases
 - all native operations are explicit IPC handlers
 
 ## Packaging

@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.16.0-blue)
+![version](https://img.shields.io/badge/version-0.17.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.16.0 is the current source version; the latest published Windows x64 release remains v0.15.1 until 0.16.0 is explicitly packaged and released.
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.17.0 is the current source and latest published Windows x64 release.
 
-For the current source version, `npm run dist:win` produces two local Windows 0.16.0 artifacts in `release/`. Official releases publish the installer only:
+For the current source version, `npm run dist:win` produces two local Windows 0.17.0 artifacts in `release/`. Official releases publish the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.16.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.16.0-x64.exe` | Portable executable for local validation. |
+| `Capturo-Setup-0.17.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.17.0-x64.exe` | Portable executable for local validation. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -79,15 +79,22 @@ Choose **Transparent background** (or press `K`), then click the background colo
 Right-click the tray icon and choose **Settings…**. It is deliberately small, and opens only when you ask for it: closing it leaves Capturo resident in the tray as before.
 
 - **Global → Open on startup.** Optionally launch Capturo into the notification area when you sign in to your device. It is off by default.
+- **Global → Automatic update checks.** Opt in to a stable-release check shortly after launch and at most once every 24 hours. It is off by default. Capturo reports an available version but never downloads or installs it.
+- **Global → Check for updates.** Manually compare your packaged Capturo version with the latest stable release on GitHub. If a newer release exists, **View release** opens Capturo's official Releases page in your browser.
+
+Capturo's release feed is publicly readable, so packaged builds can check it anonymously without embedding or storing a GitHub credential. The feed must remain public for installed update checks to keep working.
+
 - **Format.** Save as PNG (lossless) or JPEG. There is a **JPEG quality** slider for when you want smaller files. Format and quality apply to files you **Save**; **Copy** always puts a lossless image on the clipboard.
 - **Notification.** Turn the toast after a copy or save on or off.
 - **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.
+
+![Global settings with startup and update controls](./docs/global-settings.png)
 
 The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, a **pre-timer** from 0-10 seconds (3 seconds by default), a toggle for showing frame totals in the recording bar, and a rebindable **GIF shortcut**, all persisted the same way.
 
 ![GIF recording settings](./docs/gif-settings.png)
 
-Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options.
+Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options and the last update-check time used to enforce the daily limit.
 
 ## 🎬 Recording a GIF
 
@@ -121,7 +128,7 @@ The helper is Windows only and used only when it is present. It handles rotated 
 
 Capturo handles your screen pixels, so it keeps them local:
 
-- No network requests at all. Nothing is uploaded, ever.
+- No capture, settings, or usage data is uploaded—ever. The only optional network request is a version check against GitHub's public latest Capturo Release: manual when you press **Check for updates**, or after explicit opt-in shortly after launch and at most once per 24 hours. It sends no account token or device identifier and never downloads an update.
 - No telemetry, no analytics, no crash reporting.
 - No account and no login.
 - Captured pixels are never written to disk unless you choose **Save** or explicitly copy an unsaved GIF. Windows GIF Copy needs a temporary `.gif` file because the clipboard carries a file path; Capturo retains it so paste works after the preview closes and cleans expired copies on a later launch. Outside that action, Capturo writes only its small, pixel-free `settings.json` automatically.

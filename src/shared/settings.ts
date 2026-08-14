@@ -8,6 +8,11 @@ export type CaptureFormat = 'png' | 'jpeg'
 export type GlobalSettings = {
   // Whether the packaged app asks the OS to launch Capturo when the user signs in.
   openAtStartup: boolean
+  // Whether packaged builds may contact GitHub Releases after launch and once per day.
+  // Disabled by default so Capturo never gains network behavior without explicit consent.
+  automaticallyCheckForUpdates: boolean
+  // Internal scheduling metadata for the opt-in check. It contains no device or capture data.
+  lastUpdateCheckAt: number
 }
 
 export type CaptureSettings = {
@@ -78,7 +83,9 @@ export const GIF_FPS_OPTIONS = [10, 15, 20, 30] as const
 
 export const DEFAULT_SETTINGS: Settings = {
   global: {
-    openAtStartup: false
+    openAtStartup: false,
+    automaticallyCheckForUpdates: false,
+    lastUpdateCheckAt: 0
   },
   capture: {
     format: 'png',
@@ -124,6 +131,10 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
+function normalizeTimestamp(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+}
+
 function normalizeCapture(raw: unknown): CaptureSettings {
   const capture = isRecord(raw) ? raw : {}
   return {
@@ -137,7 +148,12 @@ function normalizeCapture(raw: unknown): CaptureSettings {
 function normalizeGlobal(raw: unknown): GlobalSettings {
   const global = isRecord(raw) ? raw : {}
   return {
-    openAtStartup: normalizeBoolean(global.openAtStartup, DEFAULT_SETTINGS.global.openAtStartup)
+    openAtStartup: normalizeBoolean(global.openAtStartup, DEFAULT_SETTINGS.global.openAtStartup),
+    automaticallyCheckForUpdates: normalizeBoolean(
+      global.automaticallyCheckForUpdates,
+      DEFAULT_SETTINGS.global.automaticallyCheckForUpdates
+    ),
+    lastUpdateCheckAt: normalizeTimestamp(global.lastUpdateCheckAt)
   }
 }
 

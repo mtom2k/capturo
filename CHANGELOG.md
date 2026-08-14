@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+## 0.17.0 - 2026-08-13
+
+### Added
+
+- Global Settings now has a manual **Check for updates** button and an opt-in automatic check.
+  Packaged builds compare their stable semantic version with GitHub's latest published Capturo
+  Release after launch and at most once per 24 hours. An available update is surfaced in
+  Settings, the tray menu, and a local notification; Capturo never downloads or installs it.
+
+### Security and privacy
+
+- Update requests run only in the main process, send no capture pixels, settings, account token,
+  or device identifier, reject drafts/prereleases/malformed version tags, and open only Capturo's
+  fixed official Releases URL. Automatic network access is disabled by default.
+
 ## 0.16.0 - 2026-08-13
 
 ### Changed

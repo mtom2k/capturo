@@ -4,7 +4,9 @@ Last updated: 2026-08-13
 
 ## Phase
 
-`0.16.0` is the current source version. The latest published Windows x64 release remains `v0.15.1`; Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+`0.17.0` is the current source and latest published Windows x64 release. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+
+Version 0.17.0 adds a manual **Check for updates** action and an opt-in, persisted daily stable-release check to Global Settings. The implementation is notification-only, main-process-owned, and never downloads or installs software. `mtom2k/capturo` is public, and installed builds can query its stable Releases anonymously without an embedded credential.
 
 Version 0.16.0 gives Blur and Pixelate a dedicated 1-100% Intensity control whose strength increases consistently and is stored per effect. It also refreshes the user documentation with current GIF Settings and finished-preview screenshots. Version 0.15.2 replaced the immediate post-recording GIF Save As dialog with an animated preview offering Copy, Save, Open folder, Retake, and Discard. Windows GIF Copy uses a native `CF_HDROP` file entry so animation is preserved. It also added the Global Settings section with an Open on startup toggle; launch after a real sign-out/sign-in remains in the hands-on checklist below.
 
@@ -12,7 +14,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.16.0`. The existing Windows x64 setup and portable executables in `release/` remain local `0.15.2` artifacts and are described by `release/BUILD-INFO.txt`; they include the GIF preview but predate the Blur/Pixelate intensity change. Run `npm run dist:win` before binary-testing or publishing 0.16.0. The published GitHub release remains `v0.15.1` (Windows x64 installer only). Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.17.0`. Fresh Windows x64 setup and portable executables are available in `release/` and described by `release/BUILD-INFO.txt`; they include the Blur/Pixelate intensity controls and the Global Settings update checker. The GitHub release publishes the Windows x64 installer only. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -52,6 +54,8 @@ The package version is `0.16.0`. The existing Windows x64 setup and portable exe
 - [x] Rebindable capture shortcut with conflict fallback
 - [x] Settings persisted to `userData/settings.json` (no captured pixels)
 - [x] Global Open on startup preference defaults off, is isolated from development login items, and registers/removes the packaged Windows login item
+- [x] Manual and opt-in daily stable-release checks with inline status, notification, and tray action; no download/install
+- [x] Public anonymous release feed for installed update checks
 - [x] GIF: tray New GIF item and rebindable GIF shortcut open region selection
 - [x] GIF: record a region live (cursor included) and preview a valid, correctly-cropped animation before export
 - [x] GIF: inter-frame differencing keeps files small (static content ~30x smaller)
@@ -225,12 +229,24 @@ The package version is `0.16.0`. The existing Windows x64 setup and portable exe
   - pure mappings are strictly monotonic across representative percentages, clamp invalid input, and preserve visible strength at scaled source-pixel densities: Blur spans 1-32 CSS-pixel-equivalent radius and Pixelate spans 2-64 CSS-pixel-equivalent blocks
   - `npm run build` passes strict type checking, all 70 tests, and the production build; hands-on comparison over fine text at 1%, 50%, and 100% remains in the GUI checklist
   - the unpacked production app rendered the current GIF Settings and animated GIF Preview surfaces into `docs/gif-settings.png` and `docs/gif-preview.png`; the preview smoke also exposed and verified a containment fix for wide GIFs, keeping the header and full action row visible
+- 2026-08-13 update-check development gate:
+  - `npm run build` passes strict type checking, all 80 tests, and the production main/preload/renderer build
+  - stable-semver regressions cover newer/equal/older versions plus draft, prerelease, malformed, leading-zero, and unsafe-number rejection; settings regressions cover the opt-in default and persisted timestamp validation
+  - an unpacked packaged Windows smoke opened the Global tab, invoked **Check for updates** through the real typed IPC/network path, and rendered the complete layout at 460x452
+  - after the repository became public, anonymous repository/release API requests confirmed `visibility: public` and returned stable, non-draft, non-prerelease `v0.15.1`
+  - the packaged 0.16.0 UI completed the real typed IPC/network path and rendered **Capturo 0.16.0 is up to date**; no credential is embedded and no download/install path exists
+- 2026-08-13 v0.17.0 release gate:
+  - `npm run build` passes strict type checking, all 80 tests, and the production main/preload/renderer build
+  - Windows x64 Setup and Portable packages both report product version 0.17.0 and match the hashes in `release/BUILD-INFO.txt`; the Setup SHA-256 is `03b259376262cb2bafa8d6d4028ce718a4ef3c163685415c73db4f5e79b32cb3`
+  - `Get-AuthenticodeSignature` reports `NotSigned` for both packages, so the GitHub release and README retain the explicit unknown-publisher warning
 
 ## Open follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
+- When the next version newer than 0.16.0 is published, complete the live available-update notification, tray action, and fixed release-link smoke; the comparison path is already regression-tested with a synthetic newer stable release.
+- Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 
 ### GIF optimization status
 
