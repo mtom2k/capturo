@@ -239,13 +239,15 @@ The package version is `0.17.0`. Fresh Windows x64 setup and portable executable
   - `npm run build` passes strict type checking, all 80 tests, and the production main/preload/renderer build
   - Windows x64 Setup and Portable packages both report product version 0.17.0 and match the hashes in `release/BUILD-INFO.txt`; the Setup SHA-256 is `03b259376262cb2bafa8d6d4028ce718a4ef3c163685415c73db4f5e79b32cb3`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both packages, so the GitHub release and README retain the explicit unknown-publisher warning
+  - GitHub published stable `v0.17.0` from `main` with the Windows installer; its anonymous latest-release API returned the same tag and asset digest
+  - the exact 0.16.0 packaged `app.asar`, run with the matching Electron runtime files in a disposable smoke directory, detected the live public release as **Version 0.17.0 is available. You have 0.16.0.** and exposed **View release**
 
 ## Open follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
-- When the next version newer than 0.16.0 is published, complete the live available-update notification, tray action, and fixed release-link smoke; the comparison path is already regression-tested with a synthetic newer stable release.
+- Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 
 ### GIF optimization status

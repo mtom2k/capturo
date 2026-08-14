@@ -90,6 +90,11 @@ Capturo's release feed is publicly readable, so packaged builds can check it ano
 
 ![Global settings with startup and update controls](./docs/global-settings.png)
 
+The release path is verified against real packaged versions: after v0.17.0 was published,
+Capturo 0.16.0 detected it through the public feed and exposed the fixed **View release** action.
+
+![Capturo 0.16.0 detecting the v0.17.0 release](./docs/update-available.png)
+
 The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, a **pre-timer** from 0-10 seconds (3 seconds by default), a toggle for showing frame totals in the recording bar, and a rebindable **GIF shortcut**, all persisted the same way.
 
 ![GIF recording settings](./docs/gif-settings.png)

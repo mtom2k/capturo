@@ -98,6 +98,11 @@ Verify on at least 100% and one scaled DPI setting:
 
 The 2026-08-04 passes covered scaled DPI, multi-display claim, pen rendering, exact-dimension clipboard export, lifecycle teardown, text entry, object manipulation, crop/annotation independence, step borders and sizing, contextual-toolbar ordering, paint-gated presentation, and the raster tray asset path on Windows 11.
 
+The 2026-08-13 release pass published stable v0.17.0 and then ran the exact packaged 0.16.0
+application code against GitHub's anonymous latest-release endpoint. Settings reported v0.17.0
+available, retained local v0.16.0 as the current version, and exposed **View release**. This proves
+the real older-client network and comparison path rather than only the pure synthetic fixture.
+
 ## macOS desktop matrix
 
 In addition to the common matrix:
