@@ -253,6 +253,7 @@ The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portabl
   - `npm run dist:win` passed the same 83-test gate and produced only the fresh 0.18.0 Windows x64 Setup and Portable executables; both report product/file version 0.18.0 and are inventoried in `release/BUILD-INFO.txt`
   - Setup SHA-256 is `d4eda632523413d4b84d49e73cc1d88ab4aec8de2ef0ed0a4facdfac62412619`; Portable SHA-256 is `ef6231272bb2822d6176035b696dd53e1536b1da0bfd35a0bf0a23ee8003d32b`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged helper exactly matches the freshly built native helper, and the unpacked packaged app completed the real local OCR → Electron clipboard smoke with exit code 0
+  - GitHub published stable `v0.18.0` from release commit `aa45bac` with the Windows x64 installer only; the public latest-release feed returns that tag and the uploaded asset digest exactly matches the locally verified Setup SHA-256
 
 ## Open follow-up
 
