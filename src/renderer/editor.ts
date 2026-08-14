@@ -56,6 +56,7 @@ const boldButton = document.querySelector<HTMLButtonElement>('#font-bold')!
 const italicButton = document.querySelector<HTMLButtonElement>('#font-italic')!
 const undoButton = document.querySelector<HTMLButtonElement>('#undo')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
+const copyTextButton = document.querySelector<HTMLButtonElement>('#copy-text')!
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
 const textEditor = document.querySelector<HTMLTextAreaElement>('#text-editor')!
@@ -296,12 +297,20 @@ function updateUiPosition(): void {
   editorUi.style.top = `${top}px`
 }
 
-function setStatus(message: string): void {
+function setStatus(message: string, duration = 1800): void {
   status.textContent = message
   status.classList.add('visible')
+  if (duration <= 0) return
   window.setTimeout(() => {
     if (status.textContent === message) status.classList.remove('visible')
-  }, 1800)
+  }, duration)
+}
+
+function setExportBusy(value: boolean): void {
+  busy = value
+  copyButton.disabled = value
+  copyTextButton.disabled = value
+  saveButton.disabled = value
 }
 
 function configureOptions(tool: Tool): void {
@@ -802,11 +811,30 @@ async function copyImage(): Promise<void> {
   commitTransparencyDraft()
   const dataUrl = exportedImage()
   if (!dataUrl) return
-  busy = true
+  setExportBusy(true)
   const copied = await window.capturo.copyImage(payload.sessionId, dataUrl)
   if (!copied) {
-    busy = false
+    setExportBusy(false)
     setStatus('Could not copy screenshot')
+  }
+}
+
+async function copyText(): Promise<void> {
+  if (busy || !payload) return
+  commitTransparencyDraft()
+  const dataUrl = exportedImage()
+  if (!dataUrl) return
+  setExportBusy(true)
+  setStatus('Extracting text with Windows OCR…', 0)
+  try {
+    const result = await window.capturo.copyText(payload.sessionId, dataUrl)
+    if (!result.copied) {
+      setExportBusy(false)
+      setStatus(result.error, result.empty ? 2600 : 3400)
+    }
+  } catch {
+    setExportBusy(false)
+    setStatus('Capturo could not extract text from this selection.', 3400)
   }
 }
 
@@ -815,10 +843,10 @@ async function saveImage(): Promise<void> {
   commitTransparencyDraft()
   const dataUrl = exportedImage()
   if (!dataUrl) return
-  busy = true
+  setExportBusy(true)
   const result = await window.capturo.saveImage(payload.sessionId, dataUrl, hasTransparency())
   if (!result.saved) {
-    busy = false
+    setExportBusy(false)
     if (!result.canceled) setStatus('Could not save screenshot')
   }
 }
@@ -855,6 +883,11 @@ function handleShortcut(event: KeyboardEvent): void {
     event.preventDefault()
     annotations = annotations.filter((annotation) => annotation.id !== selectedAnnotationId)
     selectAnnotation(null)
+    return
+  }
+  if (command && event.shiftKey && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    void copyText()
     return
   }
   if (command && event.key.toLowerCase() === 'c') {
@@ -1034,6 +1067,7 @@ undoButton.addEventListener('click', () => {
   else redraw()
 })
 copyButton.addEventListener('click', () => void copyImage())
+copyTextButton.addEventListener('click', () => void copyText())
 saveButton.addEventListener('click', () => void saveImage())
 cancelButton.addEventListener('click', () => void cancelCapture())
 

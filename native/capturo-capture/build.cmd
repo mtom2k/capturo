@@ -1,5 +1,5 @@
 @echo off
-REM Builds the HDR capture helper. Requires the MSVC toolchain and the Windows SDK, which
+REM Builds the Windows capture/OCR/clipboard helper. Requires the MSVC toolchain and Windows SDK, which
 REM come from the "Desktop development with C++" workload of Visual Studio Build Tools.
 REM
 REM Output: build\capturo-capture.exe, copied into the app by electron-builder.

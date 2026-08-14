@@ -1,10 +1,12 @@
 # Project State
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 ## Phase
 
-`0.17.0` is the current source and latest published Windows x64 release. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+`0.18.0` is the current source and latest published Windows x64 release. It adds local Windows OCR to screenshot captures. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+
+The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
 
 Version 0.17.0 adds a manual **Check for updates** action and an opt-in, persisted daily stable-release check to Global Settings. The implementation is notification-only, main-process-owned, and never downloads or installs software. `mtom2k/capturo` is public, and installed builds can query its stable Releases anonymously without an embedded credential.
 
@@ -14,7 +16,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.17.0`. Fresh Windows x64 setup and portable executables are available in `release/` and described by `release/BUILD-INFO.txt`; they include the Blur/Pixelate intensity controls and the Global Settings update checker. The GitHub release publishes the Windows x64 installer only. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portable executables are available in `release/` and described by `release/BUILD-INFO.txt`. The GitHub release publishes the Windows x64 installer only. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -29,6 +31,7 @@ The package version is `0.17.0`. Fresh Windows x64 setup and portable executable
 - [x] Multi-display overlays and single-display claim
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
+- [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
 - [x] Escape cancellation
 - [x] Pen with smoothing and modifier-axis lock
 - [x] Line and arrow
@@ -80,7 +83,7 @@ The package version is `0.17.0`. Fresh Windows x64 setup and portable executable
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 61/61 passed
+- `npm test`: 83/83 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -241,10 +244,20 @@ The package version is `0.17.0`. Fresh Windows x64 setup and portable executable
   - `Get-AuthenticodeSignature` reports `NotSigned` for both packages, so the GitHub release and README retain the explicit unknown-publisher warning
   - GitHub published stable `v0.17.0` from `main` with the Windows installer; its anonymous latest-release API returned the same tag and asset digest
   - the exact 0.16.0 packaged `app.asar`, run with the matching Electron runtime files in a disposable smoke directory, detected the live public release as **Version 0.17.0 is available. You have 0.16.0.** and exposed **View release**
+- 2026-08-14 v0.18.0 Windows Copy text gate:
+  - added the Copy text button immediately beside image Copy, `Ctrl/Cmd+Shift+C`, typed/sender-validated IPC, final-composite export, pending-transparency commit, no-text/error retention, and useful tooltips/status
+  - the native helper recognizes in-memory PNG bytes with `Windows.Media.Ocr`, current-user languages, maximum-dimension scaling, JSON-safe Unicode text, a 64 MiB caller bound, and a 20-second timeout; no OCR pixels are written or uploaded
+  - `npm run build` passes strict type checking, all 83 tests, and the production main/preload/renderer build; OCR normalization regressions cover Windows line endings, spacing/blank-line preservation, and empty/non-string values
+  - one-shot native OCR recognized a real Capturo UI screenshot; the application smoke copied 249 characters through persistent helper serve mode and Electron's real clipboard without logging contents, while a no-text image produced the expected message and non-zero automation exit
+  - after switching the helper to a multithreaded COM apartment for C++/WinRT, a native DXGI regression still captured and decoded a valid 3840x2160 four-channel sRGB PNG; the temporary test capture was removed
+  - `npm run dist:win` passed the same 83-test gate and produced only the fresh 0.18.0 Windows x64 Setup and Portable executables; both report product/file version 0.18.0 and are inventoried in `release/BUILD-INFO.txt`
+  - Setup SHA-256 is `d4eda632523413d4b84d49e73cc1d88ab4aec8de2ef0ed0a4facdfac62412619`; Portable SHA-256 is `ef6231272bb2822d6176035b696dd53e1536b1da0bfd35a0bf0a23ee8003d32b`
+  - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged helper exactly matches the freshly built native helper, and the unpacked packaged app completed the real local OCR → Electron clipboard smoke with exit code 0
 
 ## Open follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
+- Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
@@ -264,6 +277,7 @@ The package version is `0.17.0`. Fresh Windows x64 setup and portable executable
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
+- Copy text is Windows-only, depends on OCR languages installed for the current user, returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters.
 - macOS screen capture requires user-granted Screen Recording permission.
 - Animated GIF clipboard behavior is implemented on Windows as a file drop and its native protocol is verified; an end-to-end paste from the preview remains in the hands-on checklist. The macOS raw-GIF pasteboard fallback remains unverified with real applications.
 - macOS build, sign, and notarization must run on macOS; they cannot be validated from the Windows development host.

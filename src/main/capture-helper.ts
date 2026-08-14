@@ -5,7 +5,8 @@
 //
 // Protocol: one request per line on stdin. Capture requests are
 // "<originX>\t<originY>\t<outputPath>"; window-border requests are
-// "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>".
+// "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>";
+// OCR requests are "ocr-png\t<base64Png>" and keep captured pixels in memory.
 // The helper writes one JSON result per request, in order.
 // This module keeps a single batch in flight and serializes callers so responses never
 // interleave.
@@ -26,6 +27,7 @@ export type HelperResult = {
   height?: number
   stage?: string
   hr?: string
+  text?: string
   timings?: Record<string, number>
 }
 
@@ -42,6 +44,9 @@ export function helperAvailable(): boolean {
 // A capture must never hang the app; a helper that has not answered within this bound is
 // treated as failed (the caller falls back) and restarted.
 const REQUEST_TIMEOUT_MS = 6000
+// Prevent a compromised renderer from forcing an unbounded base64 allocation in the helper.
+// A typical full-display PNG is far below this ceiling, including noisy high-DPI captures.
+export const MAX_OCR_PNG_BYTES = 64 * 1024 * 1024
 
 type Pending = {
   expected: number
@@ -199,5 +204,22 @@ export async function copyFileToClipboard(filePath: string): Promise<boolean> {
     return result?.ok === true
   } catch {
     return false
+  }
+}
+
+export type OcrHelperResult =
+  | { ok: true; text: string }
+  | { ok: false; stage: string }
+
+// Runs Windows.Media.Ocr in the existing native helper. PNG bytes travel through its private
+// stdin pipe as base64, avoiding a temporary screenshot file or any network transfer.
+export async function recognizeTextFromPng(png: Buffer): Promise<OcrHelperResult> {
+  if (png.length === 0 || png.length > MAX_OCR_PNG_BYTES) return { ok: false, stage: 'image' }
+  try {
+    const [result] = await sendRequests([`ocr-png\t${png.toString('base64')}`], 20_000)
+    if (result?.ok === true && typeof result.text === 'string') return { ok: true, text: result.text }
+    return { ok: false, stage: result?.stage ?? 'ocr' }
+  } catch {
+    return { ok: false, stage: 'helper' }
   }
 }

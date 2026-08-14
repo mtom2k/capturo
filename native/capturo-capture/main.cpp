@@ -15,11 +15,13 @@
 //     "<originX>\t<originY>\t<outputPath>" captures a display and
 //     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome and
 //     "clipboard-file\t<absolutePath>" places that file on the clipboard as CF_HDROP.
+//     "ocr-png\t<base64Png>" recognizes text locally with Windows.Media.Ocr.
 //     One JSON result line is written per request. The Direct3D device and DXGI desktop
 //     duplication are kept alive across requests. See D-017 and D-021.
 //
 // Every result is a single line of JSON on stdout.
 
+#define NOMINMAX
 #include <windows.h>
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -27,13 +29,21 @@
 #include <d3d11.h>
 #include <dxgi1_6.h>
 #include <wincodec.h>
+#include <wincrypt.h>
 #include <wrl/client.h>
 #include <DirectXPackedVector.h>
+#include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Media.Ocr.h>
+#include <winrt/Windows.Storage.Streams.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -46,6 +56,8 @@
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "windowsapp.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -93,6 +105,139 @@ std::wstring Utf8ToWide(const std::string& s) {
     std::wstring w(static_cast<size_t>(n), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
     return w;
+}
+
+std::string JsonEscape(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 16);
+    for (const unsigned char c : value) {
+        switch (c) {
+        case '"': escaped += "\\\""; break;
+        case '\\': escaped += "\\\\"; break;
+        case '\b': escaped += "\\b"; break;
+        case '\f': escaped += "\\f"; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                char sequence[7]{};
+                std::snprintf(sequence, sizeof(sequence), "\\u%04X", c);
+                escaped += sequence;
+            } else {
+                escaped.push_back(static_cast<char>(c));
+            }
+        }
+    }
+    return escaped;
+}
+
+bool DecodeBase64(const std::string& encoded, std::vector<uint8_t>& bytes) {
+    DWORD byteCount = 0;
+    if (encoded.empty() || !CryptStringToBinaryA(
+            encoded.data(), static_cast<DWORD>(encoded.size()), CRYPT_STRING_BASE64,
+            nullptr, &byteCount, nullptr, nullptr)) return false;
+    bytes.resize(byteCount);
+    if (!CryptStringToBinaryA(
+            encoded.data(), static_cast<DWORD>(encoded.size()), CRYPT_STRING_BASE64,
+            bytes.data(), &byteCount, nullptr, nullptr)) {
+        bytes.clear();
+        return false;
+    }
+    bytes.resize(byteCount);
+    return !bytes.empty();
+}
+
+struct OcrResponse {
+    bool ok = false;
+    std::string text;
+    std::string stage = "ocr";
+    HRESULT hr = S_OK;
+};
+
+OcrResponse RecognizePng(const std::vector<uint8_t>& pngBytes) {
+    OcrResponse response;
+    if (pngBytes.empty()) {
+        response.stage = "image";
+        return response;
+    }
+
+    // The persistent helper runs in an MTA, so blocking the private protocol thread while these
+    // WinRT operations complete is safe and cannot stall Electron's renderer or main process.
+    try {
+        using namespace winrt::Windows::Graphics::Imaging;
+        using namespace winrt::Windows::Media::Ocr;
+        using namespace winrt::Windows::Storage::Streams;
+
+        const auto engine = OcrEngine::TryCreateFromUserProfileLanguages();
+        if (!engine) {
+            response.stage = "language";
+            return response;
+        }
+
+        InMemoryRandomAccessStream stream;
+        DataWriter writer(stream);
+        writer.WriteBytes(winrt::array_view<const uint8_t>(
+            pngBytes.data(), pngBytes.data() + pngBytes.size()));
+        writer.StoreAsync().get();
+        writer.DetachStream();
+        stream.Seek(0);
+
+        const auto decoder = BitmapDecoder::CreateAsync(stream).get();
+        const uint32_t sourceWidth = decoder.PixelWidth();
+        const uint32_t sourceHeight = decoder.PixelHeight();
+        if (sourceWidth == 0 || sourceHeight == 0) {
+            response.stage = "image";
+            return response;
+        }
+
+        BitmapTransform transform;
+        const uint32_t maximum = OcrEngine::MaxImageDimension();
+        const uint32_t largest = std::max(sourceWidth, sourceHeight);
+        if (maximum > 0 && largest > maximum) {
+            const double scale = static_cast<double>(maximum) / static_cast<double>(largest);
+            transform.ScaledWidth(std::max(1u, static_cast<uint32_t>(std::lround(sourceWidth * scale))));
+            transform.ScaledHeight(std::max(1u, static_cast<uint32_t>(std::lround(sourceHeight * scale))));
+        }
+
+        const auto bitmap = decoder.GetSoftwareBitmapAsync(
+            BitmapPixelFormat::Bgra8,
+            BitmapAlphaMode::Premultiplied,
+            transform,
+            ExifOrientationMode::RespectExifOrientation,
+            ColorManagementMode::ColorManageToSRgb).get();
+        const auto result = engine.RecognizeAsync(bitmap).get();
+        response.text = winrt::to_string(result.Text());
+        response.ok = true;
+        response.stage.clear();
+    } catch (const winrt::hresult_error& error) {
+        response.stage = "ocr";
+        response.hr = error.code();
+    } catch (...) {
+        response.stage = "ocr";
+    }
+    return response;
+}
+
+void PrintOcrResponse(const OcrResponse& response) {
+    if (response.ok) {
+        const std::string escaped = JsonEscape(response.text);
+        std::printf("{\"ok\":true,\"text\":\"%s\"}\n", escaped.c_str());
+    } else if (FAILED(response.hr)) {
+        std::printf("{\"ok\":false,\"stage\":\"%s\",\"hr\":\"0x%08lX\"}\n",
+            JsonEscape(response.stage).c_str(), static_cast<unsigned long>(response.hr));
+    } else {
+        std::printf("{\"ok\":false,\"stage\":\"%s\"}\n", JsonEscape(response.stage).c_str());
+    }
+    std::fflush(stdout);
+}
+
+std::vector<uint8_t> ReadFileBytes(const std::wstring& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file) return {};
+    return std::vector<uint8_t>(
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>());
 }
 
 // Windows exposes the SDR reference white through the display configuration APIs. The
@@ -632,12 +777,18 @@ int wmain(int argc, wchar_t** argv) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     QueryPerformanceFrequency(&g_qpcFreq);
 
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) { std::printf("{\"ok\":false,\"stage\":\"CoInitializeEx\",\"hr\":\"0x%08lX\"}\n", static_cast<unsigned long>(hr)); return 1; }
 
     Capturer cap;
 
-    // One-shot mode: any arguments mean a single --output capture (testing and fallback).
+    // One-shot OCR is a native smoke/debug path. The app uses the in-memory serve request.
+    if (argc == 3 && std::wstring(argv[1]) == L"--ocr") {
+        PrintOcrResponse(RecognizePng(ReadFileBytes(argv[2])));
+        return 0;
+    }
+
+    // One-shot capture: remaining arguments mean a single --output capture (testing/fallback).
     if (argc > 1) {
         Options options;
         if (!ParseOptions(argc, argv, options)) { std::printf("{\"ok\":false,\"stage\":\"arguments\"}\n"); return 2; }
@@ -660,6 +811,15 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (t1 != std::string::npos && line.substr(0, t1) == "clipboard-file") {
             CopyFileToClipboard(Utf8ToWide(line.substr(t1 + 1)));
+            continue;
+        }
+        if (t1 != std::string::npos && line.substr(0, t1) == "ocr-png") {
+            std::vector<uint8_t> pngBytes;
+            if (!DecodeBase64(line.substr(t1 + 1), pngBytes)) {
+                PrintOcrResponse(OcrResponse{ false, {}, "image", S_OK });
+            } else {
+                PrintOcrResponse(RecognizePng(pngBytes));
+            }
             continue;
         }
         const size_t t2 = t1 == std::string::npos ? std::string::npos : line.find('\t', t1 + 1);

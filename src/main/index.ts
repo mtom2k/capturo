@@ -18,7 +18,7 @@ import {
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { CapturePayload, OverlayRole, Point, Rect, SaveResult } from '../shared/types'
+import type { CapturePayload, CopyTextResult, OverlayRole, Point, Rect, SaveResult } from '../shared/types'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
   DEFAULT_GIF_SHORTCUT,
@@ -27,6 +27,7 @@ import {
   type SettingsUpdateResult
 } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
+import { normalizeRecognizedText } from '../shared/ocr'
 import {
   CAPTURO_RELEASES_URL,
   nextAutomaticUpdateDelay,
@@ -45,6 +46,8 @@ import {
   captureDisplays,
   copyFileToClipboard,
   helperAvailable,
+  MAX_OCR_PNG_BYTES,
+  recognizeTextFromPng,
   startCaptureHelper,
   stopCaptureHelper,
   suppressWindowBorder
@@ -113,12 +116,14 @@ const settingsScreenshotTab = ['global', 'capture', 'gif'].includes(requestedSet
 const isSettingsUpdateCheckSmoke = process.env.CAPTURO_SETTINGS_CHECK_UPDATES === '1'
 const isGifPreviewSmokeInstance = process.env.CAPTURO_GIF_PREVIEW_ON_START === '1'
 const isGifPreviewScreenshot = process.env.CAPTURO_GIF_PREVIEW_SCREENSHOT === '1'
+const ocrSmokeImagePath = process.env.CAPTURO_OCR_SMOKE_IMAGE?.trim() || null
 // Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
 // the record → encode → save pipeline.
 const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 // Opt-in phase timings for the capture path, printed to stderr. Off by default so normal
 // runs stay quiet; used to measure the invocation latency end to end.
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
+const MAX_OCR_DATA_URL_CHARS = 'data:image/png;base64,'.length + Math.ceil(MAX_OCR_PNG_BYTES * 4 / 3) + 4
 const AUTOMATIC_UPDATE_INITIAL_DELAY_MS = 15_000
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 const AUTOMATIC_UPDATE_BUSY_RETRY_MS = 5 * 60 * 1000
@@ -131,7 +136,7 @@ function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
-if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance) {
+if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance || ocrSmokeImagePath) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
 
@@ -587,6 +592,52 @@ function imageFromDataUrl(dataUrl: string): Electron.NativeImage | null {
   return image.isEmpty() ? null : image
 }
 
+async function recognizeAndCopyText(image: Electron.NativeImage): Promise<CopyTextResult> {
+  if (!helperAvailable()) {
+    return { copied: false, error: 'Copy text requires Capturo\u2019s Windows OCR component.' }
+  }
+
+  const result = await recognizeTextFromPng(image.toPNG())
+  if (!result.ok) {
+    const error = result.stage === 'language'
+      ? 'Install a Windows OCR language pack, then try Copy text again.'
+      : 'Capturo could not extract text from this selection.'
+    return { copied: false, error }
+  }
+
+  const text = normalizeRecognizedText(result.text)
+  if (!text) return { copied: false, empty: true, error: 'No text was found in this selection.' }
+
+  try {
+    clipboard.writeText(text)
+  } catch {
+    return { copied: false, error: 'Capturo could not write the extracted text to the clipboard.' }
+  }
+  return { copied: true }
+}
+
+// Opt-in developer smoke for the complete app/helper/clipboard path. The recognized contents
+// are deliberately not logged; only the copied character and line counts leave the process.
+async function runOcrSmoke(imagePath: string): Promise<void> {
+  let exitCode = 0
+  try {
+    const bytes = await fs.readFile(path.resolve(imagePath))
+    const image = nativeImage.createFromBuffer(bytes)
+    if (image.isEmpty()) throw new Error('input is not a readable image')
+    const result = await recognizeAndCopyText(image)
+    if (!result.copied) throw new Error(result.error)
+    const copied = clipboard.readText()
+    if (!copied) throw new Error('clipboard verification returned no text')
+    console.error(`[ocr-smoke] copied ${copied.length} characters across ${copied.split('\n').length} line(s)`)
+  } catch (error) {
+    exitCode = 1
+    console.error(`[ocr-smoke] ${error instanceof Error ? error.message : 'failed'}`)
+  } finally {
+    if (exitCode) app.exit(exitCode)
+    else app.quit()
+  }
+}
+
 // Format and quality apply to saved files only; the clipboard always gets a lossless
 // bitmap (see D-016). The renderer hands over a lossless PNG data URL regardless, and the
 // on-disk encoding is chosen here. The user can override the extension in the save dialog,
@@ -868,6 +919,25 @@ function registerIpc(): void {
     notify('Copied to clipboard', 'Your screenshot is ready to paste.')
     return true
   })
+
+  ipcMain.handle(
+    'capture:copy-text',
+    async (event, sessionId: string, dataUrl: string): Promise<CopyTextResult> => {
+      if (typeof dataUrl !== 'string' || dataUrl.length > MAX_OCR_DATA_URL_CHARS) {
+        return { copied: false, error: 'This selection is too large for text extraction.' }
+      }
+      const active = validSession(event, sessionId)
+      const image = imageFromDataUrl(dataUrl)
+      if (!active || !image) {
+        return { copied: false, error: 'The selected image is no longer available.' }
+      }
+      const result = await recognizeAndCopyText(image)
+      if (!result.copied) return result
+      closeSession()
+      notify('Text copied to clipboard', 'Extracted text is ready to paste.')
+      return { copied: true }
+    }
+  )
 
   ipcMain.handle(
     'capture:save',
@@ -1331,7 +1401,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => void startCapture())
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     if (process.platform === 'win32') app.setAppUserModelId('com.capturo.app')
     if (isMac) app.dock?.hide()
     // Capturo does not expose spelling suggestions or a dictionary UI. Electron otherwise
@@ -1340,6 +1410,13 @@ if (!app.requestSingleInstanceLock()) {
     // OS returns a malformed dictionary base path. Keep the service off before any renderer is
     // created so those unrelated cache trees cannot reappear beside the source code.
     electronSession.defaultSession.setSpellCheckerEnabled(false)
+    // The OCR smoke runs before settings/login-item reconciliation so its isolated profile
+    // cannot modify the user's real startup registration.
+    if (ocrSmokeImagePath) {
+      startCaptureHelper()
+      await runOcrSmoke(ocrSmokeImagePath)
+      return
+    }
     void cleanupExpiredGifClipboardFiles()
     const loadedSettings = loadSettings()
     // Reconcile the OS login item on every packaged launch so uninstall/reinstall or a moved

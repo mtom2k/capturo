@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.18.0 - 2026-08-14
+
+### Added
+
+- Screenshot captures now have **Copy text** immediately beside Copy. It uses the current
+  rendered selection, runs Windows' built-in OCR locally, and places recognized plain text on
+  the clipboard. `Ctrl/Cmd+Shift+C` invokes the same action, pending transparency is applied
+  automatically, and an empty or failed result leaves the editor open with useful feedback.
+
+### Security and privacy
+
+- OCR image bytes stay in memory and travel only over Capturo's private native-helper pipe;
+  Capturo adds no OCR network service, model download, telemetry, or temporary screenshot file.
+
 ## 0.17.0 - 2026-08-13
 
 ### Added

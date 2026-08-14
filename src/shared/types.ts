@@ -134,6 +134,10 @@ export type SaveResult = {
   filePath?: string
 }
 
+export type CopyTextResult =
+  | { copied: true }
+  | { copied: false; empty?: boolean; error: string }
+
 export type CapturoApi = {
   onInitialize: (listener: (payload: CapturePayload) => void) => () => void
   onSessionClosed: (listener: () => void) => () => void
@@ -143,6 +147,7 @@ export type CapturoApi = {
   captureFailed: (sessionId: string) => Promise<void>
   claimSession: (sessionId: string) => Promise<boolean>
   copyImage: (sessionId: string, dataUrl: string) => Promise<boolean>
+  copyText: (sessionId: string, dataUrl: string) => Promise<CopyTextResult>
   saveImage: (sessionId: string, dataUrl: string, forcePng?: boolean) => Promise<SaveResult>
   cancelSession: (sessionId: string) => Promise<void>
 }

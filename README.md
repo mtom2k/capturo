@@ -2,7 +2,7 @@
 
 A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
 
-![version](https://img.shields.io/badge/version-0.17.0-blue)
+![version](https://img.shields.io/badge/version-0.18.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-untested-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,14 +17,14 @@ A small screenshot tool that lives in your tray and opens straight into region s
 
 ## ⬇️ Getting it
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.17.0 is the current source and latest published Windows x64 release.
+The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.18.0 is the current source and latest published Windows x64 release.
 
-For the current source version, `npm run dist:win` produces two local Windows 0.17.0 artifacts in `release/`. Official releases publish the installer only:
+For the current source version, `npm run dist:win` produces two local Windows 0.18.0 artifacts in `release/`. Official releases publish the installer only:
 
 | File | What it is |
 | --- | --- |
-| `Capturo-Setup-0.17.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.17.0-x64.exe` | Portable executable for local validation. |
+| `Capturo-Setup-0.18.0-x64.exe` | Normal installer. Lets you pick the install folder. |
+| `Capturo-Portable-0.18.0-x64.exe` | Portable executable for local validation. |
 
 Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
 
@@ -38,7 +38,7 @@ There is no macOS download, and there will not be one until somebody has actuall
 2. The screen freezes. Drag to select a region. Drag inside it to move it, or grab an edge or corner to resize.
 3. Annotate with pen, line, arrow, rectangle, ellipse, numbered step, text, blur, pixelate, or remove a connected background with the Transparent tool.
 4. Pick the Select tool to click any existing annotation and move, resize, recolour, or restyle it. Double-click text to edit it. `Delete` removes what is selected.
-5. `Ctrl + C` copies to the clipboard, `Ctrl + S` saves a PNG, `Esc` cancels.
+5. `Ctrl + C` copies the image, `Ctrl + Shift + C` extracts and copies its text, `Ctrl + S` saves it, and `Esc` cancels.
 
 ![Annotating a capture](./docs/annotate.png)
 
@@ -50,17 +50,23 @@ The toolbar sits under the selection. Tools are on the first row; the second row
 
 | Key | Tool | | Key | Action |
 | --- | --- | --- | --- | --- |
-| `V` | Select | | `Ctrl + C` | Copy |
-| `P` | Pen | | `Ctrl + S` | Save as PNG |
-| `L` | Line | | `Ctrl + Z` | Undo |
-| `A` | Arrow | | `Delete` | Delete selected object |
-| `R` | Rectangle | | `Esc` | Cancel capture |
-| `E` | Ellipse | | | |
+| `V` | Select | | `Ctrl + C` | Copy image |
+| `P` | Pen | | `Ctrl + Shift + C` | Extract and copy text (Windows) |
+| `L` | Line | | `Ctrl + S` | Save as PNG |
+| `A` | Arrow | | `Ctrl + Z` | Undo |
+| `R` | Rectangle | | `Delete` | Delete selected object |
+| `E` | Ellipse | | `Esc` | Cancel capture |
 | `N` | Numbered step | | | |
 | `T` | Text | | | |
 | `B` | Blur | | | |
 | `X` | Pixelate | | | |
 | `K` | Transparent background | | | |
+
+### Copy text (Windows OCR)
+
+The **Copy text** action sits immediately beside the regular Copy button. It runs Windows' built-in OCR over the current selected result—including its crop, annotations, Blur/Pixelate regions, and any pending transparency preview—and places the recognized text on the clipboard. The screenshot editor closes only after text is found and copied; if no text is detected or OCR fails, it stays open and explains what happened so you can adjust the selection.
+
+Recognition is local and needs no Capturo account, cloud service, downloaded model, or temporary screenshot file. It uses the OCR languages installed in your Windows profile, so add the appropriate Windows language pack for text in another language. OCR is not exact: small, stylized, low-contrast, rotated, or obscured characters can be confused, so review important copied text before relying on it.
 
 ### 🎚️ Sizing
 
@@ -136,7 +142,7 @@ Capturo handles your screen pixels, so it keeps them local:
 - No capture, settings, or usage data is uploaded—ever. The only optional network request is a version check against GitHub's public latest Capturo Release: manual when you press **Check for updates**, or after explicit opt-in shortly after launch and at most once per 24 hours. It sends no account token or device identifier and never downloads an update.
 - No telemetry, no analytics, no crash reporting.
 - No account and no login.
-- Captured pixels are never written to disk unless you choose **Save** or explicitly copy an unsaved GIF. Windows GIF Copy needs a temporary `.gif` file because the clipboard carries a file path; Capturo retains it so paste works after the preview closes and cleans expired copies on a later launch. Outside that action, Capturo writes only its small, pixel-free `settings.json` automatically.
+- Captured pixels are never written to disk unless you choose **Save** or explicitly copy an unsaved GIF. Copy text sends an in-memory PNG only through Capturo's private local helper pipe to Windows OCR; it does not create a screenshot file or contact a server. Windows GIF Copy needs a temporary `.gif` file because the clipboard carries a file path; Capturo retains it so paste works after the preview closes and cleans expired copies on a later launch. Outside that action, Capturo writes only its small, pixel-free `settings.json` automatically.
 
 The renderer runs sandboxed with context isolation and no Node.js access. Every OS level action goes through a small set of explicit IPC handlers.
 
@@ -147,6 +153,7 @@ Worth knowing before you rely on it:
 - **A selection cannot span two monitors.** Every display gets an overlay, but the first one you click owns the capture. Displays with different scale factors need a proper virtual desktop compositor to do this correctly.
 - **A drag has to start outside the taskbar.** Once a selection is under way it extends over the taskbar normally, so you can capture the taskbar by starting just above it and dragging down. You just cannot begin the drag by pressing on the taskbar itself.
 - **The native HDR helper still adds some capture cost** on Windows, because the frame is captured, tone mapped, and encoded before the overlay appears. This is now much smaller than it was: the overlay is revealed the instant it has painted with no artificial delay, displays are grabbed in parallel, the redundant `desktopCapturer` pass is skipped, and the helper no longer stalls on a static desktop.
+- **Copy text is Windows-only and OCR can make mistakes.** It depends on a Windows OCR language installed for the current user. Small, low-contrast, stylized, rotated, or deliberately blurred/pixelated text may be missed or confused; Capturo copies the result as plain text and does not attempt document-layout reconstruction.
 - **macOS is untested.** Never run on real Apple hardware. Unsigned and un-notarized. See the note at the top of this file. Specifically unverified: launching, capturing, the Screen Recording permission flow, Retina output, menu bar behaviour, Spaces and full-screen apps, and how HDR and EDR displays behave, since the HDR fix here is Windows only.
 - **Windows builds are unsigned**, so SmartScreen will complain. See [Getting it](#️-getting-it).
 - **`npm run dist:win` can exit non-zero on the first run after deleting `release/`.** A file lock during Electron's extraction step. The artifacts are still built correctly and running the command again succeeds.
@@ -172,15 +179,15 @@ npm run dist:win    # Windows installer and portable exe into release/
 npm run dist:mac    # macOS DMG and ZIP, must be run on macOS, output is untested
 ```
 
-### The native capture helper
+### The native Windows helper
 
-The HDR path uses a small C++ executable in `native/capturo-capture`. Building it needs the **Desktop development with C++** workload of Visual Studio Build Tools, which also supplies the Windows SDK:
+HDR capture, local OCR, DWM border suppression, and animated-GIF file copy use a small C++ executable in `native/capturo-capture`. Building it needs the **Desktop development with C++** workload of Visual Studio Build Tools, which also supplies the Windows SDK:
 
 ```bash
 native\capturo-capture\build.cmd
 ```
 
-That produces `native/capturo-capture/build/capturo-capture.exe`, which `electron-builder` copies into the packaged app. Everything else builds without it, and Capturo runs without it too; it simply falls back to the ordinary capture path, which is correct on SDR displays and washed out on HDR ones.
+That produces `native/capturo-capture/build/capturo-capture.exe`, which `electron-builder` copies into the packaged app. Everything else builds without it, and Capturo still runs without it: screenshots fall back to the ordinary SDR-correct capture path, while Windows-only Copy text and native GIF file copy report that their component is unavailable.
 
 ## 🧭 How it works
 
@@ -192,7 +199,7 @@ Three details are less obvious than they look, and each is easy to break by acci
 
 **A display is covered by several tiled windows, never one.** Windows treats a single window covering a monitor as a full-screen app and switches on Do Not Disturb. It does not add windows together, so Capturo uses an editor window over the work area plus a filler window for each leftover strip. Same pixels covered, no Do Not Disturb.
 
-**Windows captures through a native helper, not the browser engine.** The engine converts the frame to 8-bit before the app can reach it, which is wrong on an HDR display and cannot be corrected afterwards. Two details bite hard here: desktop duplication refuses to start unless the process is per-monitor DPI aware, and the graphics API enumerates monitors in a different order from the app, so selecting one by index silently captures the wrong screen. Monitors are matched by physical desktop position instead.
+**Windows captures and OCR run through one native helper.** The browser engine converts a captured frame to 8-bit before the app can reach it, which is wrong on an HDR display and cannot be corrected afterwards. Two details bite hard here: desktop duplication refuses to start unless the process is per-monitor DPI aware, and the graphics API enumerates monitors in a different order from the app, so selecting one by index silently captures the wrong screen. Monitors are matched by physical desktop position instead. The same private helper accepts an in-memory PNG for `Windows.Media.Ocr`; the main process alone writes the returned plain text to the clipboard.
 
 Annotations are stored as replayable vector commands in source-image pixels rather than being painted into the bitmap, which is what makes undo, reselection, and crisp output on scaled displays work.
 

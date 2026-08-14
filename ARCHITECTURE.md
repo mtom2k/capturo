@@ -13,7 +13,7 @@ Tray click / global shortcut
 Electron main process
   - enumerates displays and screen sources
   - creates one temporary overlay per display
-  - owns clipboard, save dialog, notifications, lifecycle
+  - owns clipboard, local OCR bridge, save dialog, notifications, lifecycle
           |
           | narrow, typed IPC through contextBridge
           v
@@ -33,8 +33,9 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
-6. Copy and save exports render the base image plus edit commands into an offscreen canvas, then crop to the selection.
-7. The main process writes the lossless bitmap to the clipboard or shows a native save dialog. If the command list contains transparency, Save forces a `.png` path and PNG bytes regardless of the stored JPEG preference. Successful copy/save closes the capture session.
+6. Copy, Copy text, and save exports render the base image plus edit commands into an offscreen canvas, then crop to the selection. A pending transparency preview is committed before every export.
+7. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency.
+8. On Windows, Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper. The helper recognizes it with `Windows.Media.Ocr`; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the capture, while no-text or failure leaves the editor open.
 
 Capturo currently selects within one display at a time. This is deliberate: spanning displays with different scale factors requires a normalized virtual-desktop compositor and is outside the minimal first release.
 
@@ -63,6 +64,14 @@ The editor UI is a two-row stack anchored to the crop rectangle. The primary too
 Geometric sizes are continuous and expressed in pixels. Stroke width and numbered-step size are sliders that report their value in `px` and update while being dragged, so a size can be judged against the screenshot underneath rather than guessed from a named step. Text is the exception and keeps a list of preset sizes, because type is conventionally chosen from known values. All of these are CSS-pixel values converted to source-image pixels through the capture scale at the point they are stored, so a size means the same thing on any display.
 
 Blur and Pixelate are not geometric stroke sizes. Their `effectIntensity` is stored independently as 1-100%. Rendering maps that percentage monotonically to a 1-32 CSS-pixel-equivalent canvas blur radius or a 2-64 CSS-pixel-equivalent pixel block, multiplied by the capture's source-pixel scale so the visible strength is consistent on scaled displays. This gives both tools a common direction—higher always obscures more—without allowing a previous pen width to change the next privacy effect. Existing effect annotations retain their percentage and capture scale when selected, moved, resized, or exported.
+
+## Copy text (Windows OCR)
+
+Copy text deliberately reuses the final screenshot export rather than OCRing the original display frame. Crop, annotations, privacy effects, and automatically committed transparency therefore match what the user sees. The sandboxed renderer receives no native capability: it can request `capture:copy-text` only for its active session and supplies a PNG data URL under the same typed context bridge as image Copy/Save.
+
+`src/main/capture-helper.ts` converts the validated PNG to base64 and sends one `ocr-png` request over the existing serialized private stdin/stdout protocol. The request is bounded to 64 MiB of PNG bytes and a 20-second timeout. `native/capturo-capture/main.cpp` decodes entirely into a WinRT in-memory stream, downsizes images beyond `OcrEngine::MaxImageDimension`, obtains an engine from the current user's installed OCR languages, and returns JSON-escaped UTF-8 text. It never writes OCR pixels to disk or opens a network connection. The main process trims only outer/presentation whitespace, preserves internal spaces and blank lines, and owns `clipboard.writeText`.
+
+The helper initializes a multithreaded COM apartment because the synchronous C++/WinRT `.get()` calls used by its private worker process are not legal in a single-threaded apartment. DXGI desktop duplication, WIC encoding, DWM attributes, `CF_HDROP`, and OCR all share this process and serialized protocol; a change to its COM apartment requires rerunning both the OCR/clipboard smoke and a native screenshot regression. See D-026.
 
 ## Settings
 
@@ -96,8 +105,9 @@ src/main/       Electron lifecycle, capture, tray, native integrations, settings
 src/preload/    contextBridge API (capture + settings + GIF)
 src/renderer/   capture/editor UI, settings window, GIF selection + recording + preview windows,
                 canvas rendering, styles, GIF encoder + worker
-src/shared/     IPC, geometry, settings, update-version validation, transparency, and GIF logic
-tests/          deterministic unit tests for pure geometry/model/settings/update/transparency/GIF behavior
+src/shared/     IPC, geometry, settings, update-version validation, OCR text normalization,
+                transparency, and GIF logic
+tests/          deterministic unit tests for pure geometry/model/settings/update/OCR/transparency/GIF behavior
 ```
 
 ## Security boundary
@@ -106,7 +116,7 @@ tests/          deterministic unit tests for pure geometry/model/settings/update
 - `contextIsolation: true`
 - `sandbox: true`
 - no remote content
-- no telemetry or captured-data network requests; optional version checks contact only GitHub Releases
+- no telemetry or captured-data network requests; OCR is local, and optional version checks contact only GitHub Releases
 - all native operations are explicit IPC handlers
 
 ## Packaging
