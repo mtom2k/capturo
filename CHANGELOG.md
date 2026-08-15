@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- Replaced the sole canonical Capturo logo with the supplied camera/scissors artwork and
+  regenerated the package/Desktop, taskbar/notification, and 16px/32px tray/menu-bar assets.
+  Every brand surface continues to use an unchanged resize of the same source image.
+- Streamlined the README around Capturo's current Windows capabilities, removed superseded local
+  release notes, and refreshed the contributor documentation for clearer handoff.
+
 ## 0.18.0 - 2026-08-14
 
 ### Added
@@ -160,9 +168,9 @@
 - GIF capture. Select a screen region from the tray **New GIF** item or a rebindable shortcut and
   record it to an animated GIF. While recording, a red ring frames the region, everything outside
   it is dimmed to emphasize what is captured, and a control bar shows Pause/Resume, Stop, a timer,
-  and a frame counter — all excluded from the recording. Frames are captured live (the mouse
-  cursor is included) and encoded off the main thread by `gifenc` with inter-frame differencing —
-  and runs of identical frames coalesce into one, extending its delay rather than re-encoding — so
+  and a frame counter, all excluded from the recording. Frames are captured live (the mouse
+  cursor is included) and encoded off the main thread by `gifenc` with inter-frame differencing.
+  Runs of identical frames coalesce into one and extend its delay rather than re-encoding, so
   files stay small (a 3-second clip that was ~18 MB is ~0.5 MB) and unlimited-duration recording
   is viable. The Settings **GIF** tab controls frame rate, quality, and the GIF shortcut. Stop
   saves a `.gif`. See D-018.
@@ -186,8 +194,8 @@
 
 - The native capture helper is now a persistent background process, warmed when Capturo
   launches, instead of a fresh process spawned for every capture. Creating the graphics
-  device and desktop duplication — about 190 ms of work, plus a one-time cold start on the
-  first capture after boot — now happens once, in the background, so captures no longer pay
+  device and desktop duplication (about 190 ms of work, plus a one-time cold start on the
+  first capture after boot) now happens once in the background, so captures no longer pay
   for it. On the 4K + rotated-1080p setup, frame capture dropped from about 0.5 s to about
   0.33 s, and the first capture after a reboot is no longer slow. See D-017.
 
@@ -195,8 +203,8 @@
 
 - The helper gained a serve mode (line-delimited requests over stdin, one JSON result per
   line) alongside the existing one-shot `--output` mode, kept for testing and fallback. Its
-  process lifecycle — spawn, warm, batch request with a timeout, restart on death, kill on
-  quit — lives in `src/main/capture-helper.ts`. Desktop-duplication invalidation from display
+  process lifecycle lives in `src/main/capture-helper.ts`: spawn, warm, batch request with a
+  timeout, restart on death, and kill on quit. Desktop-duplication invalidation from display
   changes is detected and rebuilt; a dead or hung helper falls back to `desktopCapturer`; and
   the helper self-terminates if its parent dies, leaving no orphan process.
 
@@ -207,8 +215,8 @@
 - The native helper now captures rotated displays instead of bailing on them. It turns the
   duplicated (unrotated) surface back to the desktop orientation and reports the rotated
   dimensions. This removes the slow `desktopCapturer` fallback that a rotated display used to
-  force — which grabbed every screen — so capture on a multi-monitor setup with a rotated
-  display is much faster. Measured on a 4K + rotated-1080p setup, frame capture dropped from
+  force. That fallback grabbed every screen, so capture on a multi-monitor setup with a rotated
+  display is now much faster. Measured on a 4K + rotated-1080p setup, frame capture dropped from
   about 1.7 s to about 0.5 s.
 
 ### Fixed
@@ -274,7 +282,7 @@
     the post-capture notification, and a rebindable capture shortcut.
   - **GIF:** a placeholder for a planned future feature; no controls yet.
 - Preferences persist to `settings.json` under the app's user-data folder. It is the only
-  file Capturo writes without an explicit Save and it holds no captured pixels — just the
+  file Capturo writes without an explicit Save and it holds no captured pixels, just the
   four values above. A corrupt or missing file falls back to defaults. See D-016.
 
 ### Changed

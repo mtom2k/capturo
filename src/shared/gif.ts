@@ -72,7 +72,7 @@ export function isExpiredGifClipboardFile(name: string, modifiedMs: number, nowM
     Number.isFinite(modifiedMs) && nowMs - modifiedMs > GIF_CLIPBOARD_FILE_MAX_AGE_MS
 }
 
-// Quality (1-100) maps to GIF palette size — fewer colours means smaller files. The GIF keeps
+// Quality (1-100) maps to GIF palette size. Fewer colours means smaller files. The GIF keeps
 // the region's native resolution regardless (see D-018).
 export function paletteColorsForQuality(quality: number): number {
   const q = Math.min(100, Math.max(1, Math.round(quality)))

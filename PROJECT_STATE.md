@@ -1,12 +1,14 @@
 # Project State
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 ## Phase
 
 `0.18.0` is the current source and latest published Windows x64 release. It adds local Windows OCR to screenshot captures. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
+
+Current unreleased development replaces the canonical Capturo artwork with the supplied 1254px camera/scissors logo. Package/Desktop, Settings/taskbar/notification, and 16px/32px tray/menu-bar images are regenerated from that exact source by resizing only; no alternate mark, crop, transparency conversion, mask, or recoloring is introduced.
 
 Version 0.17.0 adds a manual **Check for updates** action and an opt-in, persisted daily stable-release check to Global Settings. The implementation is notification-only, main-process-owned, and never downloads or installs software. `mtom2k/capturo` is public, and installed builds can query its stable Releases anonymously without an embedded credential.
 
@@ -16,7 +18,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portable executables are available in `release/` and described by `release/BUILD-INFO.txt`. The GitHub release publishes the Windows x64 installer only. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.18.0`. The published Setup and local Portable executables described by `release/BUILD-INFO.txt` are the verified v0.18.0 OCR release and predate the unreleased 2026-08-15 logo refresh. `release/win-unpacked` has been rebuilt to verify the new embedded executable and packaged runtime icons, but no refreshed installer/portable or GitHub release has been produced. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -160,9 +162,9 @@ The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portabl
   - full pipeline verified end to end via `CAPTURO_GIF_RECORD_SMOKE`: `getDisplayMedia` → sample region → `gifenc` worker → saved a valid, correctly-cropped `.gif`; the recorded region is full-brightness (shade correctly outside it) and free of the border ring (chrome is content-protected)
   - inter-frame differencing measured: a 3s recording over the animated wallpaper dropped from ~18 MB to ~0.5 MB (~34x); a unit test shows 30 identical frames stay a few KB
   - automated gate green: typecheck, 38 tests (new `gif` suite), build; all four renderer pages emit (`index`, `settings`, `gif`, `gif-record`)
-  - not verifiable by automation (content protection hides the recording chrome from all screen capture, including test screenshots): the drag-select, Pause/Resume/Stop flow, and the on-screen look of the border ring and shade — these need a hands-on pass on Windows
+  - not verifiable by automation (content protection hides the recording chrome from all screen capture, including test screenshots): the drag-select, Pause/Resume/Stop flow, and the on-screen look of the border ring and shade need a hands-on pass on Windows
 - 2026-08-09 Phase 4 (0.13.0):
-  - Escape now cancels a capture or GIF selection before any region is dragged. The selection overlays are shown with `showInactive()` (D-011) so they held no keyboard focus until the first click, and the renderer's window `keydown` never fired; `revealOverlay` now focuses the editor overlay once it is painted. Validated by the user on real hardware — Escape cancels immediately in both flows. Committed to `main` (`a64067a`)
+  - Escape now cancels a capture or GIF selection before any region is dragged. The selection overlays are shown with `showInactive()` (D-011), so they held no keyboard focus until the first click and the renderer's window `keydown` never fired. `revealOverlay` now focuses the editor overlay once it is painted. The user validated on real hardware that Escape cancels immediately in both flows. Committed to `main` (`a64067a`)
   - identical-frame coalescing added to the GIF encoder: a run of frames identical to the pending one extends its delay rather than emitting a new full-palette frame, on top of the existing transparent-pixel differencing. Accumulated delay is capped at the GIF 16-bit centisecond max
   - automated gate green: `npm run typecheck`, `npm test` (40 tests, +2 coalescing cases in `gif`)
 - 2026-08-10 post-0.13.0 GIF timing fix:
@@ -254,6 +256,10 @@ The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portabl
   - Setup SHA-256 is `d4eda632523413d4b84d49e73cc1d88ab4aec8de2ef0ed0a4facdfac62412619`; Portable SHA-256 is `ef6231272bb2822d6176035b696dd53e1536b1da0bfd35a0bf0a23ee8003d32b`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged helper exactly matches the freshly built native helper, and the unpacked packaged app completed the real local OCR → Electron clipboard smoke with exit code 0
   - GitHub published stable `v0.18.0` from release commit `aa45bac` with the Windows x64 installer only; the public latest-release feed returns that tag and the uploaded asset digest exactly matches the locally verified Setup SHA-256
+- 2026-08-15 unreleased logo refresh gate:
+  - the supplied 1254x1254 sRGB PNG matches tracked `build/icon-source.png` byte-for-byte; `npm run icons` regenerated the 512px package, 256px taskbar/notification, and 16px/32px tray/menu-bar derivatives
+  - repository audit found no secondary logo path: electron-builder, Desktop/Explorer executable resources, Settings/taskbar windows, notifications, Windows tray, and the macOS menu-bar placeholder all route through those tracked assets
+  - the 256px and 16px outputs were inspected, all generated dimensions/hashes are valid, `npm run build` passes all 83 tests, and an unpacked Windows package contains exact copies of the taskbar/tray files plus the new embedded `Capturo.exe` icon
 
 ## Open follow-up
 
@@ -272,7 +278,7 @@ The package version is `0.18.0`. Fresh OCR-enabled Windows x64 setup and portabl
 
 ### Done in Phase 4
 
-- Runs of identical frames coalesce into a single written frame — the pending frame's delay is extended instead of emitting a new full-palette frame — on top of the transparent-pixel differencing, cutting per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
+- Runs of identical frames coalesce into a single written frame. The pending frame's delay is extended instead of emitting another full-palette frame. Combined with transparent-pixel differencing, this cuts per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
 
 ## Known constraints
 

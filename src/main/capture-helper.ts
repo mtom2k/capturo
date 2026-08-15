@@ -175,7 +175,7 @@ function sendRequests(lines: string[], timeoutMs = REQUEST_TIMEOUT_MS): Promise<
 }
 
 // Captures the requested displays through the persistent helper. Rejects if the helper is
-// unavailable, already busy, times out, or dies — the caller then falls back to
+// unavailable, already busy, times out, or dies. The caller then falls back to
 // desktopCapturer. Results are returned in request order.
 export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult[]> {
   return sendRequests(

@@ -218,7 +218,7 @@ async function startRecording(): Promise<void> {
   if (busy || !payload || !selection) return
   busy = true
   const accepted = await window.capturoGif.startRecording(payload.sessionId, selection)
-  if (accepted) setStatus('Region set — recording is wired up next')
+  if (accepted) setStatus('Region set. Ready to start recording.')
   else {
     busy = false
     setStatus('Could not start recording')

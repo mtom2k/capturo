@@ -1,222 +1,157 @@
+<p align="center">
+  <img src="./build/icon-source.png" alt="Capturo logo" width="160">
+</p>
+
 # 📸 Capturo
 
-A small screenshot tool that lives in your tray and opens straight into region selection. No dashboard, no account, no cloud, no telemetry. Press the shortcut, drag a box, annotate it, copy it, done.
+Capturo is a fast, local screenshot and GIF tool for Windows. It lives in the notification area, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
 ![version](https://img.shields.io/badge/version-0.18.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
-![macOS](https://img.shields.io/badge/macOS-untested-red)
+![macOS](https://img.shields.io/badge/macOS-unsupported-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-> ### 🪟 Windows only, for now
->
-> Capturo is developed and tested on Windows 11. **The macOS build has never been run on real Apple hardware.** The code paths exist and `npm run dist:mac` will produce a DMG, but nothing about it has been verified: not launching, not capturing, not the Screen Recording permission prompt, not Retina output, not the menu bar. The packages are also unsigned and un-notarized, so macOS will refuse to open them without manual intervention.
->
-> Treat macOS as unsupported. If you try it, expect it to be broken, and please open an issue with what happened.
+> 🪟 **Windows 11 is the only tested and supported platform.** macOS code paths exist, but they have never been verified on Apple hardware and no macOS package is published.
 
 ![Selecting a region](./docs/selection.png)
 
-## ⬇️ Getting it
+## ⬇️ Download
 
-The supported Windows download is published on the project's [GitHub Releases](https://github.com/mtom2k/capturo/releases) page. Version 0.18.0 is the current source and latest published Windows x64 release.
+The latest stable release is **Capturo 0.18.0** for Windows x64. Download the installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
 
-For the current source version, `npm run dist:win` produces two local Windows 0.18.0 artifacts in `release/`. Official releases publish the installer only:
-
-| File | What it is |
+| Local artifact | Purpose |
 | --- | --- |
-| `Capturo-Setup-0.18.0-x64.exe` | Normal installer. Lets you pick the install folder. |
-| `Capturo-Portable-0.18.0-x64.exe` | Portable executable for local validation. |
+| `Capturo-Setup-0.18.0-x64.exe` | Interactive Windows installer |
+| `Capturo-Portable-0.18.0-x64.exe` | Portable build for local validation |
 
-Alongside them, `BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact, so you can always tell which build you are holding. The running app also reports its version in the tray tooltip and tray menu.
+Official GitHub releases publish the installer. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
 
-Windows will warn you that the publisher is unknown when you run either one. That is expected: the builds are not code-signed. Click **More info** then **Run anyway**.
+Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-There is no macOS download, and there will not be one until somebody has actually run it on a Mac. See the note at the top.
+The repository also contains the new camera/scissors logo shown above. The published v0.18.0 installer predates this cosmetic refresh, so the new artwork will appear in packaged installations after the next build and release.
 
-## ✨ Using it
+## ✨ What Capturo can do
 
-1. Click the Capturo tray icon, or press `Ctrl + Shift + 2` (`Cmd + Shift + 2` on macOS, in theory).
-2. The screen freezes. Drag to select a region. Drag inside it to move it, or grab an edge or corner to resize.
-3. Annotate with pen, line, arrow, rectangle, ellipse, numbered step, text, blur, pixelate, or remove a connected background with the Transparent tool.
-4. Pick the Select tool to click any existing annotation and move, resize, recolour, or restyle it. Double-click text to edit it. `Delete` removes what is selected.
-5. `Ctrl + C` copies the image, `Ctrl + Shift + C` extracts and copies its text, `Ctrl + S` saves it, and `Esc` cancels.
+- Select, move, and resize a precise screen region on scaled or multi-display Windows desktops.
+- Draw with Pen, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
+- Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
+- Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
+- Extract visible text with local Windows OCR and copy it as plain text.
+- Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
+- Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
+- Capture HDR displays through a native Windows helper without washed-out SDR content.
+- Save PNG or JPEG files, copy a lossless image, and rebind screenshot and GIF shortcuts.
+- Start with Windows and check GitHub Releases for updates when you choose.
+
+## 🖼️ Screenshot workflow
+
+1. Click the Capturo tray icon or press `Ctrl + Shift + 2`.
+2. Drag a region. Move it from inside, or resize it from an edge or corner.
+3. Annotate or apply privacy and transparency tools.
+4. Copy the image, copy its visible text, or save it.
 
 ![Annotating a capture](./docs/annotate.png)
 
-The toolbar sits under the selection. Tools are on the first row; the second row changes to whatever the current tool needs, so you only ever see the controls that apply.
+The primary toolbar stays close to the selection. A second row appears only when the active tool needs options such as color, stroke width, text style, or effect intensity.
 
-![Toolbar and contextual controls](./docs/toolbar.png)
+### Copy text with Windows OCR
 
-### ⌨️ Shortcuts
+**Copy text** sits beside regular Copy. It recognizes the final visible selection, including its crop, annotations, Blur or Pixelate regions, and any pending transparency preview. Successful recognition copies plain text and closes the editor. Empty or failed recognition leaves the editor open with a useful message.
 
-| Key | Tool | | Key | Action |
-| --- | --- | --- | --- | --- |
-| `V` | Select | | `Ctrl + C` | Copy image |
-| `P` | Pen | | `Ctrl + Shift + C` | Extract and copy text (Windows) |
-| `L` | Line | | `Ctrl + S` | Save as PNG |
-| `A` | Arrow | | `Ctrl + Z` | Undo |
-| `R` | Rectangle | | `Delete` | Delete selected object |
-| `E` | Ellipse | | `Esc` | Cancel capture |
-| `N` | Numbered step | | | |
-| `T` | Text | | | |
-| `B` | Blur | | | |
-| `X` | Pixelate | | | |
-| `K` | Transparent background | | | |
-
-### Copy text (Windows OCR)
-
-The **Copy text** action sits immediately beside the regular Copy button. It runs Windows' built-in OCR over the current selected result—including its crop, annotations, Blur/Pixelate regions, and any pending transparency preview—and places the recognized text on the clipboard. The screenshot editor closes only after text is found and copied; if no text is detected or OCR fails, it stays open and explains what happened so you can adjust the selection.
-
-Recognition is local and needs no Capturo account, cloud service, downloaded model, or temporary screenshot file. It uses the OCR languages installed in your Windows profile, so add the appropriate Windows language pack for text in another language. OCR is not exact: small, stylized, low-contrast, rotated, or obscured characters can be confused, so review important copied text before relying on it.
-
-### 🎚️ Sizing
-
-Stroke width and numbered-step size are pixel sliders, 1 to 24px and 10 to 48px, and they update as you drag so you can judge the size against the screenshot underneath. Text keeps a list of preset sizes from 12px to 48px. Pick an existing annotation with the Select tool and the slider jumps to that object's size, so you can adjust something you already drew.
-
-Blur and Pixelate use **Intensity** rather than Size. Their 1-100% slider updates live: a low percentage lightly obscures the area, while a high percentage applies a wider blur or larger pixel blocks. Selecting an existing Blur or Pixelate region restores its saved intensity for adjustment.
+OCR runs locally through Windows and uses language packs installed for the current user. Capturo does not upload the image, download a model, or create a temporary screenshot. OCR can still confuse small, stylized, rotated, low-contrast, or obscured characters, so review important results.
 
 ### Transparent backgrounds
 
-Choose **Transparent background** (or press `K`), then click the background color inside the capture. Capturo removes only matching pixels connected to that point, so the same color elsewhere behind a separated foreground object is retained. Adjust **Tolerance** to include nearby tones and **Edge feather** from 0-10px to smooth the cutout. The popup also accepts hex and RGB values and offers Before, After, and Split previews over a checkerboard; drag the blue divider directly or use its slider.
+Choose **Transparent background** or press `K`, then sample the background inside the selection. Capturo removes only matching pixels connected to that point, which protects separated foreground areas that happen to share the same color.
 
-**Apply** adds one non-destructive operation to the normal undo history so you can keep editing, and `Ctrl/Cmd+Z` removes it. Apply is optional when exporting: pressing `Ctrl/Cmd+C`, `Ctrl/Cmd+S`, Copy, or Save automatically commits the pending transparency preview first. Capturo shows a small **PNG** flag while transparency is present. Save automatically uses PNG, overriding a JPEG preference or filename extension, because JPEG cannot preserve an alpha channel.
+Tolerance includes nearby tones, and Edge feather smooths the cutout from 0 to 10 pixels. You can also enter hex or RGB values and compare Before, After, or Split views. Copy and Save automatically apply a pending preview. Any transparency operation forces PNG because JPEG cannot store alpha.
+
+## 🎬 GIF recording
+
+Choose **New GIF** from the tray or press `Ctrl + Shift + 3`. Select a region, then press **Start Recording**. Capturo prepares the live stream and shows a protected countdown, 3 seconds by default, before active capture begins.
+
+The recording bar supports Pause, Resume, Stop, a timer, and optional frame totals. Its red border, dimmed surroundings, and controls are excluded from the finished GIF. Playback timing follows real elapsed recording time, and encoder backpressure keeps memory bounded when a large region cannot sustain the requested frame rate.
+
+![Finished GIF preview](./docs/gif-preview.png)
+
+The preview lets you Copy, Save, Open folder, Retake, or Discard. Windows Copy places the animated `.gif` file on the clipboard instead of flattening it to a still image. An unsaved GIF is written to Capturo's temporary clipboard folder only after you explicitly choose Copy, and expired copies are cleaned during a later launch.
+
+## ⌨️ Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl + Shift + 2` | Start screenshot capture |
+| `Ctrl + Shift + 3` | Start GIF capture |
+| `Ctrl + C` | Copy image |
+| `Ctrl + Shift + C` | Extract and copy visible text |
+| `Ctrl + S` | Save |
+| `Ctrl + Z` | Undo |
+| `Delete` | Delete selected annotation |
+| `Esc` | Cancel capture or close GIF preview |
+
+Tool keys: `V` Select, `P` Pen, `L` Line, `A` Arrow, `R` Rectangle, `E` Ellipse, `N` Step, `T` Text, `B` Blur, `X` Pixelate, and `K` Transparent background.
 
 ## ⚙️ Settings
 
-Right-click the tray icon and choose **Settings…**. It is deliberately small, and opens only when you ask for it: closing it leaves Capturo resident in the tray as before.
+Right-click the tray icon and choose **Settings**.
 
-- **Global → Open on startup.** Optionally launch Capturo into the notification area when you sign in to your device. It is off by default.
-- **Global → Automatic update checks.** Opt in to a stable-release check shortly after launch and at most once every 24 hours. It is off by default. Capturo reports an available version but never downloads or installs it.
-- **Global → Check for updates.** Manually compare your packaged Capturo version with the latest stable release on GitHub. If a newer release exists, **View release** opens Capturo's official Releases page in your browser.
+- **Global:** Open on startup, optional daily update checks, and manual Check for updates.
+- **Capture:** PNG or JPEG, JPEG quality, copy/save notifications, and capture shortcut.
+- **GIF:** 10 to 30 fps, quality, 0 to 10 second pre-timer, frame-count visibility, and GIF shortcut.
 
-Capturo's release feed is publicly readable, so packaged builds can check it anonymously without embedding or storing a GitHub credential. The feed must remain public for installed update checks to keep working.
+Preferences live in `settings.json` under Capturo's user-data folder. The file contains options and the last update-check time, never captured pixels.
 
-- **Format.** Save as PNG (lossless) or JPEG. There is a **JPEG quality** slider for when you want smaller files. Format and quality apply to files you **Save**; **Copy** always puts a lossless image on the clipboard.
-- **Notification.** Turn the toast after a copy or save on or off.
-- **Capture shortcut.** Click the shortcut, then press the combination you want (`Ctrl`/`Alt` with a key, or a function key). If the combination is already taken by another app, Capturo keeps the previous one and tells you.
-
-![Global settings with startup and update controls](./docs/global-settings.png)
-
-The release path is verified against real packaged versions: after v0.17.0 was published,
-Capturo 0.16.0 detected it through the public feed and exposed the fixed **View release** action.
-
-![Capturo 0.16.0 detecting the v0.17.0 release](./docs/update-available.png)
-
-The **GIF** tab controls GIF recording: **frame rate** (10-30 fps), a **quality** slider, a **pre-timer** from 0-10 seconds (3 seconds by default), a toggle for showing frame totals in the recording bar, and a rebindable **GIF shortcut**, all persisted the same way.
-
-![GIF recording settings](./docs/gif-settings.png)
-
-Preferences are stored in a small `settings.json` in your user-data folder. It is the only thing Capturo writes without you choosing Save, and it contains none of your screen pixels — just these few options and the last update-check time used to enforce the daily limit.
-
-## 🎬 Recording a GIF
-
-Click the tray icon and choose **New GIF**, or press `Ctrl + Shift + 3`, then drag a box around what you want to record — exactly like selecting a screenshot region. Press **Start Recording** and the box becomes live: a red ring frames it, everything outside dims to keep the focus on it, and the protected control bar counts down before capture begins. The default pre-timer is 3 seconds; choose 0-10 seconds in Settings → GIF, with 0 disabling it. Once the countdown reaches zero, the bar switches to **Pause/Resume**, **Stop**, a running timer, and—when enabled in GIF Settings—a frame count. Disabling **Frame count** also hides processed and encoded totals during finalization. The mouse cursor is included, so interaction reads clearly. Press **Stop** to encode and open the animated preview.
-
-![Finished GIF preview with copy, save, folder, retake, and discard actions](./docs/gif-preview.png)
-
-The preview replaces the old immediate Save As prompt. Use **Copy** (`Ctrl/Cmd+C`) to place the animated GIF on the clipboard, **Save** (`Ctrl/Cmd+S`) to choose a permanent location, **Open folder** to reveal a saved GIF, **Retake** to discard the preview and select a new region, or **Discard** (`Esc`) to close it. Saving leaves the preview open. Open folder becomes available after a successful save.
-
-On Windows, Copy places the actual `.gif` file on the clipboard, so the animation is preserved rather than flattened to one image. If the preview has not been saved, Capturo writes a temporary clipboard file only when Copy is pressed; it remains available after the preview closes so paste still works, and expired copies are cleaned on a later launch. The normal preview itself stays in memory until Save or Copy is explicitly chosen.
-
-The ring, the dimming, and the control bar are all excluded from the recording, so the GIF contains only your region. Recordings can be any length, and pixels that do not change between frames are not re-encoded, so a mostly-static recording stays small while keeping its quality. Frame rate and quality come from the GIF settings tab.
-
-Frame rate controls the requested sampling cadence. Playback timing follows the recording's active elapsed time, so a large region that cannot be sampled at the full requested rate still plays at real-world speed rather than speeding up; paused time is not included.
-
-Capturo keeps only two frames in flight to the encoder. If a large or complex region cannot sustain the selected FPS, the control bar can report skipped sampling ticks instead of allowing an ever-growing encoding backlog; those gaps still retain their real elapsed duration. After Stop, the bar can show bounded finalization progress and then switches to Opening preview. The numeric reports are hidden when **Frame count** is off, but the same bounded processing still happens.
-
-## 🌈 HDR displays
-
-Screenshots come out the same whether your monitor is in HDR mode or not.
-
-That is less automatic than it sounds. With HDR on, Windows composites the desktop in scRGB, where 1.0 means 80 nits and ordinary windows are rendered well above that depending on your *SDR content brightness* setting. Anything that converts to 8-bit without undoing that scale multiplies the whole image and clips the top off it. That is why screenshots from many tools look washed out on an HDR monitor, with white boxes and light backgrounds turned into flat white.
-
-Capturo captures through a small native helper that keeps the frame in `R16G16B16A16_FLOAT`, reads the live SDR white level from Windows, normalises and tone maps in linear light, and only then encodes sRGB. Content at or below SDR white is reproduced with the values it was authored with.
-
-Measured against a known pattern on a 4K HDR display, greys drawn as 0, 32, 64, 96, 128, 160, 192 and 255 come back as exactly those values.
-
-The helper is Windows only and used only when it is present. It handles rotated displays too, turning the captured frame back to the desktop orientation. On other platforms, or a Windows machine without the helper, capture falls back to the normal path, which is already correct on SDR displays.
+![Global settings](./docs/global-settings.png)
 
 ## 🔒 Privacy
 
-Capturo handles your screen pixels, so it keeps them local:
+- No account, login, telemetry, analytics, or crash reporting.
+- Captures and OCR pixels stay local.
+- The only optional network request checks Capturo's public GitHub Release version. It sends no account token, device identifier, capture, or settings data, and never downloads an update.
+- Screenshot pixels reach disk only when you Save. The one exception is an unsaved GIF that you explicitly Copy, because the Windows clipboard carries its file path.
+- Renderers use sandboxing, context isolation, and no Node.js access. Native actions pass through narrow IPC handlers owned by the main process.
 
-- No capture, settings, or usage data is uploaded—ever. The only optional network request is a version check against GitHub's public latest Capturo Release: manual when you press **Check for updates**, or after explicit opt-in shortly after launch and at most once per 24 hours. It sends no account token or device identifier and never downloads an update.
-- No telemetry, no analytics, no crash reporting.
-- No account and no login.
-- Captured pixels are never written to disk unless you choose **Save** or explicitly copy an unsaved GIF. Copy text sends an in-memory PNG only through Capturo's private local helper pipe to Windows OCR; it does not create a screenshot file or contact a server. Windows GIF Copy needs a temporary `.gif` file because the clipboard carries a file path; Capturo retains it so paste works after the preview closes and cleans expired copies on a later launch. Outside that action, Capturo writes only its small, pixel-free `settings.json` automatically.
+## ⚠️ Current limits
 
-The renderer runs sandboxed with context isolation and no Node.js access. Every OS level action goes through a small set of explicit IPC handlers.
+- A selection stays on one physical display and cannot span monitors.
+- A drag must start in the work area, although it can continue over the taskbar.
+- OCR quality depends on the source image and installed Windows language packs.
+- Windows packages are unsigned and may trigger SmartScreen.
+- macOS remains untested, unsigned, un-notarized, and unsupported.
 
-## ⚠️ Known issues
+## 🛠️ Build from source
 
-Worth knowing before you rely on it:
+Capturo needs Node.js 20 or newer.
 
-- **A selection cannot span two monitors.** Every display gets an overlay, but the first one you click owns the capture. Displays with different scale factors need a proper virtual desktop compositor to do this correctly.
-- **A drag has to start outside the taskbar.** Once a selection is under way it extends over the taskbar normally, so you can capture the taskbar by starting just above it and dragging down. You just cannot begin the drag by pressing on the taskbar itself.
-- **The native HDR helper still adds some capture cost** on Windows, because the frame is captured, tone mapped, and encoded before the overlay appears. This is now much smaller than it was: the overlay is revealed the instant it has painted with no artificial delay, displays are grabbed in parallel, the redundant `desktopCapturer` pass is skipped, and the helper no longer stalls on a static desktop.
-- **Copy text is Windows-only and OCR can make mistakes.** It depends on a Windows OCR language installed for the current user. Small, low-contrast, stylized, rotated, or deliberately blurred/pixelated text may be missed or confused; Capturo copies the result as plain text and does not attempt document-layout reconstruction.
-- **macOS is untested.** Never run on real Apple hardware. Unsigned and un-notarized. See the note at the top of this file. Specifically unverified: launching, capturing, the Screen Recording permission flow, Retina output, menu bar behaviour, Spaces and full-screen apps, and how HDR and EDR displays behave, since the HDR fix here is Windows only.
-- **Windows builds are unsigned**, so SmartScreen will complain. See [Getting it](#️-getting-it).
-- **`npm run dist:win` can exit non-zero on the first run after deleting `release/`.** A file lock during Electron's extraction step. The artifacts are still built correctly and running the command again succeeds.
-
-## 🛠️ Building from source
-
-Needs Node.js 20 or newer.
-
-```bash
+```powershell
 git clone https://github.com/mtom2k/capturo.git
 cd capturo
 npm install
 npm run dev
 ```
 
-Checks and packaging:
+Useful commands:
 
-```bash
-npm run typecheck   # strict TypeScript across main, preload, and renderer
-npm test            # geometry and annotation model tests
-npm run build       # typecheck, tests, then a production build
-npm run dist:win    # Windows installer and portable exe into release/
-npm run dist:mac    # macOS DMG and ZIP, must be run on macOS, output is untested
+```powershell
+npm run icons      # regenerate every logo size from build/icon-source.png
+npm run build      # typecheck, run tests, and build the production app
+npm run dist:win   # build Windows Setup and Portable artifacts into release/
 ```
 
-### The native Windows helper
+HDR capture, local OCR, GIF file copy, and recording-window styling use `native/capturo-capture`. Build it with the Visual Studio **Desktop development with C++** workload and Windows SDK:
 
-HDR capture, local OCR, DWM border suppression, and animated-GIF file copy use a small C++ executable in `native/capturo-capture`. Building it needs the **Desktop development with C++** workload of Visual Studio Build Tools, which also supplies the Windows SDK:
-
-```bash
+```powershell
 native\capturo-capture\build.cmd
 ```
 
-That produces `native/capturo-capture/build/capturo-capture.exe`, which `electron-builder` copies into the packaged app. Everything else builds without it, and Capturo still runs without it: screenshots fall back to the ordinary SDR-correct capture path, while Windows-only Copy text and native GIF file copy report that their component is unavailable.
+## 📚 Developer documentation
 
-## 🧭 How it works
-
-One Electron main process owns the tray, the global shortcut, screen capture, the clipboard, and the save dialog. Capture overlays are temporary windows created for a single screenshot and destroyed afterwards.
-
-Three details are less obvious than they look, and each is easy to break by accident:
-
-**Overlays are revealed by opacity, not by showing them.** Windows animates any window that goes from hidden to shown, which made the desktop appear to zoom into place instead of freezing. Each overlay is shown transparent before it loads, so the animation happens while there is nothing to see, then opacity is raised once the frozen desktop has painted.
-
-**A display is covered by several tiled windows, never one.** Windows treats a single window covering a monitor as a full-screen app and switches on Do Not Disturb. It does not add windows together, so Capturo uses an editor window over the work area plus a filler window for each leftover strip. Same pixels covered, no Do Not Disturb.
-
-**Windows captures and OCR run through one native helper.** The browser engine converts a captured frame to 8-bit before the app can reach it, which is wrong on an HDR display and cannot be corrected afterwards. Two details bite hard here: desktop duplication refuses to start unless the process is per-monitor DPI aware, and the graphics API enumerates monitors in a different order from the app, so selecting one by index silently captures the wrong screen. Monitors are matched by physical desktop position instead. The same private helper accepts an in-memory PNG for `Windows.Media.Ocr`; the main process alone writes the returned plain text to the clipboard.
-
-Annotations are stored as replayable vector commands in source-image pixels rather than being painted into the bitmap, which is what makes undo, reselection, and crisp output on scaled displays work.
-
-More detail lives in [ARCHITECTURE.md](./ARCHITECTURE.md) and [DECISIONS.md](./DECISIONS.md).
-
-## 📚 Project docs
-
-| File | Contents |
-| --- | --- |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Process boundaries and data flow |
-| [DECISIONS.md](./DECISIONS.md) | Design decisions and why they were made |
-| [PROJECT_STATE.md](./PROJECT_STATE.md) | What works, what is verified, what is left |
-| [HANDOFF.md](./HANDOFF.md) | Shortest path for the next contributor |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Development rules and definition of done |
-| [TESTING.md](./TESTING.md) | Automated checks and the desktop test matrix |
-| [RELEASING.md](./RELEASING.md) | Packaging, signing, and release checks |
-| [CHANGELOG.md](./CHANGELOG.md) | What changed in each version |
+- [ARCHITECTURE.md](./ARCHITECTURE.md) explains process boundaries and data flow.
+- [DECISIONS.md](./DECISIONS.md) records durable design choices.
+- [PROJECT_STATE.md](./PROJECT_STATE.md) tracks verified behavior and remaining work.
+- [HANDOFF.md](./HANDOFF.md) is the shortest path for the next developer or LLM.
+- [TESTING.md](./TESTING.md) contains automated and desktop test matrices.
+- [CONTRIBUTING.md](./CONTRIBUTING.md), [RELEASING.md](./RELEASING.md), and [CHANGELOG.md](./CHANGELOG.md) cover maintenance and releases.
 
 ## 📄 License
 

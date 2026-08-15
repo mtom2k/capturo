@@ -10,7 +10,7 @@ const SPARSE_FRAME_MAX_CHANGED_RATIO = 0.25
 export type GifFrameStrategy = 'coalesced' | 'sparse' | 'full'
 
 // Encodes a stream of RGBA frames into an animated GIF, one frame at a time so memory holds
-// only the growing compressed output rather than every raw frame — this is what makes long
+// only the growing compressed output rather than every raw frame. This is what makes long
 // recordings viable. Quality controls the palette size. Frame timing comes
 // from active recording timestamps supplied by the recorder, rather than assuming the renderer
 // kept up with its requested sampling interval. Pure enough to unit-test with synthetic frames.

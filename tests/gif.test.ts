@@ -135,7 +135,7 @@ describe('GifRecordingEncoder', () => {
     for (let frame = 0; frame < 30; frame += 1) encoder.addFrame(staticFrame())
     const bytes = encoder.finish()
     // Every frame after the first is fully transparent, so 30 identical frames stay a few KB
-    // rather than the ~120 KB of 30 full frames — roughly an order of magnitude smaller.
+    // rather than the ~120 KB of 30 full frames, roughly an order of magnitude smaller.
     expect(bytes.length).toBeLessThan(8000)
   })
 

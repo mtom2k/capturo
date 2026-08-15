@@ -310,8 +310,8 @@ function sourceForDisplay(
 
 // Captures displays through the persistent native helper (see capture-helper.ts). It keeps
 // the frame in FP16 scRGB, normalises against the live SDR white level, tone maps, turns a
-// rotated surface back to the desktop orientation, and only then encodes sRGB — none of which
-// Chromium's own 8-bit capture does correctly on an HDR display. It also excludes the mouse
+// rotated surface back to the desktop orientation, and only then encodes sRGB. Chromium's own
+// 8-bit capture does none of this correctly on an HDR display. It also excludes the mouse
 // pointer. See D-014, D-015, D-017. Returns one DisplayImage per display, null where the
 // helper could not serve it (the caller falls back to desktopCapturer for those).
 async function captureWithHelper(displays: Electron.Display[]): Promise<(DisplayImage | null)[]> {
@@ -1151,8 +1151,8 @@ function regionInDip(display: Electron.Display, crop: CropRect): Rect {
   }
 }
 
-// Puts the control bar just above the region, else just below, else inside its top edge —
-// always horizontally centred on the region and kept on the display.
+// Puts the control bar just above the region, else just below, else inside its top edge.
+// It is always horizontally centred on the region and kept on the display.
 function placeControlBar(display: Electron.Display, region: Rect, width: number, height: number): Point {
   const bounds = display.bounds
   const margin = 8
@@ -1321,7 +1321,7 @@ function refreshTray(): void {
   if (!tray) return
   const version = app.getVersion()
   const settings = getSettings()
-  tray.setToolTip(`Capturo ${version} — ${formatAccelerator(settings.capture.captureShortcut, isMac)} to capture`)
+  tray.setToolTip(`Capturo ${version}: ${formatAccelerator(settings.capture.captureShortcut, isMac)} to capture`)
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
