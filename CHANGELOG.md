@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.18.1 - 2026-08-15
+
 ### Changed
 
 - Replaced the sole canonical Capturo logo with the supplied camera/scissors artwork and

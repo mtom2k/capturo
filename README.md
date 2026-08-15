@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool for Windows. It lives in the notification area, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.18.0-blue)
+![version](https://img.shields.io/badge/version-0.18.1-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-unsupported-red)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -17,18 +17,18 @@ Capturo is a fast, local screenshot and GIF tool for Windows. It lives in the no
 
 ## ⬇️ Download
 
-The latest stable release is **Capturo 0.18.0** for Windows x64. Download the installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
+The latest stable release is **Capturo 0.18.1** for Windows x64. Download the installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
 
 | Local artifact | Purpose |
 | --- | --- |
-| `Capturo-Setup-0.18.0-x64.exe` | Interactive Windows installer |
-| `Capturo-Portable-0.18.0-x64.exe` | Portable build for local validation |
+| `Capturo-Setup-0.18.1-x64.exe` | Interactive Windows installer |
+| `Capturo-Portable-0.18.1-x64.exe` | Portable build for local validation |
 
 Official GitHub releases publish the installer. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-The repository also contains the new camera/scissors logo shown above. The published v0.18.0 installer predates this cosmetic refresh, so the new artwork will appear in packaged installations after the next build and release.
+Version 0.18.1 introduces the camera/scissors logo shown above across the installer, executable, Settings window, taskbar, notification area, and notifications.
 
 ## ✨ What Capturo can do
 

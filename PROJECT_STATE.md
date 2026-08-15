@@ -4,11 +4,11 @@ Last updated: 2026-08-15
 
 ## Phase
 
-`0.18.0` is the current source and latest published Windows x64 release. It adds local Windows OCR to screenshot captures. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+`0.18.1` is the current source and Windows x64 release candidate. The latest published release remains `0.18.0` until the branding package below passes acceptance and is published. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
 
-Current unreleased development replaces the canonical Capturo artwork with the supplied 1254px camera/scissors logo. Package/Desktop, Settings/taskbar/notification, and 16px/32px tray/menu-bar images are regenerated from that exact source by resizing only; no alternate mark, crop, transparency conversion, mask, or recoloring is introduced.
+Version 0.18.1 replaces the canonical Capturo artwork with the supplied 1254px camera/scissors logo. Package/Desktop, Settings/taskbar/notification, and 16px/32px tray/menu-bar images are regenerated from that exact source by resizing only; no alternate mark, crop, transparency conversion, mask, or recoloring is introduced.
 
 Version 0.17.0 adds a manual **Check for updates** action and an opt-in, persisted daily stable-release check to Global Settings. The implementation is notification-only, main-process-owned, and never downloads or installs software. `mtom2k/capturo` is public, and installed builds can query its stable Releases anonymously without an embedded credential.
 
@@ -18,7 +18,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.18.0`. The published Setup and local Portable executables described by `release/BUILD-INFO.txt` are the verified v0.18.0 OCR release and predate the unreleased 2026-08-15 logo refresh. `release/win-unpacked` has been rebuilt to verify the new embedded executable and packaged runtime icons, but no refreshed installer/portable or GitHub release has been produced. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.18.1`. The verified Setup and Portable artifacts described by `release/BUILD-INFO.txt` are the fresh v0.18.1 branding release candidate, and no older local executables remain. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -256,10 +256,15 @@ The package version is `0.18.0`. The published Setup and local Portable executab
   - Setup SHA-256 is `d4eda632523413d4b84d49e73cc1d88ab4aec8de2ef0ed0a4facdfac62412619`; Portable SHA-256 is `ef6231272bb2822d6176035b696dd53e1536b1da0bfd35a0bf0a23ee8003d32b`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged helper exactly matches the freshly built native helper, and the unpacked packaged app completed the real local OCR → Electron clipboard smoke with exit code 0
   - GitHub published stable `v0.18.0` from release commit `aa45bac` with the Windows x64 installer only; the public latest-release feed returns that tag and the uploaded asset digest exactly matches the locally verified Setup SHA-256
-- 2026-08-15 unreleased logo refresh gate:
+- 2026-08-15 v0.18.1 logo refresh gate:
   - the supplied 1254x1254 sRGB PNG matches tracked `build/icon-source.png` byte-for-byte; `npm run icons` regenerated the 512px package, 256px taskbar/notification, and 16px/32px tray/menu-bar derivatives
   - repository audit found no secondary logo path: electron-builder, Desktop/Explorer executable resources, Settings/taskbar windows, notifications, Windows tray, and the macOS menu-bar placeholder all route through those tracked assets
   - the 256px and 16px outputs were inspected, all generated dimensions/hashes are valid, `npm run build` passes all 83 tests, and an unpacked Windows package contains exact copies of the taskbar/tray files plus the new embedded `Capturo.exe` icon
+  - package and lockfile versions are `0.18.1`; `npm install` reports zero vulnerabilities, and `npm run dist:win` passed strict type checking, all 83 tests, the production build, and Windows packaging
+  - only fresh v0.18.1 Windows x64 Setup and Portable executables remain locally, both report product/file version 0.18.1, and `release/BUILD-INFO.txt` inventories exactly those two artifacts
+  - Setup SHA-256 is `5b76f8c17ebc946b2ab58a1c1ba5d8ceb13dd81aa50b91b667a2b2398907406b`; Portable SHA-256 is `e167071cde5c85d24cc5d3600dc912f1adb1f31a660f5b943930a5a19a72798c`
+  - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged taskbar, 16px/32px tray, and native-helper files exactly match their tracked sources
+  - the packaged v0.18.1 app opened its real Global Settings renderer and produced a valid smoke screenshot; the executable's embedded icon was extracted and visually confirmed as the new camera/scissors mark
 
 ## Open follow-up
 
