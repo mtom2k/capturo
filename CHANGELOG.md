@@ -4,6 +4,16 @@
 
 ## 0.20.0 - 2026-08-17
 
+### Fixed
+
+- Blur now actually blurs the whole region. It was fed only the pixels inside its own rectangle,
+  so the Gaussian read transparency past every edge: the effect faded out towards the border and
+  the untouched original showed through underneath. That looked like a blur which only worked in
+  the middle, and raising **Intensity** appeared to do nothing because a larger radius simply
+  widened the faded band. The region is now blurred with a margin of the surrounding image, with
+  the image edge repeated outwards where a region sits against the edge of the screenshot, and
+  only its centre is drawn back.
+
 ### Changed
 
 - New Capturo logo across every surface: executable and installer, Settings and GIF preview
@@ -15,6 +25,8 @@
 - The macOS menu bar now uses a monochrome template icon, so it follows the light or dark bar,
   dims while the app is inactive, and matches the system glyphs beside it. Windows keeps the
   colour mark.
+- **Copy text** now uses an "Aa" icon. The previous page-with-lines mark read as a document and
+  sat next to Save, which is also a document shape.
 
 ## 0.19.0 - 2026-08-17
 
