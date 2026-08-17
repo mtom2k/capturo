@@ -84,24 +84,82 @@ export function blurRadiusForIntensity(intensity: number, scale = 1): number {
   return (1 + ((clampedIntensity(intensity) - 1) / 99) * 31) * clampedEffectScale(scale)
 }
 
+// How much real image a blur of this radius needs around the region it is covering. A Gaussian is
+// effectively zero past three standard deviations; anything less lets the blur read past the edge
+// of what it was given, which is what made the effect fade out towards its own border.
+export function blurPaddingForRadius(radius: number): number {
+  return Math.ceil(Math.max(0, Number.isFinite(radius) ? radius : 0) * 3)
+}
+
 export function pixelBlockForIntensity(intensity: number, scale = 1): number {
   return Math.max(1, Math.round((2 + ((clampedIntensity(intensity) - 1) / 99) * 62) * clampedEffectScale(scale)))
 }
 
+// Blurring a region needs real image from *around* it. A Gaussian samples outwards, so a blur fed
+// only the region's own pixels reads transparency past every edge: the result fades out towards
+// the border and the untouched original shows through underneath. That looked like a blur which
+// only worked in the middle, and it got worse as Intensity rose, because a larger radius widens
+// the faded band - so the control appeared to do nothing. The region is therefore blurred with a
+// margin of surrounding pixels and only its centre is drawn back.
 function applyBlur(context: CanvasRenderingContext2D, rect: Rect, intensity: number, scale: number): void {
-  if (rect.width < 2 || rect.height < 2) return
-  const temporary = document.createElement('canvas')
-  temporary.width = Math.max(1, Math.round(rect.width))
-  temporary.height = Math.max(1, Math.round(rect.height))
-  const tempContext = temporary.getContext('2d')
-  if (!tempContext) return
-  tempContext.drawImage(context.canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, temporary.width, temporary.height)
+  const x = Math.round(rect.x)
+  const y = Math.round(rect.y)
+  const width = Math.round(rect.width)
+  const height = Math.round(rect.height)
+  if (width < 2 || height < 2) return
+
+  const radius = blurRadiusForIntensity(intensity, scale)
+  // A Gaussian is effectively zero past three standard deviations, so that much margin is enough
+  // for the pixels drawn back to be indistinguishable from blurring the whole image.
+  const pad = blurPaddingForRadius(radius)
+
+  const source = context.canvas
+  // The margin is clamped to the image; a region against the edge simply has less to work with.
+  const left = Math.max(0, x - pad)
+  const top = Math.max(0, y - pad)
+  const right = Math.min(source.width, x + width + pad)
+  const bottom = Math.min(source.height, y + height + pad)
+  const availableWidth = right - left
+  const availableHeight = bottom - top
+  if (availableWidth < 1 || availableHeight < 1) return
+
+  const padded = document.createElement('canvas')
+  padded.width = width + pad * 2
+  padded.height = height + pad * 2
+  const paddedContext = padded.getContext('2d')
+  if (!paddedContext) return
+
+  // Where the clamped source lands inside the padded canvas.
+  const offsetX = pad - (x - left)
+  const offsetY = pad - (y - top)
+  paddedContext.drawImage(source, left, top, availableWidth, availableHeight, offsetX, offsetY, availableWidth, availableHeight)
+
+  // Where the image ran out, repeat its edge outwards. Without this a region touching the edge of
+  // the screenshot keeps the same faded border this function exists to remove. Sides first, then
+  // full-width top and bottom, which fills the corners as a side effect.
+  const edgeRight = offsetX + availableWidth
+  const edgeBottom = offsetY + availableHeight
+  if (offsetX > 0) paddedContext.drawImage(padded, offsetX, offsetY, 1, availableHeight, 0, offsetY, offsetX, availableHeight)
+  if (padded.width > edgeRight) {
+    paddedContext.drawImage(padded, edgeRight - 1, offsetY, 1, availableHeight, edgeRight, offsetY, padded.width - edgeRight, availableHeight)
+  }
+  if (offsetY > 0) paddedContext.drawImage(padded, 0, offsetY, padded.width, 1, 0, 0, padded.width, offsetY)
+  if (padded.height > edgeBottom) {
+    paddedContext.drawImage(padded, 0, edgeBottom - 1, padded.width, 1, 0, edgeBottom, padded.width, padded.height - edgeBottom)
+  }
+
+  const blurred = document.createElement('canvas')
+  blurred.width = padded.width
+  blurred.height = padded.height
+  const blurredContext = blurred.getContext('2d')
+  if (!blurredContext) return
+  blurredContext.filter = `blur(${radius}px)`
+  blurredContext.drawImage(padded, 0, 0)
+
+  // Only the centre is taken back, so every pixel written is fully covered by blurred neighbours.
   context.save()
-  context.beginPath()
-  context.rect(rect.x, rect.y, rect.width, rect.height)
-  context.clip()
-  context.filter = `blur(${blurRadiusForIntensity(intensity, scale)}px)`
-  context.drawImage(temporary, rect.x, rect.y, rect.width, rect.height)
+  context.filter = 'none'
+  context.drawImage(blurred, pad, pad, width, height, x, y, width, height)
   context.restore()
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { blurRadiusForIntensity, pixelBlockForIntensity } from '../src/renderer/render'
+import { blurPaddingForRadius, blurRadiusForIntensity, pixelBlockForIntensity } from '../src/renderer/render'
 
 describe('blur and pixelate intensity', () => {
   it('exposes a percentage Intensity control instead of an effect Size control', () => {
@@ -37,5 +37,21 @@ describe('blur and pixelate intensity', () => {
     expect(blurRadiusForIntensity(100, 2)).toBe(64)
     expect(pixelBlockForIntensity(100, 2)).toBe(128)
     expect(blurRadiusForIntensity(50, 0)).toBe(blurRadiusForIntensity(50, 1))
+  })
+
+  it('gives a blur enough surrounding image to cover its own edges', () => {
+    // The defect this pins: a blur fed only its own region read transparency past every edge, so
+    // it faded out towards the border and raising Intensity just widened the faded band. A
+    // Gaussian is effectively zero past three standard deviations, so the margin must reach that.
+    for (const intensity of [1, 25, 50, 100]) {
+      const radius = blurRadiusForIntensity(intensity)
+      expect(blurPaddingForRadius(radius)).toBeGreaterThanOrEqual(radius * 3)
+    }
+    // Padding has to grow with the radius, or a stronger blur reintroduces the faded border.
+    expect(blurPaddingForRadius(blurRadiusForIntensity(100)))
+      .toBeGreaterThan(blurPaddingForRadius(blurRadiusForIntensity(1)))
+    expect(blurPaddingForRadius(0)).toBe(0)
+    expect(blurPaddingForRadius(Number.NaN)).toBe(0)
+    expect(blurPaddingForRadius(-5)).toBe(0)
   })
 })
