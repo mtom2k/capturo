@@ -118,6 +118,13 @@ export type CapturePayload = {
   // rather than by the window's viewport, so a window covering part of a display still
   // maps pointer positions to the correct source pixels.
   captureSize: { width: number; height: number }
+  // Edges of this overlay that the system owns, in CSS pixels. Capturo's own floating UI keeps
+  // out of them; the frozen desktop still fills them, so those pixels remain selectable. On
+  // macOS the overlay spans the whole display (D-029), which puts the top edge behind the menu
+  // bar area — and on a notched Mac that is exactly where the camera housing sits, which clipped
+  // the selection hint. The bottom edge is the Dock. Zero on Windows, where overlays are tiled
+  // inside the work area already.
+  safeArea: { top: number; bottom: number }
 }
 
 // The editor owns all interaction; fillers are passive and repaint from these updates so

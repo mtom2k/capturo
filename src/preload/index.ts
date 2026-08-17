@@ -3,6 +3,7 @@ import type { CapturePayload, CapturoApi, Rect, SceneUpdate } from '../shared/ty
 import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
 import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
 import type { CapturoUpdatesApi } from '../shared/updates'
+import type { CapturoPermissionsApi } from '../shared/permissions'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -65,7 +66,18 @@ const updatesApi: CapturoUpdatesApi = {
   openReleasesPage: () => ipcRenderer.invoke('updates:open-releases')
 }
 
+// Exposed to Settings only in normal use. The renderer can read the screen-capture permission
+// but cannot grant it: requesting and opening System Settings are main-process actions behind a
+// sender check, and no code path here can name a different permission or a different pane.
+const permissionsApi: CapturoPermissionsApi = {
+  getScreenAccess: () => ipcRenderer.invoke('permissions:screen-get'),
+  requestScreenAccess: () => ipcRenderer.invoke('permissions:screen-request'),
+  openScreenSettings: () => ipcRenderer.invoke('permissions:screen-open-settings'),
+  relaunch: () => ipcRenderer.invoke('permissions:relaunch')
+}
+
 contextBridge.exposeInMainWorld('capturo', api)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
 contextBridge.exposeInMainWorld('capturoGif', gifApi)
 contextBridge.exposeInMainWorld('capturoUpdates', updatesApi)
+contextBridge.exposeInMainWorld('capturoPermissions', permissionsApi)

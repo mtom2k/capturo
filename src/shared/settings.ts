@@ -13,6 +13,11 @@ export type GlobalSettings = {
   automaticallyCheckForUpdates: boolean
   // Internal scheduling metadata for the opt-in check. It contains no device or capture data.
   lastUpdateCheckAt: number
+  // Whether Capturo has ever observed macOS granting Screen Recording. A denied status after that
+  // is a distinct situation worth naming: System Settings usually still shows Capturo switched on,
+  // so repeating "turn it on" at someone who already has is useless. Never true on Windows, which
+  // has no such permission. Records only that a system permission was once granted. See D-027.
+  screenAccessWasGranted: boolean
 }
 
 export type CaptureSettings = {
@@ -85,7 +90,8 @@ export const DEFAULT_SETTINGS: Settings = {
   global: {
     openAtStartup: false,
     automaticallyCheckForUpdates: false,
-    lastUpdateCheckAt: 0
+    lastUpdateCheckAt: 0,
+    screenAccessWasGranted: false
   },
   capture: {
     format: 'png',
@@ -153,7 +159,11 @@ function normalizeGlobal(raw: unknown): GlobalSettings {
       global.automaticallyCheckForUpdates,
       DEFAULT_SETTINGS.global.automaticallyCheckForUpdates
     ),
-    lastUpdateCheckAt: normalizeTimestamp(global.lastUpdateCheckAt)
+    lastUpdateCheckAt: normalizeTimestamp(global.lastUpdateCheckAt),
+    screenAccessWasGranted: normalizeBoolean(
+      global.screenAccessWasGranted,
+      DEFAULT_SETTINGS.global.screenAccessWasGranted
+    )
   }
 }
 

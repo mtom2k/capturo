@@ -1,10 +1,12 @@
 # Project State
 
-Last updated: 2026-08-15
+Last updated: 2026-08-17
 
 ## Phase
 
-`0.18.1` is the current source and Windows x64 release candidate. The latest published release remains `0.18.0` until the branding package below passes acceptance and is published. Windows x64 is the only tested platform, and macOS remains untested and unsupported.
+`0.18.1` is the current source version and is published as the latest stable GitHub Release with its Windows installer. Windows x64 remains the only supported platform.
+
+Unreleased work on top of `0.18.1` is the first real macOS pass, and it goes considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS remains unpublished. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
 
@@ -48,7 +50,7 @@ The package version is `0.18.1`. The verified Setup and Portable artifacts descr
 - [x] Contextual customization bar below the primary toolbar
 - [x] Paint-gated, flash-free overlay presentation
 - [x] Animation-free capture transition
-- [x] Tiled overlays cover the whole display, taskbar included, without triggering Do Not Disturb
+- [x] Tiled overlays cover the whole display, taskbar included, without triggering Do Not Disturb (Windows); a single full-display overlay covers the menu bar and Dock on macOS
 - [x] Pixel-exact selection and export on scaled displays
 - [x] Version visible from the tray
 - [x] One supplied Capturo logo consistently drives executable, window/taskbar, tray/menu-bar, notification, and installer assets
@@ -74,11 +76,11 @@ The package version is `0.18.1`. The verified Setup and Portable artifacts descr
 - [x] GIF: localized changes quantize/map only changed pixels, with a 25% full-frame fallback threshold
 - [x] GIF: exact Windows recording-chrome bounds with the DWM-owned grey border suppressed
 - [x] GIF: post-recording preview with Copy, Save, Open folder, Retake, and Discard
-- [x] GIF: Windows animated-file clipboard copy through native `CF_HDROP`
+- [x] GIF: animated-file clipboard copy, native `CF_HDROP` on Windows and `public.file-url` on macOS
 - [ ] GIF: interactive GUI smoke on Windows (drag-select, Pause/Resume/Stop, shade/border look)
 - [x] Windows smoke test (through 0.6.0)
 - [ ] Settings GUI smoke test on Windows
-- [ ] macOS smoke test
+- [x] macOS smoke test of capture, GIF, settings, permissions, and login item (arm64; hands-on matrix not yet walked by a second person)
 - [x] Windows packages
 - [ ] Signed/notarized macOS packages
 
@@ -266,6 +268,38 @@ The package version is `0.18.1`. The verified Setup and Portable artifacts descr
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged taskbar, 16px/32px tray, and native-helper files exactly match their tracked sources
   - the packaged v0.18.1 app opened its real Global Settings renderer and produced a valid smoke screenshot; the executable's embedded icon was extracted and visually confirmed as the new camera/scissors mark
 
+## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
+
+macOS moved from "launches but cannot capture" to a working preview during this session. Verified
+on this host:
+
+- Packaging: `npm run dist:mac` produces a DMG and ZIP, the `afterPack` hook ad-hoc signs the app so
+  `codesign --verify --deep --strict` passes with `Identifier=com.capturo.app` and sealed resources,
+  and Electron's five unused camera/microphone/Bluetooth usage descriptions are stripped so the app
+  declares only `NSScreenCaptureUsageDescription`.
+- Capture: the overlay covers the whole display, menu bar and Dock included, and both are part of
+  the capture. `Esc` cancels from the moment the overlay appears, from the menu bar and the shortcut.
+- Menu bar: a primary click starts a capture; the menu is on right-click and Control-click.
+- Permissions: Screen Recording is surfaced in Global Settings with request, System Settings and
+  Reopen actions, distinguishes a first run from a lapsed grant, asks the system at most once per
+  launch, and never stacks its own dialog on top of Apple's.
+- GIF: recording, preview, and Copy, which now places the animated `.gif` file on the clipboard as
+  `public.file-url` rather than writing a bogus pasteboard type and reporting success.
+- Open on startup registers and unregisters an SMAppService login item, exercised end to end.
+
+Not available on macOS, by dependency rather than defect: **Copy text** and HDR-correct capture both
+run through the Windows-only native helper.
+
+Still blocked on a certificate, not on code:
+
+- No Apple Developer ID Application certificate exists, so a macOS build cannot be notarized and
+  Gatekeeper refuses it on any machine that downloads it. **No macOS artifact may be published.**
+- An ad-hoc signature binds the Screen Recording grant to the build's own code hash, so the
+  permission must be granted again after every build that changes code. A self-signed
+  `Capturo Local Signing` certificate removes that for local development; see RELEASING.md.
+- Intel and universal builds are unbuilt; current output is arm64 only.
+- The hands-on matrix in TESTING.md has not been walked end to end by a second person.
+
 ## Open follow-up
 
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
@@ -274,6 +308,9 @@ The package version is `0.18.1`. The verified Setup and Portable artifacts descr
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
+- Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
+- Decide how a future macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform.
+- Build a macOS x64 or universal artifact once signing exists; current output is arm64 only.
 
 ### GIF optimization status
 
@@ -290,7 +327,8 @@ The package version is `0.18.1`. The verified Setup and Portable artifacts descr
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
 - Copy text is Windows-only, depends on OCR languages installed for the current user, returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters.
-- macOS screen capture requires user-granted Screen Recording permission.
+- macOS screen capture requires user-granted Screen Recording permission, and macOS applies a new grant only to a freshly launched app. macOS also has no readable "not asked yet" state for this permission, so Capturo cannot distinguish a first run from a refusal and must attempt the request before reporting either.
+- An ad-hoc signed macOS build cannot hold that grant at all, so local macOS builds cannot capture.
 - Animated GIF clipboard behavior is implemented on Windows as a file drop and its native protocol is verified; an end-to-end paste from the preview remains in the hands-on checklist. The macOS raw-GIF pasteboard fallback remains unverified with real applications.
 - macOS build, sign, and notarization must run on macOS; they cannot be validated from the Windows development host.
 - Local Windows artifacts are not Authenticode-signed unless signing credentials are supplied to `electron-builder`.

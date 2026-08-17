@@ -26,6 +26,7 @@
       "buildResources": "build"
     },
     "icon": "build/icon.png",
+    "afterPack": "./scripts/sign-mac.mjs",
     "files": [
       "out/**/*",
       "package.json"
@@ -41,13 +42,6 @@
       {
         "from": "build/taskbar-icon.png",
         "to": "taskbar-icon.png"
-      },
-      {
-        "from": "native/capturo-capture/build",
-        "to": "capture",
-        "filter": [
-          "capturo-capture.exe"
-        ]
       }
     ],
     "mac": {
@@ -64,6 +58,15 @@
       "target": [
         "nsis",
         "portable"
+      ],
+      "extraResources": [
+        {
+          "from": "native/capturo-capture/build",
+          "to": "capture",
+          "filter": [
+            "capturo-capture.exe"
+          ]
+        }
       ]
     },
     "nsis": {

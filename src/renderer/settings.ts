@@ -7,6 +7,7 @@ import {
   type SettingsUpdate
 } from '../shared/settings'
 import { acceleratorFromKeyEvent, formatAccelerator } from '../shared/shortcut'
+import { presentScreenAccess, type ScreenAccessState } from '../shared/permissions'
 
 const tabs = document.querySelectorAll<HTMLButtonElement>('.tab')
 const panels = document.querySelectorAll<HTMLElement>('.panel')
@@ -18,6 +19,12 @@ const automaticUpdateCheckSwitch = document.querySelector<HTMLButtonElement>('#a
 const checkUpdatesButton = document.querySelector<HTMLButtonElement>('#check-updates')!
 const viewUpdateButton = document.querySelector<HTMLButtonElement>('#view-update')!
 const updateStatus = document.querySelector<HTMLElement>('#update-status')!
+const screenAccessRow = document.querySelector<HTMLElement>('#screen-access-row')!
+const screenAccessStatus = document.querySelector<HTMLElement>('#screen-access-status')!
+const screenAccessSummary = document.querySelector<HTMLElement>('#screen-access-summary')!
+const screenAccessRequest = document.querySelector<HTMLButtonElement>('#screen-access-request')!
+const screenAccessOpen = document.querySelector<HTMLButtonElement>('#screen-access-open')!
+const screenAccessRelaunch = document.querySelector<HTMLButtonElement>('#screen-access-relaunch')!
 
 // Capture tab
 const formatButtons = document.querySelectorAll<HTMLButtonElement>('[data-format]')
@@ -141,6 +148,51 @@ function render(settings: Settings): void {
   for (const field of fields) field.recorder.textContent = formatAccelerator(field.currentOf(settings), isMac)
 }
 
+// --- Screen recording permission -----------------------------------------------------------
+// macOS refuses screen capture until the user grants Screen Recording, and a refused Capturo
+// simply captures nothing, so the state is surfaced here rather than only at capture time. The
+// row removes itself where the platform has no such gate, leaving Windows Settings unchanged.
+
+function renderScreenAccess(state: ScreenAccessState): void {
+  screenAccessRow.hidden = !state.supported
+  if (!state.supported) return
+  const presentation = presentScreenAccess(state)
+
+  screenAccessSummary.textContent = presentation.summary
+  screenAccessStatus.textContent = presentation.detail
+  for (const tone of ['ok', 'pending', 'error'] as const) {
+    screenAccessSummary.classList.toggle(tone, presentation.tone === tone)
+  }
+  screenAccessStatus.classList.toggle('success', presentation.tone === 'ok')
+  screenAccessStatus.classList.toggle('pending', presentation.tone === 'pending')
+  screenAccessStatus.classList.toggle('error', presentation.tone === 'error')
+
+  // A permission that needs nothing from the user is not worth a callout; one that blocks every
+  // capture is, so the row only grows into one while there is something to do.
+  screenAccessRow.classList.toggle('needs-action', presentation.actions.length > 0)
+  screenAccessRow.classList.toggle('pending', presentation.tone === 'pending')
+
+  const buttons = [
+    ['request', screenAccessRequest],
+    ['open-settings', screenAccessOpen],
+    ['relaunch', screenAccessRelaunch]
+  ] as const
+  for (const [kind, button] of buttons) {
+    const action = presentation.actions.find((candidate) => candidate.kind === kind)
+    button.hidden = action === undefined
+    if (action) button.textContent = action.label
+  }
+  // Present them in the order the user should work through, not the order of the markup.
+  for (const action of presentation.actions) {
+    const match = buttons.find(([kind]) => kind === action.kind)
+    if (match) screenAccessRow.querySelector('.permission-actions')!.append(match[1])
+  }
+}
+
+async function refreshScreenAccess(): Promise<void> {
+  renderScreenAccess(await window.capturoPermissions.getScreenAccess())
+}
+
 function startRecording(field: ShortcutField): void {
   recordingField = field
   field.recorder.classList.add('recording')
@@ -235,6 +287,31 @@ viewUpdateButton.addEventListener('click', () => {
   void window.capturoUpdates.openReleasesPage()
 })
 
+screenAccessRequest.addEventListener('click', () => {
+  screenAccessRequest.disabled = true
+  void window.capturoPermissions
+    .requestScreenAccess()
+    .then(renderScreenAccess)
+    .finally(() => {
+      screenAccessRequest.disabled = false
+    })
+})
+
+screenAccessOpen.addEventListener('click', () => {
+  void window.capturoPermissions.openScreenSettings()
+})
+
+screenAccessRelaunch.addEventListener('click', () => {
+  screenAccessRelaunch.disabled = true
+  void window.capturoPermissions.relaunch()
+})
+
+// The permission is granted outside Capturo, in System Settings, so the answer can change while
+// this window sits in the background. Re-read it on focus instead of leaving a stale message up.
+window.addEventListener('focus', () => {
+  if (!screenAccessRow.hidden) void refreshScreenAccess()
+})
+
 for (const button of formatButtons) {
   button.addEventListener('click', () => void apply({ capture: { format: button.dataset.format as CaptureFormat } }))
 }
@@ -277,3 +354,4 @@ for (const field of fields) {
 window.addEventListener('keydown', (event) => void onKeyDown(event), true)
 
 void window.capturoSettings.get().then(render)
+void refreshScreenAccess()

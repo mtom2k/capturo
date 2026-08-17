@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+### Added
+
+- Global Settings shows the macOS Screen Recording permission. While something is blocking
+  capture it becomes a callout with a one-word status, a numbered next step, and **Request
+  access**, **Open System Settings**, and **Reopen Capturo** actions; once granted it collapses to
+  a quiet line. The row is hidden on Windows, which has no equivalent permission.
+- **Reopen Capturo** restarts the app from Settings and from the permission dialog. macOS applies
+  a newly granted permission only to a newly launched app, so this is a step in the flow rather
+  than a workaround.
+- Capturo now recognises when Screen Recording access it previously had has gone away, and says
+  so specifically: System Settings usually still lists Capturo as switched on, so it asks you to
+  switch it off and on again instead of repeating "turn it on".
+
+### Fixed
+
+- `Esc` now cancels a screenshot or GIF capture immediately on macOS, instead of doing nothing
+  until a region had been dragged. The overlay never received keyboard focus, because macOS will
+  not make a window key while its application is inactive and Capturo runs in the menu bar.
+- The GIF overlay's "Drag to select a region to record" hint is no longer clipped by the camera
+  housing on a MacBook Pro. The screenshot overlay was corrected for this; the GIF overlay is a
+  separate entry point and was missed, and both now share one helper so they cannot drift again.
+- Copying a finished GIF now works on macOS. Capturo wrote the clipboard data under `public.gif`,
+  which is not a real pasteboard type, so macOS accepted the write, stored nothing, and Capturo
+  still reported success. It now copies the `.gif` file itself the way the Windows build does, so
+  the animation survives the paste, and it verifies the clipboard before claiming success.
+- The "Drag to select" hint is no longer clipped by the camera housing on a MacBook Pro. The
+  capture overlay covers the whole display on macOS, so Capturo's own on-screen text is now inset
+  past the menu bar area at the top and the Dock at the bottom. The frozen desktop still fills
+  those edges and remains selectable.
+- Capturo no longer shows its own permission dialog on top of the macOS Screen Recording prompt.
+  The system prompt is answered asynchronously, so Capturo saw "still denied" and stacked a second
+  dialog behind Apple's, for one permission that only Apple's dialog could grant.
+- Capturo no longer asks for Screen Recording permission repeatedly on macOS. Every capture
+  attempt re-raised the system prompt, and each trigger queued its own prompt and dialog, so
+  dismissing one only brought up the next — with **Deny** as the only way to stop it, which
+  records a refusal that only System Settings can undo. Capturo now raises the system prompt at
+  most once per launch and holds a single permission conversation at a time.
+- Clicking the Capturo icon in the macOS menu bar now starts a screenshot instead of opening the
+  menu and starting a capture at the same time. The menu moved to right-click and Control-click,
+  matching macOS conventions. Windows tray behaviour is unchanged.
+- macOS captures now include the menu bar and the Dock, and no longer show a duplicated Dock.
+  macOS pushed the overlay strips covering those areas back inside the work area, so their frozen
+  copies were painted over the editor while the real menu bar and Dock stayed on screen. macOS now
+  covers the display with a single overlay that is exempt from that clamp.
+- macOS capture no longer refuses on a first run. macOS reports a never-asked app the same way it
+  reports a refused one, so Capturo now attempts the request before concluding permission was
+  denied. Without this it sent users to a System Settings pane that did not list Capturo yet.
+- macOS development builds can be signed with a stable local certificate, so macOS stops asking
+  for Screen Recording after every rebuild. An ad-hoc signature's designated requirement is the
+  app's own code hash, so each changed build looked like a different app to macOS even though the
+  permission toggle stayed on. The build now prefers a Developer ID, then a local certificate, and
+  warns when it falls back to ad-hoc.
+- macOS builds are ad-hoc signed during packaging. Previously the packaged app kept Electron's
+  linker signature, reported its identifier as `Electron`, sealed no resources, and was treated
+  by macOS as damaged.
+- macOS no longer logs `Unable to set login item: Operation not permitted` on every launch. The
+  startup reconciliation asked macOS to unregister a login item that had never been registered.
+- `release/BUILD-INFO.txt` names the unpacked directory that was actually produced instead of
+  always claiming `win-unpacked/`.
+- A macOS build no longer requires the Windows native helper directory to exist; that resource is
+  now scoped to the Windows target.
+
 ## 0.18.1 - 2026-08-15
 
 ### Changed

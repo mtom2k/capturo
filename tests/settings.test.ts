@@ -20,6 +20,14 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ global: { openAtStartup: 'true' } }).global.openAtStartup).toBe(false)
   })
 
+  it('starts with no record of screen access and normalizes it', () => {
+    // Drives the difference between "turn it on" and "switch it off and on again" guidance, so a
+    // corrupt value must fall back to the first-run wording rather than the stale-grant wording.
+    expect(DEFAULT_SETTINGS.global.screenAccessWasGranted).toBe(false)
+    expect(normalizeSettings({ global: { screenAccessWasGranted: true } }).global.screenAccessWasGranted).toBe(true)
+    expect(normalizeSettings({ global: { screenAccessWasGranted: 'true' } }).global.screenAccessWasGranted).toBe(false)
+  })
+
   it('keeps automatic update checks explicitly opt-in', () => {
     expect(DEFAULT_SETTINGS.global.automaticallyCheckForUpdates).toBe(false)
     expect(DEFAULT_SETTINGS.global.lastUpdateCheckAt).toBe(0)

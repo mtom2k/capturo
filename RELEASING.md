@@ -41,7 +41,71 @@ file behind. OCR is local and Windows-only; do not add a model download or claim
 
 ## macOS
 
-Run `npm run dist:mac` on macOS. The package declares the Screen Recording usage description, but distribution still requires an Apple Developer ID certificate, hardened runtime review, notarization, and stapling. Validate both the DMG and ZIP after signing.
+Run `npm run dist:mac` on macOS. It produces `Capturo-<version>-<arch>.dmg` and
+`Capturo-<version>-<arch>-mac.zip` for the host architecture only; an Intel or universal build
+needs an explicit `--x64` or `--universal`. The Windows native helper is scoped to the `win`
+target, so a macOS build does not need `native/capturo-capture/build` to exist.
+
+`scripts/sign-mac.mjs` runs as an `afterPack` hook and signs the app before the DMG and ZIP are
+produced. Without it electron-builder leaves the bundle linker-signed with the identifier
+`Electron` and no sealed resources, which macOS treats as damaged. It prefers a Developer ID
+certificate (standing aside so electron-builder signs), then a stable local certificate, then
+ad-hoc. Verify a build with `codesign --verify --deep --strict` and read the identity with
+`codesign -dv --verbose=2`; a good local build reports `Identifier=com.capturo.app` and
+`Sealed Resources version=2`.
+
+### Why macOS keeps asking for Screen Recording
+
+TCC stores an app's **designated requirement** when a permission is granted, and the signature
+decides what that requirement is:
+
+```
+ad-hoc        designated => cdhash H"7c7f1a44..."
+certificate   designated => identifier "com.capturo.app" and certificate leaf H"..."
+```
+
+An ad-hoc requirement is a hash of the app's own code. Any build that changes a byte produces a
+different hash, so TCC treats it as a different app: the Screen Recording toggle stays visibly on
+while the new build is denied and prompts again. This is why a rebuilt Capturo loses a permission
+that Chrome keeps across updates — Chrome's requirement names its certificate, not its code. A
+rebuild with no source change is harmless, because the build is deterministic and the hash is
+unchanged; it is *changing* the app that invalidates the grant.
+
+To stop it during development, sign with a stable certificate. One-time setup:
+
+1. Open **Keychain Access → Certificate Assistant → Create a Certificate…**
+2. Name it exactly `Capturo Local Signing`, Identity Type **Self Signed Root**, Certificate Type
+   **Code Signing**, and create it in the **login** keychain.
+
+`npm run dist:mac` picks it up automatically by name; `CAPTURO_MAC_SIGN_IDENTITY` overrides with
+another certificate name or SHA-1 hash. Grants then survive every rebuild. Grant Screen Recording
+once more after the first build signed this way, because the identity has changed for the last
+time. The build prints the resulting requirement, so check it names a certificate rather than a
+`cdhash`.
+
+This is for local development only. A self-signed certificate is not trusted by Gatekeeper and
+cannot be notarized, so it changes nothing about distribution.
+
+Ad-hoc signing is not distribution. Two limits decide what a macOS release can claim, and both
+are recorded in D-028:
+
+- Gatekeeper refuses an ad-hoc signed app on any machine that downloads it. Distribution requires
+  a Developer ID Application certificate, hardened runtime review, notarization, and stapling.
+- TCC cannot hold a Screen Recording grant for an ad-hoc signature, which carries no Team ID and
+  no designated requirement. Capturo appears in Screen & System Audio Recording and can be
+  toggled on, but a freshly launched ad-hoc build still preflights as `denied` and captures
+  nothing. Screen capture is the product, so **macOS is not releasable until a Developer ID
+  certificate is available**, regardless of how much of the rest works.
+
+Do not publish a macOS artifact to GitHub Releases before that certificate exists and a signed,
+notarized build has captured, annotated, copied, and saved on real hardware. A macOS asset on a
+stable release also has to be reconciled with the in-app update checker, which reads one
+`releases/latest` feed for every platform.
+
+When testing a macOS build, launch it with `open -a /Applications/Capturo.app`, not by executing
+`Capturo.app/Contents/MacOS/Capturo` from a shell. TCC attributes a directly executed binary's
+capture request to the parent terminal instead of to Capturo, which makes permission behavior
+untestable and can appear to work when it will not for a real user.
 
 ## Release acceptance
 

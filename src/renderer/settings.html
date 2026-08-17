@@ -15,6 +15,18 @@
       </nav>
 
       <section class="panel" data-panel="global" role="tabpanel">
+        <div class="row permission-row" id="screen-access-row" hidden>
+          <div class="label permission-label">
+            <span>Screen recording <em class="permission-summary" id="screen-access-summary"></em></span>
+            <small id="screen-access-status" role="status" aria-live="polite">Checking macOS permission…</small>
+          </div>
+          <div class="permission-actions">
+            <button class="settings-button" id="screen-access-request" hidden title="Ask macOS for Screen Recording access; the system prompt appears only the first time">Request access</button>
+            <button class="settings-button" id="screen-access-open" hidden title="Open System Settings at Privacy &amp; Security → Screen Recording">Open System Settings</button>
+            <button class="settings-button" id="screen-access-relaunch" hidden title="Quit and reopen Capturo; macOS applies a new permission only to a newly launched app">Reopen Capturo</button>
+          </div>
+        </div>
+
         <div class="row">
           <div class="label">
             <span>Open on startup</span>
