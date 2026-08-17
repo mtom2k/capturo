@@ -156,8 +156,17 @@ function trayAsset(name: string): string {
     : path.join(app.getAppPath(), 'build', 'tray', name)
 }
 
+// The macOS menu bar expects a template image: monochrome artwork whose alpha macOS paints
+// itself, so the icon follows the light or dark bar, dims when the app is inactive, and inverts
+// while the menu is open. A colour logo there renders as a filled tile among the system glyphs.
+// Windows has no such convention and keeps the colour mark. See D-009.
 function trayImage(): Electron.NativeImage | string {
-  return trayAsset('tray-icon.png')
+  if (!isMac) return trayAsset('tray-icon.png')
+  const image = nativeImage.createFromPath(trayAsset('tray-iconTemplate.png'))
+  // Electron also infers this from the `Template` filename suffix; setting it explicitly means the
+  // behaviour does not silently depend on the asset keeping that exact name.
+  image.setTemplateImage(true)
+  return image
 }
 
 function taskbarIcon(): string {
