@@ -59,7 +59,8 @@ button {
 }
 
 .hint {
-  top: 18px;
+  /* Offset past any system-owned top edge, which on a notched Mac is the camera housing. */
+  top: calc(var(--safe-area-top, 0px) + 18px);
   left: 50%;
   transform: translateX(-50%);
   padding: 9px 11px;
@@ -547,7 +548,8 @@ select:focus-visible {
 
 .status {
   left: 50%;
-  bottom: 18px;
+  /* Matches the hint: clear of the Dock strip the overlay now covers on macOS. */
+  bottom: calc(var(--safe-area-bottom, 0px) + 18px);
   padding: 8px 10px;
   opacity: 0;
   transform: translate(-50%, 8px);

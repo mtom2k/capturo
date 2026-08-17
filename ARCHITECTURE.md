@@ -29,7 +29,7 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 ## Capture flow
 
 1. The main process hides any prior overlays and grabs each display's frozen desktop. On Windows this is the native FP16 helper (D-015), which runs as a persistent background process warmed at launch so a capture pays no device/duplication setup (D-017); other platforms, or a Windows machine without the helper, fall back to a `desktopCapturer` thumbnail. The helper captures the requested displays in one batch, and the fallback `desktopCapturer` sources, full-resolution grabs of every screen, are fetched only when a display actually needs them, never on the Windows happy path.
-2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently, sending each the frozen image plus the origin and size it needs. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input.
+2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently, sending each the frozen image plus the origin and size it needs. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input. How a display is divided into regions is platform-specific and lives in `overlayRegions` in `src/shared/geometry.ts`: Windows tiles an editor over the work area plus a filler per uncovered strip (D-013), while macOS uses a single window over the whole display created with `enableLargerThanScreen: true`, because AppKit otherwise clamps a window into the work area and leaves the menu bar and Dock uncovered (D-029).
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
@@ -81,6 +81,19 @@ The source of truth is an in-memory settings object in the main process, validat
 
 Open on startup is also applied in the main process. Packaged Windows and macOS builds call Electron's login-item API when the preference changes and reconcile it again on every launch; a rejected change rolls the stored toggle back and returns an inline error to Settings. Development builds persist and render the value for UI work but deliberately do not register the Electron development executable with the operating system.
 
+On macOS the Global tab also shows the Screen Recording permission, because the platform refuses
+capture until the user grants it and a refused Capturo captures nothing (D-027). `screenAccessState()`
+in the main process reads `systemPreferences.getMediaAccessStatus('screen')`; the pure presentation
+logic in `src/shared/permissions.ts` turns that into a message and the actions to offer. macOS has no
+readable "not asked yet" state for screen capture — the status is a boolean preflight, so a first run
+and a refusal both report `denied` — so the copy never accuses the user of refusing, and `denied`
+still offers the request path. Requesting attempts a one-pixel `desktopCapturer` grab, which is the
+only thing that raises the system prompt and the only thing that adds Capturo to the Screen Recording
+list; `ensureScreenPermission` does the same before falling back to its dialog. The row hides itself
+where the platform reports the permission unsupported, so Windows Settings is unchanged. The renderer
+reads status but cannot grant it: requesting and opening the Screen Recording pane are main-process
+actions behind the same Settings-sender check as the update handlers.
+
 Update checks are stable-release notifications, not an installer (D-025). `src/main/updates.ts` performs one bounded HTTPS GET to GitHub's public `releases/latest` API with no authentication or application data. Pure validation in `src/shared/updates.ts` accepts only non-draft, non-prerelease `vMAJOR.MINOR.PATCH` releases and compares them with `app.getVersion()`. Manual checks are available only from the Settings sender; automatic checks are packaged-build-only, disabled by default, delayed after startup, persisted to at most once per 24 hours across restarts, and deferred while screenshot/GIF capture or encoding is active. A newer version adds a fixed official-release action to the tray and a local notification. The sandboxed renderer cannot provide a URL, download bytes, or initiate installation.
 
 The endpoint must remain publicly readable. `mtom2k/capturo` is public and its anonymous `releases/latest` endpoint is the production feed; Capturo intentionally carries no GitHub token because a credential shipped in a desktop binary is not secret. If releases ever move to a dedicated public repository, migrate the API constant in `src/main/updates.ts` and browser URL in `src/shared/updates.ts` together and repeat the packaged network smoke.
@@ -97,17 +110,53 @@ The selected FPS is a requested sampling cadence, not the playback clock. Every 
 
 For a distinct frame whose changed pixels cover at most 25% of the region, the encoder collects those pixels in the equality scan and quantizes/maps only that compact set; unchanged positions receive the transparent index directly. Frames with broader motion use the full-frame path, avoiding a large sparse copy when it would not help. Fully identical frames still coalesce. The threshold bounds scratch memory and preserves per-frame palettes while making the ordinary desktop case proportional to changed content rather than total region area. See D-020.
 
+## Platform conventions
+
+Capturo is one codebase for Windows and macOS, not a fork per platform. The platforms differ in
+real ways — window management, permissions, clipboard formats, native capture — but the capture
+model, annotation model, settings, GIF pipeline, and the entire renderer layer are shared, so
+forking would duplicate the large part to isolate the small one. Four rules keep that workable.
+
+**Platform decisions belong to the main process.** Renderers receive data, not platform checks. The
+overlay does not ask which OS it is on to avoid the notch; it is handed `CapturePayload.safeArea`
+and offsets by it. A renderer that branches on platform cannot be reasoned about from the main
+process, and `navigator.userAgent` sniffing in a renderer is not a substitute for the authoritative
+answer main already has.
+
+**Platform-varying logic is pure, with the platform as a parameter.** `overlayRegions(bounds,
+workArea, tiled)` takes a boolean rather than reading `process.platform`, so both the Windows tiled
+arrangement and the macOS full-display arrangement are unit-tested on any machine, on any OS. The
+same applies to `presentScreenAccess`, which is exercised for every permission state including the
+ones the developer's own machine cannot produce. Anything shaped like `if (isMac)` inside a
+calculation is a branch that will only ever be tested on one platform.
+
+**Capability, not platform, decides behaviour where it can.** The screen-permission API reports
+`supported: false` rather than making the renderer ask whether it is on macOS, so the Settings row
+disappears on Windows without Windows knowing why. `helperAvailable()` gates the native helper the
+same way, which is also what lets a Windows machine without the helper fall back cleanly.
+
+**Native code and packaging are scoped at the build.** `native/capturo-capture` is Windows-only and
+is declared under the `win` target, so a macOS build neither needs nor copies it. macOS-only
+concerns — ad-hoc signing, stripping Electron's unused usage descriptions — live in the
+`afterPack` hook and no-op elsewhere. Platform-specific behaviour that cannot be shared is
+therefore visible at the edges of the build rather than scattered through the source.
+
+The cost of this is honest feature asymmetry rather than divergence: **Copy text** and HDR-correct
+capture are Windows-only because they depend on the native helper, and that is stated in the UI and
+the README rather than papered over.
+
 ## Source layout
 
 ```text
 src/main/       Electron lifecycle, capture, tray, native integrations, settings/update checks + capture-helper,
                 GIF recording windows (selection, chrome, preview, file actions)
-src/preload/    contextBridge API (capture + settings + GIF)
+src/preload/    contextBridge API (capture + settings + GIF + updates + permissions)
 src/renderer/   capture/editor UI, settings window, GIF selection + recording + preview windows,
                 canvas rendering, styles, GIF encoder + worker
 src/shared/     IPC, geometry, settings, update-version validation, OCR text normalization,
-                transparency, and GIF logic
-tests/          deterministic unit tests for pure geometry/model/settings/update/OCR/transparency/GIF behavior
+                screen-permission presentation, transparency, and GIF logic
+tests/          deterministic unit tests for pure geometry/model/settings/update/OCR/permission/
+                transparency/GIF behavior
 ```
 
 ## Security boundary

@@ -107,28 +107,93 @@ button {
   color: #f97362;
 }
 
-.update-label {
+.update-label,
+.permission-label {
   min-width: 0;
 }
 
-.update-label small {
+.update-label small,
+.permission-label small {
   max-width: 245px;
   line-height: 1.35;
 }
 
-.update-label small.success {
+.update-label small.success,
+.permission-label small.success {
   color: #72d59a;
 }
 
-.update-label small.error {
+.update-label small.error,
+.permission-label small.error {
   color: #f97362;
 }
 
-.update-actions {
+/* Screen Recording is not yet answered: not a failure, but capture will not work until it is. */
+.permission-label small.pending {
+  color: #e0b341;
+}
+
+.update-actions,
+.permission-actions {
   display: flex;
   flex: none;
   align-items: center;
   gap: 7px;
+}
+
+/* The permission row can offer up to three actions at once, which no fixed-width row can hold
+   beside its text. When action is needed it becomes a full-width callout: text on its own line,
+   actions in a row beneath. A granted permission needs none of that and stays a quiet row. */
+.permission-row.needs-action {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid rgba(249, 115, 98, 0.45);
+  border-radius: 8px;
+  background: rgba(249, 115, 98, 0.08);
+}
+
+.permission-row.needs-action.pending {
+  border-color: rgba(224, 179, 65, 0.45);
+  background: rgba(224, 179, 65, 0.08);
+}
+
+.permission-row.needs-action .permission-label small {
+  max-width: none;
+}
+
+.permission-row.needs-action .permission-actions {
+  flex-wrap: wrap;
+}
+
+/* A one-word state, so the row reads at a glance without parsing the explanation. */
+.permission-summary {
+  margin-left: 6px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #8b93a1;
+  font-size: 10px;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.permission-summary.ok {
+  background: rgba(114, 213, 154, 0.16);
+  color: #72d59a;
+}
+
+.permission-summary.pending {
+  background: rgba(224, 179, 65, 0.16);
+  color: #e0b341;
+}
+
+.permission-summary.error {
+  background: rgba(249, 115, 98, 0.16);
+  color: #f97362;
 }
 
 .settings-button {

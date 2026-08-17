@@ -74,6 +74,10 @@ The overlay is now shown transparent immediately after it is created, so the pla
 
 Verification must measure geometric motion between consecutive frames, not average luminance. A scale animation moves the same desktop image, so frame-average brightness barely changes and a luminance check reports success while the animation is still plainly visible.
 
+**Amended: on macOS the reveal activates the application, not just the window.** Showing the overlay inactive means it holds no keyboard focus, and the editor's `Escape` handler lives on a renderer `keydown` listener, so before a first drag there was nothing to receive the key. `BrowserWindow.focus()` covers that on Windows, but macOS will not make a window key while its application is inactive — and Capturo is a tray app with no Dock icon, so the click or shortcut that starts a capture leaves the user's previous application active. `focus()` then silently did nothing and Escape was dead until the user dragged.
+
+Measured with another application frontmost: the current reveal left `isFocused` false, and activating the application first made it true; end to end, the frontmost application went from Finder to Capturo when the overlay appeared. `revealOverlay` therefore calls `app.focus({ steal: true })` before focusing the editor window on macOS. Stealing focus is correct here rather than rude: the user has just asked for a surface that covers their whole screen, and the global-shortcut path has no click to fall back on. Only the editor is focused; fillers are left alone so they can never take it from the editor.
+
 **Amended (0.10.0): the reveal no longer waits out a fixed delay.** The opacity reveal above once carried a 250 ms floor that spent the window's show transition while the overlay was invisible. Dropping `WS_THICKFRAME` (`thickFrame: false`, added in 0.9.1 to remove the Windows 11 border) also suppresses that open transition, so there is no animation left to wait out. `revealOverlay` now raises the opacity the instant the renderer acknowledges `capture:ready`, with no timer. The transparent-early + opacity mechanism is kept: it still guarantees the window has painted before it is visible (D-010) and cannot swallow pointer events before then, and an opacity change is itself never animated. The same frame-differencing verification applies: a correct reveal is a single hard cut with no black frame and no motion on either side.
 
 ## D-012: Overlay bounds are re-applied after the window exists
@@ -248,7 +252,11 @@ Stopping a recording must not force a filesystem decision before the user has se
 
 Copy must preserve animation rather than pass the GIF through Electron's decoded-image clipboard API. On Windows, the main process writes an unsaved preview to `%TEMP%\Capturo\Clipboard` only after the user explicitly chooses Copy, then sends `clipboard-file\t<absolutePath>` through the already-running native helper. The helper publishes a double-null-terminated Unicode `DROPFILES` block as `CF_HDROP`; no PowerShell or additional process is introduced. If the GIF was saved and still exists, its permanent path is copied directly. A temporary clipboard file cannot be deleted when the preview closes because Windows stores the path, not the file bytes, and paste must continue to work afterward. Capturo limits residue by deleting only its own matching temporary GIFs older than 24 hours on a later launch.
 
-The preview owns Copy, Save, Open folder, Retake, and Discard through narrow typed IPC calls. Copy and Save have the conventional `Ctrl/Cmd+C` and `Ctrl/Cmd+S` shortcuts; Escape discards. A second tray or shortcut request while a preview is open focuses that preview instead of silently losing the pending GIF. macOS remains unsupported and its raw-GIF pasteboard fallback requires real-hardware interoperability testing before it can be claimed as equivalent to the Windows file drop.
+The preview owns Copy, Save, Open folder, Retake, and Discard through narrow typed IPC calls. Copy and Save have the conventional `Ctrl/Cmd+C` and `Ctrl/Cmd+S` shortcuts; Escape discards. A second tray or shortcut request while a preview is open focuses that preview instead of silently losing the pending GIF.
+
+**macOS copies the file too, for the same reason Windows does.** The original raw-GIF pasteboard fallback wrote `clipboard.writeBuffer('public.gif', bytes)`, and `public.gif` is not a real UTI: macOS accepted the call, wrote nothing, and left `availableFormats()` empty, so Copy reported success and pasted nothing at all. macOS therefore takes the same file-based path as Windows — reusing the same temporary `Capturo/Clipboard` directory and the same 24-hour cleanup — and publishes the path as `public.file-url`, the pasteboard type Finder, Mail and Messages read. Measured on macOS 26.2, that type reports as `«class furl»` and the system resolves it back to the exact file, including the spaces in Capturo's generated filenames, so the receiving application gets the animated `.gif` rather than a flattened frame.
+
+Copy now reads the pasteboard back before reporting success. A write that silently lands nowhere is otherwise indistinguishable from one that worked, which is exactly how the `public.gif` bug survived: the handler returned `ok` unconditionally and the preview reported "Animated GIF copied to the clipboard".
 
 ## D-024: Blur and Pixelate strength is percentage intensity, not stroke size
 
@@ -283,3 +291,86 @@ OCR bytes stay in memory. The main process sends base64 PNG bytes over the alrea
 Clipboard ownership remains in the Electron main process. It normalizes CRLF and trailing presentation whitespace while preserving internal spaces and blank lines, writes only non-empty plain text, then closes the session. No-text, missing-language, helper, image, or clipboard failures leave the editor open and display a useful status. `Ctrl/Cmd+Shift+C` is distinct from regular `Ctrl/Cmd+C`, and the button sits immediately beside regular Copy so the image/text choice is explicit.
 
 The C++ helper uses a multithreaded COM apartment: synchronous C++/WinRT `.get()` is not valid in a single-threaded apartment. Because that process also owns DXGI desktop duplication, WIC PNG encoding, DWM frame suppression, and Windows GIF `CF_HDROP`, changing this initialization requires regression testing all relevant native paths rather than OCR alone. OCR accuracy is inherently source- and language-dependent; documentation must tell users to install the appropriate Windows language pack and review important results rather than presenting recognition as exact.
+
+## D-027: macOS screen-capture permission is surfaced in Settings, not only at capture time
+
+**Status:** accepted
+
+macOS refuses screen capture until the user grants Screen Recording, and a refused Capturo simply captures nothing. The permission therefore has a visible home in Global Settings rather than appearing only as a dialog at the moment a capture fails. Windows has no equivalent gate, so the row reports itself unsupported and hides; the platform test lives in the main process, not in a renderer user-agent sniff.
+
+The decisive constraint is that macOS has no readable "not asked yet" state for this permission. `systemPreferences.getMediaAccessStatus('screen')` is backed by a boolean preflight, so a first run and a genuine refusal both report `denied`. Two rules follow, and both are covered by `tests/permissions.test.ts`:
+
+- No message may tell the user they refused something, because macOS reports a never-asked Capturo identically.
+- `denied` must still offer the request path. Attempting a capture is the only thing that raises the system prompt, and it is also what adds Capturo to the Screen Recording list at all. `ensureScreenPermission` therefore attempts the request before showing its dialog. Sending the user to System Settings first would send them to a pane that does not yet list Capturo. `restricted` is a policy state no prompt can move and routes straight to System Settings.
+
+Granting the permission does not reach an already-running process; macOS applies it to a newly launched app. Every message that sends the user to System Settings therefore also tells them to reopen Capturo, or they grant it, see nothing change, and conclude Capturo is broken.
+
+The renderer can read the status but cannot grant it. Requesting and opening the Screen Recording pane are main-process actions behind the same Settings-sender check as the update handlers, and no renderer code path can name a different permission or a different System Settings pane.
+
+**Capturo asks the system at most once per launch, and only ever holds one permission conversation at a time.** Both limits are load-bearing and were added after a real failure. Raising the prompt is not free: `desktopCapturer.getSources` re-raises the macOS modal, and capture triggers are fire-and-forget from the tray, the global shortcut, `activate` and `second-instance`, so an unguarded implementation queued one system prompt and one dialog per trigger. The user dismissed one, the next appeared, and it read as Capturo asking forever. They eventually pressed **Deny** to make it stop, which writes an explicit refusal that only System Settings can undo — the retry destroyed the permission it was trying to obtain.
+
+macOS records the answer the first time, so a second prompt cannot produce a better outcome than the first. `screenAccessRequested` therefore allows exactly one system prompt per launch and every later attempt goes straight to Capturo's own dialog, and `screenPermissionCheck` memoizes the in-flight check the way `updateCheckInFlight` does, so concurrent triggers share one conversation. That check must never reject, because callers treat it as a boolean gate and an escaping rejection would leave capture blocked for the rest of the session.
+
+**The attempt that raises the system prompt shows nothing else.** `desktopCapturer.getSources` raises Apple's Screen Recording prompt but is answered asynchronously: it returns "still denied" within milliseconds, while Apple's dialog is still on screen and unanswered. Continuing straight to Capturo's dialog therefore put two permission dialogs on screen for one permission, and only Apple's could actually grant it. The attempt that raises the prompt now returns without showing anything of Capturo's, and the explanation is left to the next attempt. The cost is that when macOS stays silent because it already holds an answer, the first capture appears to do nothing; that is one wasted click which the next click corrects, and it is a better trade than a pair of stacked dialogs on every first run.
+
+Measuring this needs care. Extra `electron .` instances only reach the running app through `second-instance`, and that requires the *same* `userData`, which the smoke flags redirect — instances launched without the matching flag run as independent apps and prove nothing about coalescing. With the flag matched, seven rapid triggers against a denied build produced exactly one deferral and one dialog.
+
+**Reopening is part of the instruction, not advice.** Because macOS applies a grant only to a newly launched app, every path that asks the user to change the permission also offers **Reopen Capturo**, which runs `app.relaunch()` through `app.quit()` so the capture helper stops and the global shortcuts are released for the new instance. Telling the user to reopen while making them quit from the tray and find Capturo again is where the grant was most often lost.
+
+**A lost grant is named, not re-explained.** `GlobalSettings.screenAccessWasGranted` records the first time Capturo observes a granted status. A denied status after that is a distinct state with distinct wording: System Settings normally still lists Capturo as switched on, so repeating "turn it on" sends the user to a pane that already looks correct. That state instead says the access was lost and to switch it off and on again. It is the common outcome of an unsigned build changing identity (D-028), but it is written for anyone whose grant has gone stale, and the first-run wording must never mention switching anything off.
+
+The row is a quiet line when the permission is granted and becomes a bordered callout with a one-word status chip only while an action is outstanding, so a blocked capture is visible at a glance without making a healthy permission shout.
+
+**Capturo does not revoke its own permission.** Adding a "remove permission" action was considered and rejected. `tccutil reset ScreenCapture com.capturo.app` would shell out to a tool Apple documents for the terminal and never exposed to applications, whose behavior varies by macOS release; the privacy database is System Settings' responsibility, and an application resetting its own grants is the kind of authority this codebase deliberately keeps out of reach. It would also not fix anything: macOS re-prompts for an app whose designated requirement no longer matches, so a stale entry is confusing rather than blocking, and the recovery is the off/on toggle the message now names. Opening the correct System Settings pane and explaining the toggle achieves the same outcome without touching TCC.
+
+## D-028: macOS builds are ad-hoc signed locally and require a Developer ID to be usable
+
+**Status:** accepted
+
+electron-builder signs only when it finds a Developer ID Application certificate. With none on the build host it leaves the bundle as Electron shipped it: linker-signed, carrying the identifier `Electron` instead of Capturo's, and with no sealed resources. macOS treats that bundle as damaged, and `spctl` rejects it outright. The `afterPack` hook in `scripts/adhoc-sign-mac.mjs` therefore ad-hoc signs the packaged app before the DMG and ZIP are produced, which restores the real bundle identifier, seals resources, and makes the app verify. The hook stands aside when a real Developer ID certificate is present.
+
+Ad-hoc signing is a local-development measure and not a distribution path. Two limits are load-bearing:
+
+- Gatekeeper still refuses an ad-hoc signed app on any machine that downloads it, because notarization is impossible without a Developer ID.
+- TCC cannot hold a Screen Recording grant across builds. Observed on macOS 26.2: Capturo appears in Screen & System Audio Recording and can be toggled on, yet a rebuilt ad-hoc app still preflights as `denied` and captures nothing.
+
+The mechanism behind the second limit was measured rather than assumed. TCC stores an app's designated requirement when a permission is granted, and the signature determines it:
+
+```
+Capturo, ad-hoc   designated => cdhash H"7c7f1a44..."
+Chrome, signed    designated => identifier "com.google.Chrome" ... certificate leaf[subject.OU] = EQHXZ8M8AV
+```
+
+An ad-hoc designated requirement is a hash of the app's own code, so any build that changes a byte is a different app to TCC: the toggle stays visibly on while the new build is denied and prompts again. A signed app's requirement names its certificate, which is why signed applications keep permissions across updates. A rebuild that changes nothing is harmless — the build is deterministic and the hash is unchanged — so it is *changing* the app, not rebuilding it, that invalidates the grant.
+
+That makes any stable certificate, not only a Developer ID, enough to stop the repeated prompting during development. `scripts/sign-mac.mjs` therefore prefers a Developer ID, then a stable local certificate (`Capturo Local Signing`, or `CAPTURO_MAC_SIGN_IDENTITY`), and only falls back to ad-hoc, where it warns and prints the resulting requirement so the consequence is visible in the build log. RELEASING.md documents creating the local certificate.
+
+Distribution is still gated on a real Developer ID Application certificate. Until one exists, no macOS artifact may be published, and a locally signed build proves nothing about Gatekeeper or notarization.
+
+## D-029: macOS covers a display with one overlay window, not tiles
+
+**Status:** accepted
+
+D-013 tiles a Windows display into an editor over the work area plus a filler per uncovered strip, so no single window covers the monitor and trips the full-screen classification that switches on Do Not Disturb. That arrangement cannot work on macOS. AppKit constrains an ordinary window to the screen's visible frame, which is precisely the work area, so a strip positioned over the menu bar or the Dock is silently moved back inside it.
+
+Measured on macOS 26.2 with a 1512x982 display, a 33pt menu bar, and an 83pt Dock: a menu-bar strip requested at `y=0` was placed at `y=33`, and a Dock strip requested at `y=899` was placed at `y=867`. Both landed inside the work area, on top of the editor. The visible result was the reported bug: the frozen Dock painted about 32pt too high while the real Dock stayed uncovered below it, producing two Docks, and the menu bar never covered at all, so its contents could not be selected.
+
+macOS therefore uses a single overlay over the whole of `display.bounds`, created with `enableLargerThanScreen: true`. That option is Electron's opt-out from the frame constraint and is the only reason the window can reach either strip; without it the same window is pushed to `y=33` and hangs off the bottom of the screen. At `screen-saver` level the window then covers the menu bar and the Dock, which was verified by measuring that both bands darken under the overlay shade in the same proportion as ordinary desktop content.
+
+The Do Not Disturb hazard that motivated tiling does not apply here, because macOS keys that behavior on an application actually entering fullscreen rather than on a window that happens to cover the screen. Capturo never calls `setFullScreen` and sets `fullscreenable: false`. If a future macOS release does start treating a screen-covering window that way, the fix is a macOS-specific tiling scheme that respects the visible frame, not a return to the Windows strips, which cannot reach the menu bar or Dock at all.
+
+The division itself is pure and lives in `overlayRegions` in `src/shared/geometry.ts`, so both arrangements are covered by `tests/geometry.test.ts` rather than being observable only by running the app on each platform.
+
+Covering the whole display puts Capturo's own floating UI over screen edges the system owns, so `CapturePayload.safeArea` carries how far the overlay reaches past the work area at the top and bottom, and the hint and status toast are offset by those insets through CSS custom properties. The top inset matters most: on a MacBook Pro the menu bar area contains the camera housing, and the selection hint was drawn straight through it and clipped. Only Capturo's own chrome moves — the frozen desktop still fills those edges and stays selectable, which is the whole point of covering them.
+
+## D-030: The tray's primary click always starts a capture
+
+**Status:** accepted
+
+Capturo's tray icon is a capture button first and a menu second: the product invariant is that Capturo opens directly into capture. On Windows, assigning a context menu with `setContextMenu` binds it to the secondary button while the primary button still only emits `click`, so a single assignment gives both behaviors.
+
+macOS does not work that way. An assigned tray menu opens on the primary click as well, and Electron still emits `click`, so a menu-bar click both opened the menu and started a capture at the same time. The user then had a region-selection overlay running underneath an open menu.
+
+On macOS the menu is therefore built but deliberately not assigned to the `Tray`. The primary click starts a capture, and the menu is popped up explicitly with `popUpContextMenu` from the secondary click and from Control-click, which macOS treats as a secondary click. Windows keeps `setContextMenu`, because the platform already separates the two buttons correctly and `popUpContextMenu` there would replace working behavior with a hand-rolled equivalent.
+
+Because the menu is rebuilt whenever the tray refreshes, the retained reference must be replaced on every refresh; popping up a stale menu would show an outdated shortcut label or a dismissed update entry.

@@ -3,6 +3,7 @@ import {
   getResizeHandle,
   integerRect,
   moveRect,
+  overlayRegions,
   normalizeRect,
   resizeRect,
   snapToAxis,
@@ -146,5 +147,47 @@ describe('axis locking', () => {
   it('locks a segment to a 45-degree axis', () => {
     const snapped = snapToAxis({ x: 0, y: 0 }, { x: 13, y: 10 })
     expect(snapped.x).toBeCloseTo(snapped.y)
+  })
+})
+
+describe('overlayRegions', () => {
+  // Real geometry measured on macOS 26.2: a 33pt menu bar and an 83pt Dock strip.
+  const macBounds = { x: 0, y: 0, width: 1512, height: 982 }
+  const macWorkArea = { x: 0, y: 33, width: 1512, height: 866 }
+
+  it('tiles a display into an editor over the work area plus fillers', () => {
+    const regions = overlayRegions(
+      { x: 0, y: 0, width: 2560, height: 1440 },
+      { x: 0, y: 0, width: 2560, height: 1392 },
+      true
+    )
+    expect(regions[0]).toEqual({ rect: { x: 0, y: 0, width: 2560, height: 1392 }, role: 'editor' })
+    expect(regions.slice(1).every((region) => region.role === 'filler')).toBe(true)
+    expect(regions).toHaveLength(2)
+  })
+
+  it('covers an untiled display with exactly one editor over the whole display', () => {
+    // macOS cannot tile: AppKit pushes a menu-bar or Dock strip back inside the work area, which
+    // leaves the real menu bar and Dock on screen and paints their frozen copies over the editor
+    // (the "two Docks" regression). One full-display window is the only arrangement that covers
+    // them, so there must be no fillers and the editor must reach every edge.
+    const regions = overlayRegions(macBounds, macWorkArea, false)
+    expect(regions).toEqual([{ rect: macBounds, role: 'editor' }])
+  })
+
+  it('reaches the menu bar and the Dock when untiled', () => {
+    const [editor] = overlayRegions(macBounds, macWorkArea, false)
+    expect(editor.rect.y).toBe(macBounds.y)
+    expect(editor.rect.y + editor.rect.height).toBe(macBounds.y + macBounds.height)
+    // The work area alone would miss both strips; this is what regressed.
+    expect(editor.rect.height).toBeGreaterThan(macWorkArea.height)
+  })
+
+  it('leaves no part of the display uncovered in either mode', () => {
+    for (const tiled of [true, false]) {
+      const area = overlayRegions(macBounds, macWorkArea, tiled)
+        .reduce((total, region) => total + region.rect.width * region.rect.height, 0)
+      expect(area).toBe(macBounds.width * macBounds.height)
+    }
   })
 })

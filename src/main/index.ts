@@ -18,7 +18,7 @@ import {
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { CapturePayload, CopyTextResult, OverlayRole, Point, Rect, SaveResult } from '../shared/types'
+import type { CapturePayload, CopyTextResult, Point, Rect, SaveResult } from '../shared/types'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
   DEFAULT_GIF_SHORTCUT,
@@ -33,6 +33,7 @@ import {
   nextAutomaticUpdateDelay,
   type UpdateCheckResult
 } from '../shared/updates'
+import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
 import {
   hasGifSignature,
   isExpiredGifClipboardFile,
@@ -40,7 +41,7 @@ import {
   type GifPreviewActionResult,
   type GifRecordPayload
 } from '../shared/gif'
-import { integerRect, surroundingStrips, uncoveredStrips } from '../shared/geometry'
+import { integerRect, overlayRegions, surroundingStrips, type OverlayRegion } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 import {
   captureDisplays,
@@ -77,6 +78,9 @@ type CaptureSession = {
 }
 
 let tray: Tray | null = null
+// Kept so macOS can pop the menu up on demand: it is deliberately not assigned to the Tray there,
+// because an assigned menu would also open on the primary click. See D-030.
+let trayMenu: Menu | null = null
 let session: CaptureSession | null = null
 let settingsWindow: BrowserWindow | null = null
 // The GIF recording control window, plus which display it records and how. The display id
@@ -117,6 +121,12 @@ const isSettingsUpdateCheckSmoke = process.env.CAPTURO_SETTINGS_CHECK_UPDATES ==
 const isGifPreviewSmokeInstance = process.env.CAPTURO_GIF_PREVIEW_ON_START === '1'
 const isGifPreviewScreenshot = process.env.CAPTURO_GIF_PREVIEW_SCREENSHOT === '1'
 const ocrSmokeImagePath = process.env.CAPTURO_OCR_SMOKE_IMAGE?.trim() || null
+// Development-only Screen Recording status override, so every permission state can be exercised
+// on a machine where the permission is already granted. Never read in a packaged build.
+const forcedScreenAccessState = !app.isPackaged ? process.env.CAPTURO_SCREEN_ACCESS_STATE?.trim() || null : null
+// Whether this launch has already raised the macOS Screen Recording prompt. macOS answers it once
+// and remembers, so asking again only puts the same modal back in front of the user. See D-027.
+let screenAccessRequested = false
 // Opens a recording of a fixed centre region directly (no selection UI), for smoke-testing
 // the record → encode → save pipeline.
 const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
@@ -164,11 +174,19 @@ function applyOpenAtStartup(enabled: boolean): boolean {
   try {
     if (process.platform === 'win32') {
       // electron-builder's portable target runs the inner app from a temporary directory.
-      // Register the stable outer executable when that path is available.
+      // Register the stable outer executable when that path is available. This always writes,
+      // because the launch reconciliation also has to repair a registration left pointing at a
+      // moved or reinstalled executable, which the openAtLogin flag alone does not reveal.
       const executablePath = process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath
       app.setLoginItemSettings({ openAtLogin: enabled, path: executablePath })
       return app.getLoginItemSettings({ path: executablePath }).openAtLogin === enabled
     }
+    // macOS registers through SMAppService, which fails with "Operation not permitted" when it
+    // is asked to unregister an app that was never registered. The launch reconciliation calls
+    // this with the stored preference on every start, so an ordinary tray-only launch logged
+    // that error every time. There is no executable path to reconcile here, unlike Windows, so
+    // a state that already matches needs no write at all.
+    if (app.getLoginItemSettings().openAtLogin === enabled) return true
     app.setLoginItemSettings({ openAtLogin: enabled })
     return app.getLoginItemSettings().openAtLogin === enabled
   } catch (error) {
@@ -201,7 +219,16 @@ function revealOverlay(entry: OverlayEntry): void {
   // nothing until a region drag had begun. Now that the editor is painted and interactive, give
   // it focus so Escape cancels from the moment the frozen desktop appears. Only the editor takes
   // input; fillers are left unfocused so they never steal it from the editor.
-  if (entry.payload.role === 'editor') entry.window.focus()
+  if (entry.payload.role !== 'editor') return
+  // macOS will not make a window key while its application is inactive, and Capturo is a
+  // background tray app with no Dock icon, so the click that starts a capture leaves whatever the
+  // user was in as the active application. `focus()` alone therefore silently did nothing and
+  // Escape stayed dead until the first drag. Measured with another app frontmost: focus() alone
+  // left isFocused false, and activating the app first made it true. Stealing focus is correct
+  // here — the user just asked for a full-screen capture surface — and it is exactly what the
+  // shortcut path needs, since there is no click to fall back on.
+  if (isMac) app.focus({ steal: true })
+  entry.window.focus()
 }
 
 function notify(title: string, body: string): void {
@@ -358,22 +385,135 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
   return images
 }
 
+// Deep link to System Settings → Privacy & Security → Screen Recording. macOS only re-prompts
+// for a permission it has never been asked about, so once the user has answered, this pane is
+// the only way to change the answer.
+const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+
+// The current Screen Recording permission, as the Settings window sees it. Windows does not gate
+// screen capture, so it reports unsupported and the Settings row hides itself there.
+//
+// Observing a granted status is recorded permanently, because losing access afterwards is a
+// distinct situation: System Settings usually still shows Capturo switched on, and the recovery
+// is to switch it off and on rather than to "turn it on" again. See D-027.
+function screenAccessState(): ScreenAccessState {
+  if (!isMac) return { supported: false, status: 'granted', previouslyGranted: false }
+  // A machine that has already granted the permission cannot reach the states that matter most,
+  // so development builds can name one directly. This is how the Screen Recording states are
+  // exercised and screenshotted; it is read only when the app is unpackaged and never persists.
+  if (forcedScreenAccessState) {
+    return {
+      supported: true,
+      status: normalizeScreenAccessStatus(forcedScreenAccessState),
+      previouslyGranted: getSettings().global.screenAccessWasGranted
+    }
+  }
+  const status = normalizeScreenAccessStatus(systemPreferences.getMediaAccessStatus('screen'))
+  if (status === 'granted' && !getSettings().global.screenAccessWasGranted) {
+    updateSettings({ global: { screenAccessWasGranted: true } })
+  }
+  return { supported: true, status, previouslyGranted: getSettings().global.screenAccessWasGranted }
+}
+
+// macOS has no "ask for screen access" API: systemPreferences.askForMediaAccess covers only the
+// microphone and camera. The Screen Recording prompt is raised by actually attempting a capture,
+// so request the smallest thumbnail the API will take and then re-read the authoritative status.
+//
+// This runs for 'denied' as well as 'not-determined'. macOS reports screen capture through a
+// boolean preflight, so a Capturo that has never asked is indistinguishable from one the user
+// refused, and skipping the attempt on 'denied' would mean the system prompt is never raised on
+// a first run. 'restricted' is a policy decision no prompt can move.
+//
+// Attempting is NOT free: each attempt can raise the system modal again, so the caller decides
+// when it is appropriate. Capture only asks once per launch, via `screenAccessRequested`.
+async function requestScreenAccess(): Promise<ScreenAccessState> {
+  const before = screenAccessState()
+  if (!before.supported || before.status === 'granted' || before.status === 'restricted') return before
+  screenAccessRequested = true
+  try {
+    await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1, height: 1 },
+      fetchWindowIcons: false
+    })
+  } catch {
+    // The rejection carries no more information than the status read below does.
+  }
+  return screenAccessState()
+}
+
+// One permission conversation at a time. startCapture() is fire-and-forget from the tray, the
+// global shortcut, `activate` and `second-instance`, and both the request and the dialog are
+// awaited, so without this every trigger queues its own system prompt and its own dialog. The
+// user then dismisses one only for the next to appear, which reads as Capturo asking forever.
+let screenPermissionCheck: Promise<boolean> | null = null
+
 async function ensureScreenPermission(): Promise<boolean> {
   if (!isMac) return true
-  const status = systemPreferences.getMediaAccessStatus('screen')
-  if (status !== 'denied' && status !== 'restricted') return true
+  if (!screenPermissionCheck) {
+    // Never let this reject. Callers treat it as a boolean gate, and a rejection would both
+    // surface as an unhandled rejection from the fire-and-forget capture triggers and, worse,
+    // escape before the shared promise is cleared, leaving capture blocked for the whole session.
+    screenPermissionCheck = resolveScreenPermission()
+      .catch((error) => {
+        console.error('Could not resolve Screen Recording permission', error)
+        return false
+      })
+      .finally(() => {
+        screenPermissionCheck = null
+      })
+  }
+  return screenPermissionCheck
+}
+
+async function resolveScreenPermission(): Promise<boolean> {
+  if (screenAccessState().status === 'granted') return true
+
+  // Raise the system prompt at most once per launch. macOS records the answer the first time, so
+  // a second prompt cannot produce a better outcome; what it does produce is the same modal in
+  // front of a user who has already dealt with it, until they press Deny to make it stop. That
+  // writes an explicit refusal only System Settings can undo, so re-asking actively destroys the
+  // permission it is trying to obtain. On a first run this attempt is still what raises the
+  // prompt and what puts Capturo into the Screen Recording list at all.
+  if (!screenAccessRequested) {
+    if ((await requestScreenAccess()).status === 'granted') return true
+    // Defer to macOS for this attempt. Its prompt is raised by the request above but is answered
+    // asynchronously, so `getSources` returns "still denied" while Apple's dialog is on screen
+    // and unanswered. Continuing here stacked Capturo's dialog on top of it: two permission
+    // dialogs for one permission, and only Apple's could actually grant it. If macOS stayed
+    // silent because it already holds an answer, the next capture attempt explains instead —
+    // one wasted click that corrects itself, rather than a confusing pair of dialogs every time.
+    console.error('[permission] capture refused: deferring to the macOS Screen Recording prompt')
+    return false
+  }
+
+  const state = screenAccessState()
+
+  // A user who has had access before does not need to be told to turn it on: System Settings will
+  // still show Capturo switched on, and repeating the generic instruction sends them to a pane
+  // that looks correct. Name the actual recovery instead. See D-027.
+  const detail = state.previouslyGranted
+    ? 'Capturo had Screen Recording access and no longer does. Open System Settings → Privacy & Security → Screen Recording. If Capturo is still switched on there, switch it off and on again, then reopen Capturo.'
+    : 'Step 1: allow Capturo in System Settings → Privacy & Security → Screen Recording. Step 2: reopen Capturo, because macOS only applies the change to a newly launched app.'
+
+  // One line per refusal. A permission loop is invisible from the outside and was reported as
+  // "it keeps asking"; this makes the number of times Capturo actually asked countable.
+  console.error(`[permission] capture refused: Screen Recording is ${state.status}`)
 
   const result = await dialog.showMessageBox({
     type: 'warning',
     title: 'Screen Recording permission required',
     message: 'Capturo needs Screen Recording access to capture your desktop.',
-    detail: 'Enable Capturo in System Settings → Privacy & Security → Screen Recording, then start capture again.',
-    buttons: ['Open System Settings', 'Cancel'],
+    detail,
+    buttons: ['Open System Settings', 'Reopen Capturo', 'Cancel'],
     defaultId: 0,
-    cancelId: 1
+    cancelId: 2
   })
-  if (result.response === 0) {
-    await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+  if (result.response === 0) await shell.openExternal(SCREEN_SETTINGS_URL)
+  else if (result.response === 1) {
+    isQuitting = true
+    app.relaunch()
+    app.quit()
   }
   return false
 }
@@ -402,20 +542,19 @@ function imageFromSource(source: Electron.DesktopCapturerSource | undefined): Di
   return { bytes: source.thumbnail.toPNG(), width: size.width, height: size.height }
 }
 
-// One editor over the work area, plus a filler for every strip it leaves uncovered. Together
-// they cover the display so the taskbar is still part of the capture, while no single window
-// covers the monitor and trips the full-screen classification. See D-013.
-function overlayRegions(display: Electron.Display): { rect: Rect; role: OverlayRole }[] {
-  return [
-    { rect: display.workArea, role: 'editor' },
-    ...uncoveredStrips(display.bounds, display.workArea).map((rect) => ({ rect, role: 'filler' as const }))
-  ]
+// Windows tiles a display; macOS covers it with one window, because AppKit pushes a strip placed
+// over the menu bar or the Dock back inside the work area — measured on macOS 26.2, a menu-bar
+// strip requested at y=0 landed at y=33 and a Dock strip requested at y=899 landed at y=867, so
+// tiling left the real menu bar and Dock on screen and painted their frozen copies over the
+// editor. See D-013 and D-029; the division itself is pure and tested in tests/geometry.test.ts.
+function displayOverlayRegions(display: Electron.Display): OverlayRegion[] {
+  return overlayRegions(display.bounds, display.workArea, !isMac)
 }
 
 function buildPayload(
   sessionId: string,
   display: Electron.Display,
-  region: { rect: Rect; role: OverlayRole },
+  region: OverlayRegion,
   image: DisplayImage
 ): CapturePayload {
   const bounds = display.bounds
@@ -428,7 +567,15 @@ function buildPayload(
     imageWidth: image.width,
     imageHeight: image.height,
     imageOrigin: { x: area.x - bounds.x, y: area.y - bounds.y },
-    captureSize: { width: bounds.width, height: bounds.height }
+    captureSize: { width: bounds.width, height: bounds.height },
+    // How far this overlay reaches past the work area at each end. A macOS overlay spans the
+    // whole display, so the top inset is the menu bar area (which contains the notch on the
+    // Macs that have one) and the bottom inset is the Dock. A Windows editor sits inside the
+    // work area, so both are zero.
+    safeArea: {
+      top: Math.max(0, display.workArea.y - area.y),
+      bottom: Math.max(0, area.y + area.height - (display.workArea.y + display.workArea.height))
+    }
   }
 }
 
@@ -446,6 +593,10 @@ function createOverlayWindow(area: Rect): BrowserWindow {
     // is not resizable, so the sizing frame is not wanted anyway, and this also suppresses
     // the platform's open animation, which is why the reveal no longer waits one out (D-011).
     thickFrame: false,
+    // macOS clamps a window into the screen's visible frame, which would push an overlay off the
+    // menu bar and the Dock and leave both uncovered. This opts out of that clamp; it is the only
+    // way a full-display overlay can reach either one. macOS-only in Electron. See D-029.
+    enableLargerThanScreen: isMac,
     transparent: false,
     backgroundColor: '#000000',
     resizable: false,
@@ -493,7 +644,7 @@ function overlayHtml(mode: CaptureMode): string {
 async function spawnOverlay(
   owner: CaptureSession,
   display: Electron.Display,
-  region: { rect: Rect; role: OverlayRole },
+  region: OverlayRegion,
   image: DisplayImage
 ): Promise<void> {
   const payload = buildPayload(owner.id, display, region, image)
@@ -551,7 +702,7 @@ async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
   displays.forEach((display, index) => {
     const image = images[index]
     if (!image) return
-    for (const region of overlayRegions(display)) loads.push(spawnOverlay(nextSession, display, region, image))
+    for (const region of displayOverlayRegions(display)) loads.push(spawnOverlay(nextSession, display, region, image))
   })
   await Promise.all(loads)
 
@@ -665,12 +816,19 @@ function encodeCapture(image: Electron.NativeImage, filePath: string, settings: 
   return asJpeg ? image.toJPEG(settings.jpegQuality) : image.toPNG()
 }
 
+// Update checks and permission actions are Settings-window affordances, not capabilities the
+// sandboxed capture overlays may reach for. Every one of those handlers proves its sender first.
+function fromSettingsWindow(event: Electron.IpcMainInvokeEvent): boolean {
+  return settingsWindow !== null &&
+    !settingsWindow.isDestroyed() &&
+    event.sender.id === settingsWindow.webContents.id
+}
+
 function registerIpc(): void {
   ipcMain.handle('settings:get', () => getSettings())
 
   ipcMain.handle('updates:check', (event): Promise<UpdateCheckResult> => {
-    if (!settingsWindow || settingsWindow.isDestroyed() ||
-        event.sender.id !== settingsWindow.webContents.id) {
+    if (!fromSettingsWindow(event)) {
       return Promise.resolve({
         status: 'error',
         currentVersion: app.getVersion(),
@@ -681,9 +839,39 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('updates:open-releases', (event): Promise<boolean> => {
-    if (!settingsWindow || settingsWindow.isDestroyed() ||
-        event.sender.id !== settingsWindow.webContents.id) return Promise.resolve(false)
+    if (!fromSettingsWindow(event)) return Promise.resolve(false)
     return openCapturoReleases()
+  })
+
+  // Reading the permission is harmless from anywhere, but acting on it is not: requesting can
+  // raise a system prompt and opening System Settings pulls the user out of the app.
+  ipcMain.handle('permissions:screen-get', (): ScreenAccessState => screenAccessState())
+
+  ipcMain.handle('permissions:screen-request', (event): Promise<ScreenAccessState> => {
+    if (!fromSettingsWindow(event)) return Promise.resolve(screenAccessState())
+    return requestScreenAccess()
+  })
+
+  ipcMain.handle('permissions:screen-open-settings', async (event): Promise<boolean> => {
+    if (!fromSettingsWindow(event) || !isMac) return false
+    try {
+      await shell.openExternal(SCREEN_SETTINGS_URL)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  // macOS hands a newly granted permission only to a newly launched app, so restarting is a real
+  // step in the flow rather than a workaround. Doing it here saves the user quitting from the
+  // tray and finding Capturo again, which is the point at which the grant was most often lost.
+  ipcMain.handle('permissions:relaunch', (event): void => {
+    if (!fromSettingsWindow(event)) return
+    // Tear down deliberately: quitting through app.quit() runs before-quit, which stops the
+    // capture helper and releases the global shortcuts the relaunched instance re-registers.
+    isQuitting = true
+    app.relaunch()
+    app.quit()
   })
 
   // A settings change is persisted immediately. A shortcut change additionally re-registers
@@ -841,8 +1029,11 @@ function registerIpc(): void {
     const preview = validGifPreview(event)
     if (!preview) return { ok: false, error: 'The GIF preview is no longer available.' }
     try {
-      if (process.platform !== 'win32') {
-        clipboard.writeBuffer(isMac ? 'public.gif' : 'image/gif', preview.bytes)
+      // Linux and anything else: raw bytes under the MIME type, which is all its clipboard
+      // conventions offer. Windows and macOS both copy the GIF as a *file*, below, so the
+      // animation survives instead of being flattened to a still frame.
+      if (!isMac && process.platform !== 'win32') {
+        clipboard.writeBuffer('image/gif', preview.bytes)
         return { ok: true }
       }
 
@@ -864,6 +1055,22 @@ function registerIpc(): void {
         await fs.writeFile(copyPath, preview.bytes)
         preview.clipboardPath = copyPath
       }
+      if (isMac) {
+        // The macOS counterpart of Windows' CF_HDROP. `public.file-url` is the pasteboard type
+        // Finder, Mail, Messages and the like read, and because it references the .gif itself the
+        // animation is preserved; raw image data would be flattened to a still frame by whatever
+        // conversion the receiving app picks.
+        //
+        // The previous type here, `public.gif`, is not a real UTI — macOS silently accepted the
+        // write and left the pasteboard empty, so Copy reported success and pasted nothing. The
+        // read-back below is what makes that class of failure impossible to report as success.
+        clipboard.writeBuffer('public.file-url', Buffer.from(`file://${encodeURI(copyPath)}`, 'utf8'))
+        if (clipboard.readBuffer('public.file-url').length === 0) {
+          return { ok: false, error: 'Capturo could not place the animated GIF file on the clipboard.' }
+        }
+        return { ok: true, filePath: copyPath }
+      }
+
       if (!(await copyFileToClipboard(copyPath))) {
         return { ok: false, error: 'Capturo could not place the animated GIF file on the clipboard.' }
       }
@@ -1322,25 +1529,40 @@ function refreshTray(): void {
   const version = app.getVersion()
   const settings = getSettings()
   tray.setToolTip(`Capturo ${version}: ${formatAccelerator(settings.capture.captureShortcut, isMac)} to capture`)
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
-      { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
-      { label: 'Settings…', click: () => openSettings() },
-      ...(availableUpdateVersion
-        ? [{ label: `Update available: v${availableUpdateVersion}`, click: () => void openCapturoReleases() }]
-        : []),
-      { type: 'separator' },
-      { label: `Version ${version}`, enabled: false },
-      { label: 'Quit Capturo', click: () => { isQuitting = true; app.quit() } }
-    ])
-  )
+  trayMenu = Menu.buildFromTemplate([
+    { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
+    { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
+    { label: 'Settings…', click: () => openSettings() },
+    ...(availableUpdateVersion
+      ? [{ label: `Update available: v${availableUpdateVersion}`, click: () => void openCapturoReleases() }]
+      : []),
+    { type: 'separator' },
+    { label: `Version ${version}`, enabled: false },
+    { label: 'Quit Capturo', click: () => { isQuitting = true; app.quit() } }
+  ])
+  // On Windows an assigned context menu belongs to the secondary button and the primary button
+  // still only emits 'click'. On macOS assigning one makes the primary button open the menu too,
+  // so a menu-bar click would open the menu *and* start a capture at the same time. There the
+  // menu is left unassigned and popped up explicitly from the secondary click. See D-030.
+  if (!isMac) tray.setContextMenu(trayMenu)
+}
+
+function popUpTrayMenu(): void {
+  if (tray && !tray.isDestroyed() && trayMenu) tray.popUpContextMenu(trayMenu)
 }
 
 function createTray(): void {
   tray = new Tray(trayImage())
   refreshTray()
-  tray.on('click', () => void startCapture())
+  tray.on('click', (event) => {
+    // macOS treats Control-click as a secondary click, so it opens the menu rather than capturing.
+    if (isMac && event.ctrlKey) {
+      popUpTrayMenu()
+      return
+    }
+    void startCapture()
+  })
+  if (isMac) tray.on('right-click', () => popUpTrayMenu())
 }
 
 // A small, framed, on-demand preferences window. Reused if already open. It is not a

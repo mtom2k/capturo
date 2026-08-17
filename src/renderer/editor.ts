@@ -1,4 +1,5 @@
 import './styles.css'
+import { applySafeArea } from './safe-area'
 import {
   clampPoint,
   getResizeHandle,
@@ -965,6 +966,8 @@ function initialize(nextPayload: CapturePayload): void {
   canvas.style.top = `${-nextPayload.imageOrigin.y}px`
   canvas.style.width = `${nextPayload.captureSize.width}px`
   canvas.style.height = `${nextPayload.captureSize.height}px`
+
+  applySafeArea(nextPayload.safeArea)
 
   if (role === 'filler') {
     hint.hidden = true

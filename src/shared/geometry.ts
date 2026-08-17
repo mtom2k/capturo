@@ -1,4 +1,4 @@
-import type { Point, Rect, ResizeHandle } from './types'
+import type { OverlayRole, Point, Rect, ResizeHandle } from './types'
 
 export const MIN_SELECTION_SIZE = 8
 
@@ -133,6 +133,25 @@ export function uncoveredStrips(bounds: Rect, area: Rect): Rect[] {
     strips.push({ x: areaRight, y: area.y, width: boundsRight - areaRight, height: area.height })
   }
   return strips.filter((strip) => strip.width > 0 && strip.height > 0)
+}
+
+export type OverlayRegion = { rect: Rect; role: OverlayRole }
+
+// How a display is divided into capture overlays.
+//
+// `tiled` (Windows): an editor over the work area plus a filler per uncovered strip, so no single
+// window covers the monitor and trips the full-screen classification that switches on Do Not
+// Disturb. See D-013.
+//
+// Untiled (macOS): one window over the whole display. AppKit constrains an ordinary window to the
+// screen's visible frame, so a strip placed over the menu bar or the Dock is pushed back inside
+// the work area and covers neither. See D-029.
+export function overlayRegions(bounds: Rect, workArea: Rect, tiled: boolean): OverlayRegion[] {
+  if (!tiled) return [{ rect: bounds, role: 'editor' }]
+  return [
+    { rect: workArea, role: 'editor' },
+    ...uncoveredStrips(bounds, workArea).map((rect) => ({ rect, role: 'filler' as const }))
+  ]
 }
 
 // Tiles the space around an interior rectangle with every exposed internal edge constrained

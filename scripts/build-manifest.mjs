@@ -16,6 +16,14 @@ const installers = readdirSync(releaseDirectory)
   .filter((name) => !name.includes('__uninstaller'))
   .sort()
 
+// electron-builder names the unpacked directory after the target platform: win-unpacked on
+// Windows, mac-arm64/mac/mac-universal on macOS. Naming it is only useful if the name is the
+// real one, so it is read from the directory rather than assumed to be the Windows build.
+const unpackedDirectories = readdirSync(releaseDirectory, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+  .map((entry) => entry.name)
+  .sort()
+
 const lines = [
   `${productName} ${version}`,
   `built ${new Date().toISOString()}`,
@@ -36,9 +44,13 @@ for (const name of installers) {
   lines.push('')
 }
 
-lines.push('win-unpacked/ is the unpackaged app used to produce the artifacts above.')
-lines.push('It is a build intermediate, not something to distribute.')
-lines.push('')
+if (unpackedDirectories.length > 0) {
+  const named = unpackedDirectories.map((name) => `${name}/`).join(', ')
+  const verb = unpackedDirectories.length === 1 ? 'is the unpackaged app' : 'are the unpackaged apps'
+  lines.push(`${named} ${verb} used to produce the artifacts above.`)
+  lines.push('A build intermediate, not something to distribute.')
+  lines.push('')
+}
 lines.push(`The running app reports its version in the tray tooltip and tray menu.`)
 
 writeFileSync(path.join(releaseDirectory, 'BUILD-INFO.txt'), `${lines.join('\n')}\n`, 'utf8')
