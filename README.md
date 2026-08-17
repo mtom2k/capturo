@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.18.1-blue)
+![version](https://img.shields.io/badge/version-0.19.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -23,18 +23,20 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 
 ## ⬇️ Download
 
-The latest stable release is **Capturo 0.18.1** for Windows x64. Download the installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
+Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
 
-| Local artifact | Purpose |
+| Artifact | Purpose |
 | --- | --- |
-| `Capturo-Setup-0.18.1-x64.exe` | Interactive Windows installer |
-| `Capturo-Portable-0.18.1-x64.exe` | Portable build for local validation |
+| `Capturo-Setup-<version>-x64.exe` | Interactive Windows installer, published with each release |
+| `Capturo-Portable-<version>-x64.exe` | Portable build, produced locally for validation |
 
-Official GitHub releases publish the installer. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
+Official GitHub releases publish the installer only. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
+
+Source is at **0.19.0**; the newest *published* release may lag it, since a stable release is cut only after its Windows installer passes acceptance. There is no macOS download — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.18.1 introduces the camera/scissors logo shown above across the installer, executable, Settings window, taskbar, notification area, and notifications.
+Version 0.18.1 introduced the camera/scissors logo shown above across the installer, executable, Settings window, taskbar, notification area, and notifications. Version 0.19.0 makes macOS a working preview.
 
 ## 🍎 macOS
 

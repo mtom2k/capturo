@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.0 - 2026-08-17
+
 ### Added
 
 - Global Settings shows the macOS Screen Recording permission. While something is blocking

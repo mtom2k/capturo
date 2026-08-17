@@ -4,7 +4,7 @@ Last updated: 2026-08-17
 
 ## Phase
 
-`0.18.1` is the current source version and is published as the latest stable GitHub Release with its Windows installer. Windows x64 remains the only supported platform.
+`0.19.0` is the current source version. `0.18.1` remains the latest *published* stable GitHub Release: 0.19.0 is prepared as a draft and cannot be published until a Windows installer built on a Windows host passes acceptance. Windows x64 remains the only supported platform.
 
 Unreleased work on top of `0.18.1` is the first real macOS pass, and it goes considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS remains unpublished. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
 
@@ -20,7 +20,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.18.1`. The verified Setup and Portable artifacts described by `release/BUILD-INFO.txt` are the fresh v0.18.1 branding release candidate, and no older local executables remain. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.19.0`. The verified Setup and Portable artifacts described by `release/BUILD-INFO.txt` are the fresh v0.18.1 branding release candidate, and no older local executables remain. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
