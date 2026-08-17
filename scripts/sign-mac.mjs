@@ -98,6 +98,17 @@ function stripUnusedUsageDescriptions(appPath) {
 export default async function signMac(context) {
   if (context.electronPlatformName !== 'darwin') return
 
+  // A universal build packs x64 and arm64 separately into `*-temp` directories and then merges
+  // them, and @electron/universal requires every non-binary file to be byte-identical across the
+  // two. A code signature never is, so signing the halves fails the merge with "Expected all
+  // non-binary files to have identical SHAs ... _CodeSignature/CodeResources did not". Leave the
+  // halves alone; electron-builder runs this hook again on the merged bundle, which is the only
+  // one that should be signed anyway.
+  if (context.appOutDir.endsWith('-temp')) {
+    console.log('  • signing deferred  reason=universal build half, the merged bundle is signed instead')
+    return
+  }
+
   const bundle = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
   if (!bundle) throw new Error(`macOS signing found no .app bundle in ${context.appOutDir}`)
   const appPath = path.join(context.appOutDir, bundle)
