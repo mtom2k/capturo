@@ -58,6 +58,17 @@ The application and tray marks are maintained as high-resolution canonical PNG s
 
 **Amended 2026-08-15:** the canonical file was replaced byte-for-byte with the user-supplied 1254px camera/scissors PNG. Its fully opaque pixels, including the supplied black outer background, are intentional input and remain unmodified except for size reduction. Transparent corners or a different small-icon treatment would require a new supplied source or an explicit product decision, not an undocumented generator transform.
 
+
+**Amended 2026-08-17: the delivered backdrop is keyed out, and macOS gets a monochrome menu bar template.** The two prohibitions above were written when macOS was untested, and running Capturo in a real menu bar disproved both.
+
+A logo delivered on a filled backdrop is correct as *artwork* and wrong as an *icon*: macOS draws Dock and Finder icons with transparent corners, and a menu bar full of system glyphs makes a coloured tile obvious. The generator therefore keys out only the background connected to the outer edges, so the focus brackets survive even though they are as dark as the backdrop, and un-blends the anti-aliased rim so the cutout carries no halo. A source that already ships transparent corners skips the step entirely.
+
+A menu bar icon must additionally be a *template*: monochrome artwork whose alpha macOS paints itself so it follows the light or dark bar, dims when the app is inactive, and inverts while the menu is open. That cannot be a resize of a colour logo, so the generator reduces the mark to a black silhouette, drops the card it sits on, and emits `tray-iconTemplate.png` with its `@2x` sibling. `trayImage()` sets `setTemplateImage(true)` explicitly rather than relying on Electron inferring it from the filename. Windows has no such convention and keeps the colour mark.
+
+This supersedes "no secondary tray source, crop, mask, recoloring, or macOS template substitution" and the removal of the macOS template recorded for 0.15.1. What remains prohibited is unchanged and is the point of the rule: no hand-editing of generated PNGs, no second logo, and no transformation that is not performed by `scripts/generate-icon.mjs` from the one canonical source.
+
+**Amended 2026-08-17 (artwork):** the canonical source is the supplied 400px rounded-card "C" logo with focus brackets. It is kept exactly as delivered, backdrop included, so the canonical file always matches the designer's file; every visible surface is derived. At 400px it is below the 1024px a macOS `.icns` wants, so the package icon is upscaled and `npm run icons` prints a note saying so. Replacing the source with a >=1024px or vector export is a drop-in improvement that needs no code change.
+
 ## D-010: Present capture overlays only after first paint
 
 **Status:** accepted

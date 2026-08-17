@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="./build/icon-source.png" alt="Capturo logo" width="160">
+  <img src="./build/icon.png" alt="Capturo logo" width="160">
 </p>
 
 # 📸 Capturo
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.19.0-blue)
+![version](https://img.shields.io/badge/version-0.20.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -32,11 +32,11 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 
 Official GitHub releases publish the installer only. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
 
-Source is at **0.19.0**; the newest *published* release may lag it, since a stable release is cut only after its Windows installer passes acceptance. There is no macOS download — see [macOS](#-macos).
+Source is at **0.20.0**; the newest *published* release may lag it, since a stable release is cut only after its Windows installer passes acceptance. There is no macOS download — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.18.1 introduced the camera/scissors logo shown above across the installer, executable, Settings window, taskbar, notification area, and notifications. Version 0.19.0 makes macOS a working preview.
+Version 0.20.0 introduces the rounded-card "C" logo shown above, applied across the installer, executable, Settings window, taskbar, notification area, and notifications. Its delivered backdrop is keyed out so the icon has transparent corners, and the macOS menu bar gets a monochrome version that follows the system bar. Version 0.19.0 made macOS a working preview.
 
 ## 🍎 macOS
 
@@ -172,7 +172,7 @@ npm run dev
 Useful commands:
 
 ```powershell
-npm run icons      # regenerate every logo size from build/icon-source.png
+npm run icons      # regenerate every brand asset from build/icon-source.png
 npm run build      # typecheck, run tests, and build the production app
 npm run dist:win   # build Windows Setup and Portable artifacts into release/
 npm run dist:mac   # build macOS DMG and ZIP into release/ (run on macOS)

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.20.0 - 2026-08-17
+
+### Changed
+
+- New Capturo logo across every surface: executable and installer, Settings and GIF preview
+  windows, notifications, the Windows notification area, and the macOS menu bar.
+- Icons now have transparent corners. The logo is delivered on a filled backdrop, which is correct
+  as artwork but renders as a coloured tile in the macOS Dock and the notification area, so the
+  generator keys out the backdrop connected to the outer edges. The focus brackets survive because
+  they sit inside the card, and the anti-aliased rim is un-blended so the cutout carries no halo.
+- The macOS menu bar now uses a monochrome template icon, so it follows the light or dark bar,
+  dims while the app is inactive, and matches the system glyphs beside it. Windows keeps the
+  colour mark.
+
 ## 0.19.0 - 2026-08-17
 
 ### Added
