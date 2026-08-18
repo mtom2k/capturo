@@ -4,7 +4,7 @@ Last updated: 2026-08-18
 
 ## Phase
 
-`0.20.0` is the current source version. `0.18.1` remains the latest *published* stable GitHub Release. The `v0.20.0` GitHub Release is still a draft: its Windows Setup and Portable artifacts were built on a Windows host on 2026-08-18 and attached, but they have not been through the acceptance matrix in `TESTING.md`, which is what the draft is waiting on. Windows x64 remains the only supported platform.
+`0.20.0` is the current source version and, since 2026-08-18, the latest *published* stable GitHub Release. Its Windows x64 Setup and Portable executables were built on a Windows host and both are attached. Windows x64 remains the only supported platform. Note that the release was published before the hands-on acceptance matrix in `TESTING.md` had been run against the packaged app, which inverts the order `RELEASING.md` requires; the outstanding checks are listed under Open follow-up and should be completed against the published artifacts.
 
 Unreleased work on top of `0.18.1` is the first real macOS pass, and it goes considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS remains unpublished. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
 
@@ -269,6 +269,15 @@ The package version is `0.20.0`. `release/BUILD-INFO.txt` inventories the curren
   - Setup SHA-256 is `5b76f8c17ebc946b2ab58a1c1ba5d8ceb13dd81aa50b91b667a2b2398907406b`; Portable SHA-256 is `e167071cde5c85d24cc5d3600dc912f1adb1f31a660f5b943930a5a19a72798c`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts. The packaged taskbar, 16px/32px tray, and native-helper files exactly match their tracked sources
   - the packaged v0.18.1 app opened its real Global Settings renderer and produced a valid smoke screenshot; the executable's embedded icon was extracted and visually confirmed as the new camera/scissors mark
+- 2026-08-18 v0.20.0 Windows release gate:
+  - `npm run dist:win` passed strict type checking, all 102 tests, the production build, and Windows packaging on Windows 11 x64 with Node v24.17.0
+  - only fresh v0.20.0 Setup and Portable executables remain locally, both report product/file version 0.20.0, and `release/BUILD-INFO.txt` inventories exactly those two artifacts; the superseded v0.18.1 pair was deleted
+  - Setup SHA-256 is `60abe1faf3b26116966cc7f8f55b1b9773c3529a1c0c8579cbcb5cc2114b9bbf`; Portable SHA-256 is `ace5b52a9980c6c27f547088d91bf83e5c9af2141dceae152bb84314c8adcbeb`
+  - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts, and the release notes carry the unknown-publisher warning and all four checksums
+  - the packaged `app.asar` was confirmed to contain the text-placement and toolbar work rather than only the source tree
+  - the text placement rules were exercised against the built renderer bundle through a stubbed-preload harness, not the packaged app: click-away commit from inside the selection, outside it, and onto the toolbar; whitespace-only placing nothing; the first Escape leaving the session uncancelled and the second cancelling it; and a grip drag surviving both release and subsequent typing
+  - GitHub published stable `v0.20.0`; the anonymous latest-release feed returns that tag with four assets, and both uploaded Windows digests exactly match the locally verified SHA-256 values
+  - the release was published from `gh release edit`, which promotes a draft as a side effect. The tag was created at `05acbdf`, one commit behind the shipped code, and was force-moved to release commit `f8ab25f` once that commit was on `main`. A published tag was therefore rewritten minutes after publication; check the draft state explicitly after any `gh release edit` rather than assuming it is preserved
 
 ## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
 

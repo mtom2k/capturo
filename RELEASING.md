@@ -8,6 +8,13 @@
 4. Publish a stable `vMAJOR.MINOR.PATCH` GitHub Release only after its Windows installer has
    passed acceptance. The in-app checker deliberately ignores repository commits, drafts,
    prereleases, and non-semantic tags.
+5. Merge the release commit before publishing. A draft carries no tag, so the tag is created at
+   publication from the target branch as it stands then; publishing ahead of the merge tags source
+   that does not contain the shipped code.
+
+`gh release edit` publishes a draft as a side effect, including when only `--notes-file` is
+passed. Edit notes while a release is still a draft only if you intend it to go live, and re-read
+`isDraft` afterwards rather than assuming the flag survived.
 
 ## Windows
 
