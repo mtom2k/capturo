@@ -58,10 +58,10 @@
         <button id="copy-text" class="action primary accent-text" aria-label="Extract and copy text" title="Copy text with Windows OCR (Ctrl/Cmd+Shift+C); automatically applies a pending transparency preview">
           <svg viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="13" rx="1.4"/><path d="M7.6 4.4V3.1h4.8v1.3"/><path d="M4.6 14.6 7 8.4 9.4 14.6"/><path d="M5.5 12.6h3"/><path d="M15 11v3.6"/><circle cx="13.4" cy="13.1" r="1.5"/></svg>
         </button>
-        <button id="save" class="action" aria-label="Save screenshot" title="Save (Ctrl/Cmd+S); automatically applies a pending transparency preview">
+        <button id="save" class="action primary accent-save" aria-label="Save screenshot" title="Save (Ctrl/Cmd+S); automatically applies a pending transparency preview">
           <svg viewBox="0 0 20 20"><path d="M4 4h10l2 2v10H4zM7 4v5h6V4M7 16v-4h6v4"/></svg>
         </button>
-        <button id="cancel" class="action" aria-label="Cancel screenshot" title="Cancel (Esc)">
+        <button id="cancel" class="action accent-cancel" aria-label="Cancel screenshot" title="Cancel (Esc)">
           <svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></svg>
         </button>
       </div>
@@ -184,6 +184,7 @@
     </div>
 
     <textarea id="text-editor" aria-label="Screenshot text" placeholder="Type text…" hidden></textarea>
+    <div id="text-editor-resize" aria-hidden="true" title="Drag to resize the text box" hidden></div>
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
     <script type="module" src="./editor.ts"></script>

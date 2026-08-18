@@ -24,6 +24,7 @@ Capturo opens directly into capture and disappears after copy, save, or cancel. 
 - Renderer API boundary: `src/preload/index.ts`
 - Capture/editor controller: `src/renderer/editor.ts`
 - Canvas replay/export: `src/renderer/render.ts`
+- Text placement: `openTextEditor`/`closeTextEditor` and the `#text-editor` / `#text-editor-resize` listeners in `src/renderer/editor.ts`. Two orderings are load-bearing and neither is caught by a type check or a unit test. `pointerDown` commits an open text box *itself* and arms `ignoreTextBlur`, because the browser moves focus after the handler returns and the blur would otherwise commit a box the same click has already emptied. The text box's Escape handler must call `stopPropagation`, because `handleShortcut` is on `window` and its `textEditor.hidden` guard is already false by the time the event bubbles, so without it one press cancels the whole capture. See D-031.
 - Blur/Pixelate intensity: the 1-100% UI state lives in `src/renderer/editor.ts`; monotonic percentage-to-radius/block mappings live in `src/renderer/render.ts` and are covered by `tests/effects.test.ts`. Do not reconnect these effects to `lineWidth`.
 - Visual system: `src/renderer/styles.css`
 - Shared types and geometry: `src/shared/`
