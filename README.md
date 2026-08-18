@@ -90,6 +90,8 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 
 The primary toolbar stays close to the selection. A second row appears only when the active tool needs options such as color, stroke width, text style, or effect intensity.
 
+Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
+
 ### Copy text with Windows OCR
 
 **Copy text** sits beside regular Copy. It recognizes the final visible selection, including its crop, annotations, Blur or Pixelate regions, and any pending transparency preview. Successful recognition copies plain text and closes the editor. Empty or failed recognition leaves the editor open with a useful message.
@@ -123,7 +125,8 @@ The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places th
 | `Ctrl/Cmd + S` | Save |
 | `Ctrl/Cmd + Z` | Undo |
 | `Delete` | Delete selected annotation |
-| `Esc` | Cancel capture or close GIF preview |
+| `Ctrl/Cmd + Enter` | Place the text being typed |
+| `Esc` | Discard the text being typed, otherwise cancel capture or close GIF preview |
 
 Tool keys: `V` Select, `P` Pen, `L` Line, `A` Arrow, `R` Rectangle, `E` Ellipse, `N` Step, `T` Text, `B` Blur, `X` Pixelate, and `K` Transparent background.
 

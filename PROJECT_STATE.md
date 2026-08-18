@@ -1,12 +1,14 @@
 # Project State
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 ## Phase
 
-`0.20.0` is the current source version. `0.18.1` remains the latest *published* stable GitHub Release: 0.19.0 is prepared as a draft and cannot be published until a Windows installer built on a Windows host passes acceptance. Windows x64 remains the only supported platform.
+`0.20.0` is the current source version. `0.18.1` remains the latest *published* stable GitHub Release. The `v0.20.0` GitHub Release is still a draft: its Windows Setup and Portable artifacts were built on a Windows host on 2026-08-18 and attached, but they have not been through the acceptance matrix in `TESTING.md`, which is what the draft is waiting on. Windows x64 remains the only supported platform.
 
 Unreleased work on top of `0.18.1` is the first real macOS pass, and it goes considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS remains unpublished. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
+
+Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
 
@@ -20,7 +22,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.20.0`. The verified Setup and Portable artifacts described by `release/BUILD-INFO.txt` are the fresh v0.18.1 branding release candidate, and no older local executables remain. Local Windows binaries are not Authenticode-signed and may trigger an unknown-publisher warning.
+The package version is `0.20.0`. `release/BUILD-INFO.txt` inventories the current v0.20.0 Setup and Portable executables, which include the text-placement and toolbar work. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -302,6 +304,8 @@ Still blocked on a certificate, not on code:
 
 ## Open follow-up
 
+- Hands-on text smoke on Windows for the new placement rules: click-away commit from inside the selection, outside it, and onto the toolbar; the two-step Escape; and the enlarged resize grip. The renderer bundle was exercised through a stubbed-preload harness in a browser; the packaged app has not been driven by hand.
+- Remove the superseded v0.18.1 executables from `release/` and regenerate `release/BUILD-INFO.txt`.
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).

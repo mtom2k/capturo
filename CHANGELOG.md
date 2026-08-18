@@ -2,10 +2,17 @@
 
 ## Unreleased
 
-## 0.20.0 - 2026-08-17
+## 0.20.0 - 2026-08-18
 
 ### Fixed
 
+- Clicking away from a text box now places the text instead of discarding it. Typing into a text
+  box and then clicking anywhere else in the selection lost everything typed: the click reopened
+  an empty box at the new point before the old one was committed, so the commit saw an empty
+  value. `Ctrl/Cmd+Enter` still commits explicitly, and Escape is now the only way to discard.
+- Escape while placing text cancels the text, not the capture. A single press discarded the text
+  and cancelled the whole screenshot with it, taking every other annotation. It now unwinds one
+  level at a time: the first Escape discards the text, a second cancels the capture.
 - Blur now actually blurs the whole region. It was fed only the pixels inside its own rectangle,
   so the Gaussian read transparency past every edge: the effect faded out towards the border and
   the untouched original showed through underneath. That looked like a blur which only worked in
@@ -16,6 +23,12 @@
 
 ### Changed
 
+- The text box's resize corner is much easier to grab. It replaces the browser's fixed ~15px
+  native grip with a 24px target that straddles the corner, so it can be grabbed from outside the
+  box as well as inside, and a manual resize is no longer undone by the next keystroke.
+- Save carries its own green accent instead of reading as a secondary control beside the two
+  filled copy actions, and Cancel carries a red tint that deepens on hover, so the one destructive
+  button in the toolbar is identifiable before it is clicked.
 - New Capturo logo across every surface: executable and installer, Settings and GIF preview
   windows, notifications, the Windows notification area, and the macOS menu bar.
 - Icons now have transparent corners. The logo is delivered on a filled backdrop, which is correct

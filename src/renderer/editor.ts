@@ -61,6 +61,7 @@ const copyTextButton = document.querySelector<HTMLButtonElement>('#copy-text')!
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
 const textEditor = document.querySelector<HTMLTextAreaElement>('#text-editor')!
+const textResizeHandle = document.querySelector<HTMLDivElement>('#text-editor-resize')!
 const status = document.querySelector<HTMLElement>('#status')!
 const pngFlag = document.querySelector<HTMLElement>('#png-flag')!
 const transparentPanel = document.querySelector<HTMLElement>('#transparent-panel')!
@@ -112,6 +113,13 @@ let fontWeight: AnnotationStyle['fontWeight'] = 'normal'
 let fontStyle: AnnotationStyle['fontStyle'] = 'normal'
 let textOrigin: Point | null = null
 let textEditingId: string | null = null
+// Set for the single blur that a click on the canvas or the resize grip causes, so that blur
+// does not close a text box the same click just opened or is currently resizing.
+let ignoreTextBlur = false
+// A manual resize wins over the height the box picks for itself, otherwise the next keystroke
+// would snap the box back and the drag would look like it did nothing.
+let textSizeLocked = false
+let textResize: { pointerId: number; startX: number; startY: number; width: number; height: number } | null = null
 let busy = false
 let transparencyTarget: RgbColor = { r: 255, g: 255, b: 255 }
 let transparencyTolerance = 12
@@ -586,13 +594,29 @@ function openTextEditor(origin: Point, editing: Extract<Annotation, { type: 'tex
   textEditor.style.color = color
   textEditor.hidden = false
   textEditor.style.width = `${Math.max(140, Math.min(320, window.innerWidth - css.x - 12))}px`
-  textEditor.style.height = 'auto'
-  textEditor.style.height = `${Math.max(38, textEditor.scrollHeight)}px`
-  setStatus('Type text · Ctrl+Enter to apply')
+  textSizeLocked = false
+  fitTextEditorHeight()
+  textResizeHandle.hidden = false
+  positionTextResizeHandle()
+  setStatus('Type text · click away or Ctrl+Enter to apply · Esc to discard')
   requestAnimationFrame(() => {
     textEditor.focus()
     if (editing) textEditor.select()
   })
+}
+
+function fitTextEditorHeight(): void {
+  if (textSizeLocked) return
+  textEditor.style.height = 'auto'
+  textEditor.style.height = `${Math.max(38, textEditor.scrollHeight)}px`
+}
+
+function positionTextResizeHandle(): void {
+  if (textEditor.hidden) return
+  const box = textEditor.getBoundingClientRect()
+  // Overhang the corner so the grip is reachable from outside the box as well as inside it.
+  textResizeHandle.style.left = `${box.right - 12}px`
+  textResizeHandle.style.top = `${box.bottom - 12}px`
 }
 
 function closeTextEditor(commit: boolean): void {
@@ -610,6 +634,10 @@ function closeTextEditor(commit: boolean): void {
     else annotations.push(replacement)
   }
   textEditor.hidden = true
+  textResizeHandle.hidden = true
+  textResizeHandle.classList.remove('dragging')
+  textResize = null
+  textSizeLocked = false
   textOrigin = null
   textEditingId = null
   redraw()
@@ -620,6 +648,16 @@ function pointerDown(event: PointerEvent): void {
   if (!payload || !sourceImage || event.button !== 0 || busy) return
   void claimSession()
   const point = clampPoint(pointFromEvent(event), imageBounds())
+
+  // Clicking away places the text. The blur this click causes would otherwise arrive after the
+  // text tool has already reopened an empty box at the new point, committing that emptiness
+  // instead of what was typed.
+  if (!textEditor.hidden) {
+    // Only arm the flag when a blur is actually coming, so it cannot go stale and swallow the
+    // next one.
+    ignoreTextBlur = document.activeElement === textEditor
+    closeTextEditor(true)
+  }
 
   if (!selection) {
     canvas.setPointerCapture(event.pointerId)
@@ -1121,18 +1159,73 @@ for (const element of [toolbar, optionsBar, dimensions, transparentPanel]) {
 textEditor.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault()
+    // Escape discards the text and nothing else. Without this the same keystroke would reach
+    // handleShortcut, which sees an already-hidden editor and cancels the whole capture; a second
+    // Escape is what cancels it.
+    event.stopPropagation()
     closeTextEditor(false)
   } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
     event.preventDefault()
+    event.stopPropagation()
     closeTextEditor(true)
   }
 })
 textEditor.addEventListener('input', () => {
-  textEditor.style.height = 'auto'
-  textEditor.style.height = `${Math.max(38, textEditor.scrollHeight)}px`
+  fitTextEditorHeight()
+  positionTextResizeHandle()
 })
 textEditor.addEventListener('pointerdown', (event) => event.stopPropagation())
-textEditor.addEventListener('blur', () => closeTextEditor(true))
+textEditor.addEventListener('blur', () => {
+  if (ignoreTextBlur) {
+    ignoreTextBlur = false
+    return
+  }
+  closeTextEditor(true)
+})
+
+textResizeHandle.addEventListener('pointerdown', (event) => {
+  if (textEditor.hidden || event.button !== 0) return
+  event.stopPropagation()
+  // Keeps focus in the text box, so the drag neither blurs nor commits it.
+  event.preventDefault()
+  ignoreTextBlur = true
+  const box = textEditor.getBoundingClientRect()
+  textResize = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    width: box.width,
+    height: box.height
+  }
+  textSizeLocked = true
+  textResizeHandle.setPointerCapture(event.pointerId)
+  textResizeHandle.classList.add('dragging')
+})
+
+textResizeHandle.addEventListener('pointermove', (event) => {
+  if (!textResize || event.pointerId !== textResize.pointerId) return
+  event.stopPropagation()
+  const box = textEditor.getBoundingClientRect()
+  const maxWidth = Math.max(140, window.innerWidth - box.left - 4)
+  const maxHeight = Math.max(38, window.innerHeight - box.top - 4)
+  const width = textResize.width + (event.clientX - textResize.startX)
+  const height = textResize.height + (event.clientY - textResize.startY)
+  textEditor.style.width = `${Math.min(maxWidth, Math.max(140, width))}px`
+  textEditor.style.height = `${Math.min(maxHeight, Math.max(38, height))}px`
+  positionTextResizeHandle()
+})
+
+for (const type of ['pointerup', 'pointercancel'] as const) {
+  textResizeHandle.addEventListener(type, (event) => {
+    if (!textResize || event.pointerId !== textResize.pointerId) return
+    event.stopPropagation()
+    textResizeHandle.releasePointerCapture(event.pointerId)
+    textResizeHandle.classList.remove('dragging')
+    textResize = null
+    ignoreTextBlur = false
+    textEditor.focus()
+  })
+}
 
 window.capturo.onInitialize(initialize)
 window.capturo.onSessionClosed(() => window.close())

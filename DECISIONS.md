@@ -46,6 +46,8 @@ The UI uses system fonts, solid neutral surfaces, one blue focus color, small ra
 
 Colour is deliberately the weaker of the two signals. The buttons are told apart by their marks - two sheets for image Copy, a clipboard holding "Aa" for Copy text - so the pair remains distinguishable for anyone who cannot rely on hue, which colour-coding alone would not achieve. Green and red were rejected for carrying success and danger meanings the actions do not have.
 
+**Amended 2026-08-18: Save is filled, Cancel is tinted.** Save completes the capture exactly as the two copies do, so leaving it transparent made the third primary action read as secondary. It takes green - the meaning the earlier amendment rejected for the copy pair precisely because *those* actions do not complete anything, while Save does. Cancel takes a red tint rather than a fill: it is the one destructive control in the row, so it has to be distinguishable from the actions beside it without competing with them for attention, and its hover deepens the tint instead of falling back to the neutral grey the other secondary buttons use. Both keep their existing marks, so the row is still readable without hue, and the interface still has exactly one focus colour.
+
 ## D-008: Crop and annotation coordinates remain independent
 
 **Status:** accepted
@@ -389,3 +391,15 @@ macOS does not work that way. An assigned tray menu opens on the primary click a
 On macOS the menu is therefore built but deliberately not assigned to the `Tray`. The primary click starts a capture, and the menu is popped up explicitly with `popUpContextMenu` from the secondary click and from Control-click, which macOS treats as a secondary click. Windows keeps `setContextMenu`, because the platform already separates the two buttons correctly and `popUpContextMenu` there would replace working behavior with a hand-rolled equivalent.
 
 Because the menu is rebuilt whenever the tray refreshes, the retained reference must be replaced on every refresh; popping up a stale menu would show an outdated shortcut label or a dismissed update entry.
+
+## D-031: Text is placed by clicking away, and Escape unwinds one level
+
+**Status:** accepted
+
+A text box commits its contents whenever focus leaves it - a click on the canvas, on the toolbar, or anywhere else - and `Ctrl/Cmd+Enter` remains an explicit commit for keyboard use. Discarding requires Escape. The previous behavior lost typed text on any click inside the selection, because the click reopened an empty box at the new point before the blur that would have committed the old one arrived, so the commit saw an empty value.
+
+That ordering is the fragile part and the reason the implementation looks the way it does. The browser moves focus as the default action of the click, *after* the `pointerdown` handler has run, so the handler cannot simply rely on blur: it commits the open box itself and then suppresses the single blur that the same click is about to deliver. Reordering those two steps, or dropping the suppression, silently reintroduces the original data loss, which no type check or unit test catches.
+
+Escape unwinds one level at a time rather than cancelling the capture outright. While a text box is open, Escape discards that text and stops there; a second Escape cancels the capture. Both keystrokes are the same key on the same window, so the text box's handler must stop propagation - otherwise the window-level shortcut sees an editor that the first handler has already hidden and cancels the whole capture on a single press, discarding every other annotation with it. This matches how Escape already unwinds the transparency panel and annotation selection before reaching cancel.
+
+The resize grip is a Capturo element (`#text-editor-resize`), not the textarea's native corner. The native grip is a fixed ~15px square that CSS cannot enlarge, which at this box size demanded near-pixel accuracy; the replacement is 24px square and straddles the corner, so roughly 2.6x the area and half of it reachable from outside the box. A manual resize then locks the height, because the box otherwise re-fits itself to its content on the next keystroke and undoes the drag.
