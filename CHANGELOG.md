@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.21.0 - 2026-08-18
+
+A release vehicle for the first published macOS build. There is no Windows behaviour change: the
+Windows artifacts are rebuilt from the same source as 0.20.0 and differ from it only by version
+number, so there is no reason to upgrade from 0.20.0 on Windows alone.
+
 ## 0.20.0 - 2026-08-18
 
 ### Fixed
