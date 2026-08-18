@@ -42,6 +42,10 @@ Capturo handles desktop pixels, so local-only behavior is both the smaller produ
 
 The UI uses system fonts, solid neutral surfaces, one blue focus color, small radii, and restrained shadows. There are no gradients, oversized headings, mascots, glass effects, onboarding panels, or generative-AI motifs.
 
+**Amended 2026-08-17: a second accent for Copy text.** The capture toolbar has two copy actions - image Copy and Copy text - and a single accent forced one of them to look secondary when neither is. Copy text therefore carries Capturo's violet where image Copy keeps the blue. This is a second accent, not an open palette: any further colour needs its own justification, and the interface still has exactly one focus colour.
+
+Colour is deliberately the weaker of the two signals. The buttons are told apart by their marks - two sheets for image Copy, a clipboard holding "Aa" for Copy text - so the pair remains distinguishable for anyone who cannot rely on hue, which colour-coding alone would not achieve. Green and red were rejected for carrying success and danger meanings the actions do not have.
+
 ## D-008: Crop and annotation coordinates remain independent
 
 **Status:** accepted

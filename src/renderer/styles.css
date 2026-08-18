@@ -139,6 +139,19 @@ button {
   background: #0f6bd5;
 }
 
+/* Copy text is a primary action too, but a different one, so it carries its own accent instead of
+   competing with image Copy for the same blue. The colour is Capturo's violet, so a second accent
+   still comes from the product's own palette. Hue is deliberately the weaker signal here: the
+   clipboard-and-Aa mark distinguishes the two buttons on its own for anyone who cannot rely on
+   colour. See D-007. */
+.toolbar button.primary.accent-text {
+  background: #7c3aed;
+}
+.toolbar button.primary.accent-text:hover,
+.toolbar button.primary.accent-text:focus-visible {
+  background: #6d28d9;
+}
+
 .toolbar button:disabled {
   opacity: 0.35;
   cursor: default;
