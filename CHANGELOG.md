@@ -25,8 +25,10 @@
 - The macOS menu bar now uses a monochrome template icon, so it follows the light or dark bar,
   dims while the app is inactive, and matches the system glyphs beside it. Windows keeps the
   colour mark.
-- **Copy text** now uses an "Aa" icon. The previous page-with-lines mark read as a document and
-  sat next to Save, which is also a document shape.
+- **Copy text** now uses a clipboard holding "Aa", and carries its own violet accent beside image
+  Copy's blue. The previous mark read as a document and sat next to Save, which is also a document
+  shape, and nothing said the button copies anything. The two marks stay distinguishable without
+  relying on colour.
 
 ## 0.19.0 - 2026-08-17
 
