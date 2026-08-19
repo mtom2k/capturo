@@ -10,7 +10,11 @@
   A magnifier follows the pointer showing the pixels around it at 17x zoom with the sampled pixel
   outlined, and its hex value beside it. Holding **Shift** slows sampling to an eighth speed for
   picking a one-pixel border or an anti-aliased edge; the arrow keys nudge exactly one pixel.
-  `Esc` cancels.
+  `Esc` cancels. A crosshair marks the exact pixel being sampled, since the system cursor is
+  hidden while the picker is open.
+- The picker works across multiple displays: it opens on the pixel the pointer is already over,
+  shows nothing on the displays the pointer is not on, and Shift-fine movement works on whichever
+  monitor the pointer is on rather than only the focused one.
 - Picking opens a color window with the value in HEX, RGB, or HSL, live hue, saturation, lightness
   and alpha sliders, a row of related colors a click away, and the nearest color name. Every
   readout updates while a slider is dragged rather than on release. The value can also be typed as

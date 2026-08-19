@@ -26,6 +26,7 @@ import type { CapturePayload, OverlayRole } from '../shared/types'
 const canvas = document.querySelector<HTMLCanvasElement>('#capture-canvas')!
 const context = canvas.getContext('2d')!
 const hint = document.querySelector<HTMLElement>('#hint')!
+const crosshair = document.querySelector<HTMLElement>('#crosshair')!
 const magnifier = document.querySelector<HTMLElement>('#magnifier')!
 const magnifierCanvas = document.querySelector<HTMLCanvasElement>('#magnifier-canvas')!
 const magnifierContext = magnifierCanvas.getContext('2d')!
@@ -138,11 +139,17 @@ function updateMagnifier(): void {
   const hex = color ? rgbToHex(color) : '#000000'
 
   magnifier.hidden = !hasPointer
+  crosshair.hidden = !hasPointer
   magnifierFine.hidden = !fine
   magnifierHex.textContent = hex
   magnifierSwatch.style.background = hex
 
   const client = clientFromPoint(pointer.point)
+  // The crosshair sits exactly on the sampled pixel; the magnifier is offset so it does not
+  // cover it. Both are driven from the same point, so they can never disagree.
+  crosshair.style.left = `${client.x}px`
+  crosshair.style.top = `${client.y}px`
+
   const placement = magnifierPlacement(client, MAGNIFIER_SIZE, MAGNIFIER_GAP, {
     width: window.innerWidth,
     height: window.innerHeight
@@ -153,7 +160,19 @@ function updateMagnifier(): void {
   drawMagnifier()
 }
 
-function movePointer(clientX: number, clientY: number, deltaX: number, deltaY: number): void {
+function movePointer(
+  clientX: number,
+  clientY: number,
+  deltaX: number,
+  deltaY: number,
+  shiftKey: boolean
+): void {
+  // Shift is read off the pointer event rather than from a window key listener. Keyboard events
+  // only reach the focused window, and with one overlay per display only one of them is focused,
+  // so a key listener made fine movement work on a single monitor and silently do nothing on the
+  // others. Pointer events carry the modifier state and arrive at whichever overlay the pointer
+  // is actually over.
+  fine = shiftKey
   const cursor = pointFromClient(clientX, clientY)
   const scale = imageScale()
   // Movement deltas arrive in CSS pixels and have to be scaled the same way positions are, or
@@ -281,7 +300,19 @@ function initialize(nextPayload: CapturePayload): void {
       sourcePixels = frameContext ? frameContext.getImageData(0, 0, frame.width, frame.height) : null
 
       context.drawImage(frame, 0, 0)
-      pointer = initialPointerState({ x: Math.floor(frame.width / 2), y: Math.floor(frame.height / 2) })
+
+      // Start on the pixel the pointer is already over. Seeding the middle of the screen instead
+      // put the magnifier somewhere the user was not pointing until they happened to move, which
+      // read as the picker having lost track of the cursor entirely. `cursor` is null on the
+      // displays the pointer is not on, and those overlays show no magnifier at all.
+      const scale = imageScale()
+      const seed = nextPayload.cursor
+      hasPointer = seed !== null
+      pointer = initialPointerState(
+        seed
+          ? { x: seed.x * scale.x, y: seed.y * scale.y }
+          : { x: Math.floor(frame.width / 2), y: Math.floor(frame.height / 2) }
+      )
       updateMagnifier()
     } catch {
       void window.capturo.captureFailed(nextPayload.sessionId)
@@ -296,16 +327,20 @@ function initialize(nextPayload: CapturePayload): void {
 
 canvas.addEventListener('pointermove', (event) => {
   if (role === 'filler') return
-  movePointer(event.clientX, event.clientY, event.movementX, event.movementY)
+  movePointer(event.clientX, event.clientY, event.movementX, event.movementY, event.shiftKey)
 })
 canvas.addEventListener('pointerenter', (event) => {
   if (role === 'filler') return
-  movePointer(event.clientX, event.clientY, 0, 0)
+  // Entering from another display re-seeds from the real pointer, so any displacement carried
+  // over from fine movement on the display just left cannot follow the pointer across.
+  pointer = initialPointerState(pointFromClient(event.clientX, event.clientY))
+  movePointer(event.clientX, event.clientY, 0, 0, event.shiftKey)
 })
 canvas.addEventListener('pointerleave', () => {
   if (role === 'filler') return
   hasPointer = false
   magnifier.hidden = true
+  crosshair.hidden = true
 })
 canvas.addEventListener('pointerdown', (event) => {
   if (role === 'filler' || event.button !== 0) return
@@ -314,8 +349,8 @@ canvas.addEventListener('pointerdown', (event) => {
   // are deliberately different, and the magnifier is the thing the user was aiming.
   pick()
 })
-// Shift is read from the modifier state rather than from keydown/keyup alone, so holding it down
-// before the overlay took focus still registers.
+// These only keep the Fine badge honest while the pointer is still, on whichever overlay holds
+// focus. Fine movement itself does not depend on them: see movePointer.
 window.addEventListener('keydown', (event) => {
   setFine(event.shiftKey)
   handleKey(event)

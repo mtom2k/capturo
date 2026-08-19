@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FINE_FACTOR,
   advancePointer,
+  cursorForDisplay,
   initialPointerState,
   magnifierPlacement,
   magnifierRegion,
@@ -210,5 +211,47 @@ describe('magnifierPlacement', () => {
       expect(placed.x + 180).toBeLessThanOrEqual(viewport.width)
       expect(placed.y + 180).toBeLessThanOrEqual(viewport.height)
     }
+  })
+})
+
+describe('cursorForDisplay', () => {
+  // A typical two-monitor layout: the secondary sits to the right of the primary, and a third
+  // above it, so display origins are both positive and negative.
+  const primary = { x: 0, y: 0, width: 1920, height: 1080 }
+  const secondary = { x: 1920, y: 0, width: 2560, height: 1440 }
+  const above = { x: 0, y: -1080, width: 1920, height: 1080 }
+
+  it('reports the pointer only on the display it is actually on', () => {
+    const cursor = { x: 2200, y: 300 }
+    expect(cursorForDisplay(cursor, primary)).toBeNull()
+    expect(cursorForDisplay(cursor, above)).toBeNull()
+    expect(cursorForDisplay(cursor, secondary)).toEqual({ x: 280, y: 300 })
+  })
+
+  it('makes the position relative to the display, not the desktop', () => {
+    // The overlay draws in its own coordinate space, so a pointer at desktop x=1920 is at x=0 on
+    // the secondary display. Passing the desktop coordinate straight through would put the
+    // magnifier a whole screen width away.
+    expect(cursorForDisplay({ x: 1920, y: 0 }, secondary)).toEqual({ x: 0, y: 0 })
+  })
+
+  it('handles displays at negative origins', () => {
+    expect(cursorForDisplay({ x: 100, y: -500 }, above)).toEqual({ x: 100, y: 580 })
+    expect(cursorForDisplay({ x: 100, y: -500 }, primary)).toBeNull()
+  })
+
+  it('claims the pointer for exactly one display along a shared edge', () => {
+    // The seam between two displays must not be owned by both, or two overlays would each show a
+    // magnifier, nor by neither, which would leave the picker showing none at all.
+    for (const cursor of [{ x: 1919, y: 500 }, { x: 1920, y: 500 }, { x: 1921, y: 500 }]) {
+      const claims = [primary, secondary].filter((bounds) => cursorForDisplay(cursor, bounds) !== null)
+      expect(claims).toHaveLength(1)
+    }
+  })
+
+  it('excludes the far edge so the last pixel belongs to one display only', () => {
+    expect(cursorForDisplay({ x: 1919, y: 1079 }, primary)).toEqual({ x: 1919, y: 1079 })
+    expect(cursorForDisplay({ x: 1920, y: 0 }, primary)).toBeNull()
+    expect(cursorForDisplay({ x: 0, y: 1080 }, primary)).toBeNull()
   })
 })
