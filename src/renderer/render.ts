@@ -35,13 +35,20 @@ function roundedRectPath(context: CanvasRenderingContext2D, rect: Rect, radius: 
   context.roundRect(rect.x, rect.y, rect.width, rect.height, r)
 }
 
+// Strong enough to read as a marker on a light background without hiding what is underneath.
+const HIGHLIGHT_ALPHA = 0.45
+
 function smoothingStride(smoothing: Smoothing): number {
   if (smoothing === 'low') return 1
   if (smoothing === 'medium') return 2
   return 4
 }
 
-function drawPen(context: CanvasRenderingContext2D, annotation: Extract<Annotation, { type: 'pen' }>): void {
+// Shared by the pen and the highlighter, which differ only in how the result is composited.
+function strokePath(
+  context: CanvasRenderingContext2D,
+  annotation: Extract<Annotation, { type: 'pen' | 'highlight' }>
+): void {
   const stride = smoothingStride(annotation.style.smoothing)
   const points = annotation.points.filter((_point, index) => index === 0 || index === annotation.points.length - 1 || index % stride === 0)
   if (points.length < 2) return
@@ -255,7 +262,20 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
     case 'transparent':
       break
     case 'pen':
-      drawPen(context, annotation)
+      strokePath(context, annotation)
+      break
+    case 'highlight':
+      // Multiply rather than a plain translucent stroke, because a highlighter must leave what it
+      // marks readable: multiplying can only darken, so text under the stroke keeps its contrast
+      // instead of being washed towards the highlight colour. See D-035.
+      context.globalCompositeOperation = 'multiply'
+      context.globalAlpha = HIGHLIGHT_ALPHA
+      // Flat ends, like a chisel tip, so a stroke across a line of text stops where the drag
+      // stopped rather than overhanging it by half the (considerable) stroke width.
+      context.lineCap = 'butt'
+      // One stroke() call rasterizes the whole path as a single shape, so a stroke that crosses
+      // itself does not darken at the crossing. Drawing it segment by segment would.
+      strokePath(context, annotation)
       break
     case 'line':
     case 'arrow':

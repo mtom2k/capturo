@@ -107,6 +107,13 @@ let lineWidth = 4
 let effectIntensity = 50
 let smoothing: Smoothing = 'medium'
 let stepSize = 18
+// The highlighter keeps its own size, and its own slider range. Sharing the pen's would open the
+// highlighter at a few pixels wide and cap it below the height of a line of text.
+let highlightWidth = 18
+const HIGHLIGHT_MIN_WIDTH = 6
+const HIGHLIGHT_MAX_WIDTH = 64
+const PEN_MIN_WIDTH = 1
+const PEN_MAX_WIDTH = 24
 let fontFamily = 'system-ui, sans-serif'
 let fontSize = 18
 let fontWeight: AnnotationStyle['fontWeight'] = 'normal'
@@ -159,7 +166,7 @@ function styleSnapshot(): AnnotationStyle {
   const pixelScale = (scale.x + scale.y) / 2
   return {
     color,
-    lineWidth: lineWidth * pixelScale,
+    lineWidth: (activeTool === 'highlight' ? highlightWidth : lineWidth) * pixelScale,
     effectIntensity,
     effectScale: pixelScale,
     fontFamily,
@@ -328,10 +335,27 @@ function configureOptions(tool: Tool): void {
   lineWidthOption.hidden = tool === 'select' || tool === 'text' || tool === 'step' || tool === 'transparent'
   if (tool === 'blur' || tool === 'pixelate') lineWidthOption.hidden = true
   effectIntensityOption.hidden = tool !== 'blur' && tool !== 'pixelate'
-  smoothingOption.hidden = tool !== 'pen'
+  // The highlighter is a freehand stroke too, so it gets the same smoothing control.
+  smoothingOption.hidden = tool !== 'pen' && tool !== 'highlight'
+  configureSizeRange(tool === 'highlight')
   stepSizeOption.hidden = tool !== 'step'
   textOptions.hidden = tool !== 'text'
   optionsBar.hidden = tool === 'select' || tool === 'transparent'
+}
+
+// One Size control serves both, retuned to whichever is in use. Highlighting a line of text needs
+// a range the pen has no use for, and vice versa.
+function configureSizeRange(highlight: boolean): void {
+  lineWidthSlider.min = String(highlight ? HIGHLIGHT_MIN_WIDTH : PEN_MIN_WIDTH)
+  lineWidthSlider.max = String(highlight ? HIGHLIGHT_MAX_WIDTH : PEN_MAX_WIDTH)
+  setSlider(lineWidthSlider, lineWidthValue, highlight ? highlightWidth : lineWidth)
+}
+
+// Which of the two widths the Size slider is currently editing: the selected object's, or the
+// active tool's when nothing is selected.
+function highlightSizeActive(): boolean {
+  const selected = selectedAnnotation()
+  return selected ? selected.type === 'highlight' : activeTool === 'highlight'
 }
 
 function setTool(tool: Tool): void {
@@ -463,6 +487,7 @@ function selectAnnotation(annotation: Annotation | null): void {
   fontFamily = annotation.style.fontFamily
   fontSize = annotation.style.fontSize / scale.y
   if (annotation.type === 'step') stepSize = annotation.style.fontSize / scale.y
+  if (annotation.type === 'highlight') highlightWidth = annotation.style.lineWidth / pixelScale
   fontWeight = annotation.style.fontWeight
   fontStyle = annotation.style.fontStyle
   for (const swatch of document.querySelectorAll<HTMLElement>('[data-color]')) {
@@ -545,7 +570,7 @@ async function claimSession(): Promise<void> {
 
 function createDraft(tool: Tool, point: Point): Annotation | null {
   const style = styleSnapshot()
-  if (tool === 'pen') return { id: id(), type: 'pen', style, points: [point] }
+  if (tool === 'pen' || tool === 'highlight') return { id: id(), type: tool, style, points: [point] }
   if (tool === 'line' || tool === 'arrow') return { id: id(), type: tool, style, start: point, end: point }
   if (tool === 'rectangle' || tool === 'ellipse' || tool === 'blur' || tool === 'pixelate') {
     return { id: id(), type: tool, style, rect: { x: point.x, y: point.y, width: 0, height: 0 } }
@@ -787,7 +812,7 @@ function pointerMove(event: PointerEvent): void {
   } else if (interaction.mode === 'draw' && draft && selection) {
     const point = clampPoint(rawPoint, selection)
     const axisLocked = event.shiftKey || event.ctrlKey
-    if (draft.type === 'pen') {
+    if (draft.type === 'pen' || draft.type === 'highlight') {
       if (axisLocked) {
         draft = { ...draft, points: [interaction.start, snapToAxis(interaction.start, point, false)] }
       } else {
@@ -827,7 +852,7 @@ function pointerUp(event: PointerEvent): void {
     }
   } else if (interaction.mode === 'draw' && draft) {
     const valid =
-      (draft.type === 'pen' && draft.points.length >= 2) ||
+      ((draft.type === 'pen' || draft.type === 'highlight') && draft.points.length >= 2) ||
       ((draft.type === 'line' || draft.type === 'arrow') && Math.hypot(draft.end.x - draft.start.x, draft.end.y - draft.start.y) > 2) ||
       ((draft.type === 'rectangle' || draft.type === 'ellipse' || draft.type === 'blur' || draft.type === 'pixelate') &&
         draft.rect.width > 2 && draft.rect.height > 2)
@@ -953,6 +978,7 @@ function handleShortcut(event: KeyboardEvent): void {
   const shortcuts: Record<string, Tool> = {
     v: 'select',
     p: 'pen',
+    h: 'highlight',
     l: 'line',
     a: 'arrow',
     r: 'rectangle',
@@ -1065,10 +1091,12 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-color]'
 
 // Sliders update while being dragged so size or effect intensity can be judged live.
 lineWidthSlider.addEventListener('input', () => {
-  lineWidth = Number(lineWidthSlider.value)
-  lineWidthValue.textContent = `${lineWidth}px`
+  const value = Number(lineWidthSlider.value)
+  if (highlightSizeActive()) highlightWidth = value
+  else lineWidth = value
+  lineWidthValue.textContent = `${value}px`
   const scale = imageScale()
-  updateSelectedStyle({ lineWidth: lineWidth * ((scale.x + scale.y) / 2) })
+  updateSelectedStyle({ lineWidth: value * ((scale.x + scale.y) / 2) })
 })
 effectIntensitySlider.addEventListener('input', () => {
   effectIntensity = Number(effectIntensitySlider.value)

@@ -69,7 +69,9 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 ## ✨ What Capturo can do
 
 - Select, move, and resize a precise screen region on scaled or multi-display desktops.
-- Draw with Pen, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
+- Draw with Pen, Highlighter, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
+- Highlight without covering: the stroke multiplies into the image, so text underneath stays
+  readable. Hold **Shift** or **Ctrl** to run it straight along a line of text.
 - Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
 - Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
 - Extract visible text with local Windows OCR and copy it as plain text (Windows only).
@@ -149,7 +151,7 @@ video or animation; reopen the picker to sample the current frame.
 | `Ctrl/Cmd + Enter` | Place the text being typed |
 | `Esc` | Discard the text being typed, otherwise cancel capture or close GIF preview |
 
-Tool keys: `V` Select, `P` Pen, `L` Line, `A` Arrow, `R` Rectangle, `E` Ellipse, `N` Step, `T` Text, `B` Blur, `X` Pixelate, and `K` Transparent background.
+Tool keys: `V` Select, `P` Pen, `H` Highlight, `L` Line, `A` Arrow, `R` Rectangle, `E` Ellipse, `N` Step, `T` Text, `B` Blur, `X` Pixelate, and `K` Transparent background.
 
 ## ⚙️ Settings
 

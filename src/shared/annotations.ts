@@ -17,6 +17,7 @@ export function annotationBounds(annotation: Annotation): Rect {
     case 'transparent':
       return { ...annotation.region }
     case 'pen':
+    case 'highlight':
       return boundsFromPoints(annotation.points, strokePadding)
     case 'line':
       return boundsFromPoints([annotation.start, annotation.end], strokePadding)
@@ -85,6 +86,7 @@ export function hitTestAnnotation(annotation: Annotation, point: Point, toleranc
     case 'transparent':
       return false
     case 'pen':
+    case 'highlight':
       return annotation.points.slice(1).some((end, index) =>
         distanceToSegment(point, annotation.points[index], end) <= tolerance + annotation.style.lineWidth / 2
       )
@@ -118,6 +120,7 @@ export function translateAnnotation(annotation: Annotation, delta: Point): Annot
     case 'transparent':
       return annotation
     case 'pen':
+    case 'highlight':
       return { ...annotation, points: annotation.points.map((point) => translatePoint(point, delta)) }
     case 'line':
     case 'arrow':
@@ -163,6 +166,7 @@ export function resizeAnnotation(annotation: Annotation, original: Rect, target:
     case 'transparent':
       return annotation
     case 'pen':
+    case 'highlight':
       return { ...annotation, points: annotation.points.map((point) => mapPoint(point, original, target)) }
     case 'line':
     case 'arrow':
