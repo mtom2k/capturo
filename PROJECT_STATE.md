@@ -1,14 +1,20 @@
 # Project State
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Phase
 
-`0.21.0` is the current source version. `0.20.0` is the latest *published* stable GitHub Release, published 2026-08-18. Its Windows x64 Setup and Portable executables were built on a Windows host and both are attached. Windows x64 remains the only supported platform. Note that the release was published before the hands-on acceptance matrix in `TESTING.md` had been run against the packaged app, which inverts the order `RELEASING.md` requires; the outstanding checks are listed under Open follow-up and should be completed against the published artifacts.
+`0.21.0` is the current source version, prepared as an unpublished GitHub Release draft carrying the Windows x64 Setup and Portable executables. `0.20.0` is the latest *published* stable Release, published 2026-08-18 with Windows x64 and universal macOS artifacts. Windows x64 remains the only *supported* platform; the macOS artifacts attached to 0.20.0 are ad-hoc signed and carry the Gatekeeper warning described under macOS state. Note that 0.20.0 was published before the hands-on acceptance matrix in `TESTING.md` had been run against the packaged app, which inverts the order `RELEASING.md` requires.
 
-Unreleased work on top of `0.18.1` is the first real macOS pass, and it goes considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS remains unpublished. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
+The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
 
-Version 0.21.0 adds the screen colour picker. **Color picker** in the tray menu, directly below **New GIF**, freezes the desktop the way a screenshot does and follows the pointer with a 17x magnifier; Shift slows sampling to an eighth speed and the arrow keys nudge one pixel. Picking opens a colour window with HEX/RGB/HSL output, live hue/saturation/lightness/alpha sliders, a related-colour row, and the nearest colour name. See D-032 and D-033. A macOS artifact for this version is still outstanding and remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
+Version 0.21.0 adds two features.
+
+**The screen colour picker.** **Color picker** in the tray menu, directly below **New GIF**, or `Ctrl/Cmd+Shift+4`. It freezes the desktop the way a screenshot does and *replaces the mouse cursor* with a 17x magnifier centred on the pixel it reads; Shift slows sampling to an eighth speed and the arrow keys nudge one pixel. Picking copies the colour to the clipboard on its own and opens a colour window with HEX/RGB/HSL output, live hue/saturation/lightness/alpha sliders, a related-colour row, and the nearest colour name. A Color picker tab in Settings carries the rebindable shortcut, a copy-on-pick switch, and the clipboard format. See D-032 through D-034.
+
+**The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; what makes it a highlighter is compositing with `multiply` at 45% alpha, so text under the stroke keeps its contrast and stays readable rather than being covered. Shift or Ctrl locks it straight, every annotation colour applies, and it keeps its own width and slider range separate from the Pen's. See D-035.
+
+A macOS artifact for 0.21.0 is outstanding and remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
 Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
@@ -24,7 +30,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.20.0`. `release/BUILD-INFO.txt` inventories the current v0.20.0 Setup and Portable executables, which include the text-placement and toolbar work. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
+The package version is `0.21.0`. `release/BUILD-INFO.txt` inventories the current v0.21.0 Setup and Portable executables, which include the colour picker and the highlighter. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -282,6 +288,15 @@ The package version is `0.20.0`. `release/BUILD-INFO.txt` inventories the curren
   - a clean local rebuild on 2026-08-18 from the same source produced Setup `7e3a2d832e406d5d8b5a1a6e6e53b7d236580498d467799a69679cf308b499a0` and Portable `5d86501dbc12906a5f0639832ca5919b7fe82ffb807577d11701801bf72ee795`, which differ from the published assets by a few dozen bytes. electron-builder embeds build timestamps, so packaging is not byte-reproducible: local artifacts are never expected to match a release's published checksums, and a mismatch is not evidence of a source difference. Compare the packaged `app.asar` contents rather than installer digests when that question comes up
   - the release was published from `gh release edit`, which promotes a draft as a side effect. The tag was created at `05acbdf`, one commit behind the shipped code, and was force-moved to release commit `f8ab25f` once that commit was on `main`. A published tag was therefore rewritten minutes after publication; check the draft state explicitly after any `gh release edit` rather than assuming it is preserved
 
+- 2026-08-19 v0.21.0 packaged smoke, driven over Electron's remote debugging port:
+  - the desktop-automation tooling was unavailable, so the packaged `win-unpacked` build was launched with `--remote-debugging-port` and driven over CDP. This exercises the real packaged renderer rather than a browser harness, and can screenshot it and read its canvas pixels directly. `--inspect` gives the same access to the main process
+  - highlighter, verified from screenshots of the packaged app on a 1440x2514 portrait display: it sits right of the Pen; an amber stroke over dark-mode text leaves the text readable and tinted; a freehand stroke crossing itself holds one even tone with no darkening at the crossings; a Pen stroke of the same gesture is opaque and covers the text, which is the distinction D-035 exists for
+  - the exported image carries the highlight: Copy was clicked and the clipboard bitmap read back at 1512x452, matching the selection at the display's 1.5x scale, with the highlight rendered as the editor showed it
+  - Settings renders the Color picker tab with its shortcut row, copy-on-pick switch, and HEX/RGB/HSL control
+  - `globalShortcut.isRegistered` reports true for all three accelerators in the packaged app, and a real OS-level `Ctrl+Shift+4` opened the picker overlays. `SendKeys` does *not* trigger them - it uses a journal hook that `RegisterHotKey` ignores - so a failure sent that way is a test artifact, not a regression
+  - `Esc` cancels a capture: a CDP `Input.dispatchKeyEvent` tore down all four overlays within half a second. An earlier report that Escape did nothing came from the desktop-automation tool's key mapping, and was already shown to fail identically against the unchanged screenshot overlay
+  - `CAPTURO_SETTINGS_SCREENSHOT_TAB` rejected `colorPicker` and silently fell back to GIF, because its whitelist was never updated when the tab was added. Fixed in the same session; it was found only by running the packaged build
+
 ## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
 
 macOS moved from "launches but cannot capture" to a working preview during this session. Verified
@@ -316,8 +331,9 @@ Still blocked on a certificate, not on code:
 
 ## Open follow-up
 
-- Hands-on text smoke on Windows for the new placement rules: click-away commit from inside the selection, outside it, and onto the toolbar; the two-step Escape; and the enlarged resize grip. The renderer bundle was exercised through a stubbed-preload harness in a browser; the packaged app has not been driven by hand.
-- Remove the superseded v0.18.1 executables from `release/` and regenerate `release/BUILD-INFO.txt`.
+- Hands-on text smoke on Windows for the placement rules: click-away commit from inside the selection, outside it, and onto the toolbar; the two-step Escape; and the enlarged resize grip. Exercised through a stubbed-preload harness only; not driven by hand or over CDP in the packaged app.
+- Hands-on highlighter smoke by mouse: the CDP pass drove synthetic pointer events, so freehand feel, cursor behaviour, and dragging the Size slider by hand are unproven. Also unverified: highlighting on a **light** background, where multiply is at its strongest and the effect should look most like a marker. Every packaged screenshot so far is of a dark-mode UI.
+- Decide whether the highlighter should keep `multiply` (D-035). On a dark background it tints the text rather than the background, which reads clearly but not like a marker on paper; plain alpha is a one-line change with the opposite trade-off. There is now a real screenshot to judge it against.
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
@@ -325,8 +341,8 @@ Still blocked on a certificate, not on code:
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 - Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
-- Decide how a future macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform.
-- Build a macOS x64 or universal artifact once signing exists; current output is arm64 only.
+- Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 shipped macOS assets on that shared feed already.
+- Decide whether to publish 0.21.0. Publishing makes it the `releases/latest` answer, so every 0.20.0 user is offered it; the draft holds Windows artifacts only, and a macOS build for this version has not been made.
 
 ### GIF optimization status
 

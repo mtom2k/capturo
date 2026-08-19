@@ -46,6 +46,7 @@ Annotations are serializable commands rather than baked pixels. Each command con
 Every command also exposes deterministic bounds and hit-testing through `src/shared/annotations.ts`. The Select tool searches commands from front to back, then uses those bounds for movement, eight-handle resizing, deletion, and property synchronization. Annotation coordinates are absolute source-image pixels: moving the crop frame never translates annotations.
 
 - `pen`: sampled points, simplified and rendered with quadratic smoothing
+- `highlight`: the same points and the same smoothing as `pen`, sharing its geometry throughout `src/shared/annotations.ts` and its path builder in `src/renderer/render.ts`. It diverges only in compositing - `multiply` at 45% alpha with `butt` caps, drawn in one `stroke()` call - so it darkens what it marks instead of covering it, and a self-crossing stroke stays one even tone. Shift or Control locks it straight, and it carries its own width separate from the pen's. See D-035
 - `line` / `arrow`: two endpoints; Shift or Control locks to a 45-degree axis
 - `rectangle` / `ellipse`: bounding rectangle
 - `step`: numbered circular marker; numbering follows creation order and its slider size is stored through the style's source-pixel font size
@@ -77,7 +78,7 @@ The helper initializes a multithreaded COM apartment because the synchronous C++
 
 Preferences are opened on demand from the tray and never form part of the steady state: the settings window is a normal framed `BrowserWindow`, reused if already open and destroyed on close. It loads the second renderer entry point (`settings.html`) through the same sandboxed, context-isolated preload as the capture overlays, and communicates only through the explicit `settings:get` / `settings:update`, `updates:check`, and `updates:open-releases` IPC handlers. See D-016 and D-025.
 
-The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only settings file Capturo writes, and it holds no captured pixels, only the global open-on-startup/update-check preferences and last-check timestamp, capture format/quality/notification/shortcut preferences, and GIF frame-rate/quality/pre-timer/frame-count-visibility/shortcut preferences. Capture format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding either shortcut re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS.
+The source of truth is an in-memory settings object in the main process, validated by `normalizeSettings` in `src/shared/settings.ts` and persisted to `settings.json` under `app.getPath('userData')`. This is the only settings file Capturo writes, and it holds no captured pixels, only the global open-on-startup/update-check preferences and last-check timestamp, capture format/quality/notification/shortcut preferences, GIF frame-rate/quality/pre-timer/frame-count-visibility/shortcut preferences, and the colour picker's shortcut, copy-on-pick switch, and clipboard format. Capture format and quality affect saved files only; the clipboard stays a lossless bitmap, so they are applied in the main process at save time and never cross into the renderer. Rebinding any of the three shortcuts - capture, GIF, colour picker - re-registers the global accelerator and rebuilds the tray menu, rolling back to the previous working shortcut if the new one is rejected by the OS. A settings file written before a section existed gains it whole from `normalizeSettings` rather than leaving the feature unconfigured.
 
 Open on startup is also applied in the main process. Packaged Windows and macOS builds call Electron's login-item API when the preference changes and reconcile it again on every launch; a rejected change rolls the stored toggle back and returns an inline error to Settings. Development builds persist and render the value for UI work but deliberately do not register the Electron development executable with the operating system.
 
@@ -112,8 +113,8 @@ For a distinct frame whose changed pixels cover at most 25% of the region, the e
 
 ## Color picker
 
-The tray menu's **Color picker** opens the same frozen-desktop session a screenshot does, in
-`picker` mode, so the overlay renderer is `picker.html` instead of `index.html`. The colour
+The tray menu's **Color picker**, or its global shortcut, opens the same frozen-desktop session a
+screenshot does, in `picker` mode, so the overlay renderer is `picker.html` instead of `index.html`. The colour
 reported is therefore a pixel of the tone-mapped native capture (D-014), not an untreated
 read-back, and it is frozen at invocation: a colour cannot be picked out of a running animation.
 

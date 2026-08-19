@@ -13,11 +13,11 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 
 > 🪟 **Windows 11 is the supported platform.** It is the only one with published packages.
 >
-> 🍎 **macOS runs but is a preview, and there is no macOS download.** Capture, the menu-bar flow,
-> settings, permissions, and start-at-login now work on Apple Silicon (verified on macOS 26.2), but
-> Capturo has no Apple Developer ID certificate, so a macOS build cannot be notarized and Gatekeeper
-> refuses it on any machine that downloads it. Until that certificate exists macOS is build-from-
-> source only. See [macOS](#-macos) below.
+> 🍎 **macOS runs but is unsupported.** Capture, the menu-bar flow, settings, permissions, and
+> start-at-login all work on Apple Silicon (verified on macOS 26.2), and a universal build is
+> attached to v0.20.0 — but Capturo has no Apple Developer ID certificate, so it cannot be
+> notarized and Gatekeeper refuses it after download. Running it takes a manual quarantine removal,
+> and the Screen Recording grant lapses on every upgrade. See [macOS](#-macos) below.
 
 ![Selecting a region](./docs/selection.png)
 
@@ -28,15 +28,15 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 | Artifact | Purpose |
 | --- | --- |
 | `Capturo-Setup-<version>-x64.exe` | Interactive Windows installer, published with each release |
-| `Capturo-Portable-<version>-x64.exe` | Portable build, produced locally for validation |
+| `Capturo-Portable-<version>-x64.exe` | Portable build, no install, published alongside the installer |
 
-Official GitHub releases publish the installer only. Both local artifacts are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes.
+Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
 
-Source is at **0.20.0**; the newest *published* release may lag it, since a stable release is cut only after its Windows installer passes acceptance. There is no macOS download — see [macOS](#-macos).
+Source is at **0.21.0**, prepared as a draft; the newest *published* release is **0.20.0**, since a stable release is cut only after its Windows installer passes acceptance. A universal macOS build is attached to 0.20.0 but macOS is not supported — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.20.0 introduces the rounded-card "C" logo shown above, applied across the installer, executable, Settings window, taskbar, notification area, and notifications. Its delivered backdrop is keyed out so the icon has transparent corners, and the macOS menu bar gets a monochrome version that follows the system bar. Version 0.19.0 made macOS a working preview.
+Version 0.21.0 adds the Highlighter and the screen color picker. Version 0.20.0 introduced the rounded-card "C" logo shown above, applied across the installer, executable, Settings window, taskbar, notification area, and notifications. Its delivered backdrop is keyed out so the icon has transparent corners, and the macOS menu bar gets a monochrome version that follows the system bar. Version 0.19.0 made macOS a working preview.
 
 ## 🍎 macOS
 
@@ -58,11 +58,15 @@ declares no camera, microphone, or Bluetooth usage and cannot capture audio.
 macOS applies a new Screen Recording grant only to a newly launched app, so Capturo offers a
 **Reopen Capturo** button wherever it asks for the permission.
 
-**Why there is no download.** Distribution needs an Apple Developer ID certificate for notarization.
-Without one, a locally built Capturo is ad-hoc signed, which has two consequences: Gatekeeper blocks
-it on any machine that downloads it, and macOS ties the Screen Recording grant to the build's own
-code hash, so the permission has to be granted again after every rebuild. Local development can
-avoid the second one with a self-signed certificate; see [RELEASING.md](./RELEASING.md).
+**About the macOS download.** A universal `.dmg` and `.zip` are attached to the
+[v0.20.0 release](https://github.com/mtom2k/capturo/releases/tag/v0.20.0), but macOS is **not a
+supported platform** and those builds are ad-hoc signed rather than notarized. Distribution properly
+needs an Apple Developer ID certificate, and without one there are two consequences: Gatekeeper
+refuses the app after download with *"Capturo is damaged and can't be opened"* — its response to an
+un-notarized download, not a corrupted file — and macOS ties the Screen Recording grant to the
+build's own code hash, so the permission has to be granted again after every upgrade. Local
+development can avoid the second one with a self-signed certificate; see
+[RELEASING.md](./RELEASING.md).
 
 Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64` or `--universal`.
 
@@ -75,11 +79,11 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 - Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
 - Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
 - Extract visible text with local Windows OCR and copy it as plain text (Windows only).
-- Pick a color from anywhere on screen with a magnifier, and adjust or copy it as HEX, RGB, or HSL.
+- Pick a color from anywhere on screen with a magnifier that replaces the cursor, copied to the clipboard on the spot, then adjust it as HEX, RGB, or HSL.
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
 - Capture HDR displays through a native Windows helper without washed-out SDR content (Windows only).
-- Save PNG or JPEG files, copy a lossless image, and rebind screenshot and GIF shortcuts.
+- Save PNG or JPEG files, copy a lossless image, and rebind the screenshot, GIF, and color picker shortcuts.
 - Start at login on Windows or macOS, and check GitHub Releases for updates when you choose.
 
 ## 🖼️ Screenshot workflow
@@ -116,6 +120,20 @@ The recording bar supports Pause, Resume, Stop, a timer, and optional frame tota
 ![Finished GIF preview](./docs/gif-preview.png)
 
 The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places the animated `.gif` *file* on the clipboard rather than flattening it to a still image, on Windows through `CF_HDROP` and on macOS through a `public.file-url` pasteboard entry, so the animation survives the paste. An unsaved GIF is written to Capturo's temporary clipboard folder only after you explicitly choose Copy, and expired copies are cleaned during a later launch.
+
+## 🖍️ Highlighter
+
+The Highlighter sits directly right of the Pen (`H`) and **marks without covering**. Its stroke
+multiplies into the image, so text underneath keeps its contrast and stays readable — unlike the
+Pen, which paints over what it crosses.
+
+Every annotation color works, **Shift** or **Ctrl** locks the stroke straight for running along a
+line of text, and it carries its own Size range separate from the Pen's, wide enough to cover a
+line of text. A stroke that crosses itself stays one even tone rather than darkening at the
+crossing.
+
+Because it can only darken, the effect is deliberately subtle on very dark backgrounds — there it
+tints the text rather than the background behind it.
 
 ## 🎨 Color picker
 
@@ -160,6 +178,7 @@ Right-click the tray icon and choose **Settings**.
 - **Global:** Open on startup, optional daily update checks, and manual Check for updates.
 - **Capture:** PNG or JPEG, JPEG quality, copy/save notifications, and capture shortcut.
 - **GIF:** 10 to 30 fps, quality, 0 to 10 second pre-timer, frame-count visibility, and GIF shortcut.
+- **Color picker:** the picker shortcut, whether picking copies to the clipboard on its own, and which format it copies.
 
 Preferences live in `settings.json` under Capturo's user-data folder. The file contains options and the last update-check time, never captured pixels.
 
@@ -179,10 +198,13 @@ Preferences live in `settings.json` under Capturo's user-data folder. The file c
 - A drag must start in the work area, although it can continue over the taskbar.
 - OCR quality depends on the source image and installed Windows language packs.
 - Windows packages are unsigned and may trigger SmartScreen.
-- macOS remains unsupported and unpublished. A macOS build can be produced and launched, but it
-  cannot capture: macOS will not attach a Screen Recording permission to an unsigned app, so
-  capture requires an Apple Developer ID certificate and notarization that Capturo does not yet
-  have. See [RELEASING.md](./RELEASING.md).
+- macOS is unsupported. Capture itself works — it was verified end to end on macOS 26.2 — but the
+  builds are ad-hoc signed rather than notarized, so Gatekeeper refuses them after download and the
+  Screen Recording grant lapses on every upgrade. Support needs an Apple Developer ID certificate,
+  not more code. See [RELEASING.md](./RELEASING.md).
+- The highlighter is deliberately subtle on very dark backgrounds. It multiplies into the image so
+  it can never hide what it marks, and multiplying a near-black pixel by any color leaves it
+  near-black. Rectangle and Blur are the tools for emphasis that does not depend on the background.
 
 ## 🛠️ Build from source
 
