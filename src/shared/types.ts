@@ -15,6 +15,7 @@ export type ResizeHandle =
 export type Tool =
   | 'select'
   | 'pen'
+  | 'highlight'
   | 'line'
   | 'arrow'
   | 'rectangle'
@@ -48,6 +49,15 @@ type AnnotationBase = {
 
 export type PenAnnotation = AnnotationBase & {
   type: 'pen'
+  points: Point[]
+}
+
+// Geometrically a pen stroke; it differs only in how it is composited (D-035). Kept as its own
+// type rather than a flag on the pen so that every place which must treat the two differently -
+// rendering, defaults, the size control - has to say so, and a future highlighter-only property
+// has somewhere to live.
+export type HighlightAnnotation = AnnotationBase & {
+  type: 'highlight'
   points: Point[]
 }
 
@@ -89,6 +99,7 @@ export type TransparencyAnnotation = AnnotationBase & {
 
 export type Annotation =
   | PenAnnotation
+  | HighlightAnnotation
   | SegmentAnnotation
   | ShapeAnnotation
   | StepAnnotation

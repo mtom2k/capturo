@@ -526,3 +526,36 @@ swatch row; the HSL exists only to position the sliders. Moving a slider makes H
 for that edit and recomputes RGB from it; a colour arriving whole - picked, typed as hex, or chosen
 from the related row - is stored exactly and the sliders are repositioned from it. Neither
 representation is continuously derived from the other.
+
+## D-035: The highlighter multiplies rather than covering
+
+**Status:** accepted
+
+The highlighter is geometrically a pen stroke - same points, same smoothing, same axis lock, same
+bounds and hit testing - and shares that code. What makes it a highlighter is how it composites.
+
+It is drawn with `multiply` at 45% alpha rather than as a translucent stroke over the top.
+Multiplying can only darken, so text under the stroke keeps its contrast and stays readable, which
+is the entire distinction between highlighting something and covering it. A plain translucent
+stroke at the same strength washes dark text towards the highlight colour and costs exactly the
+legibility the user was trying to draw attention to.
+
+The cost is that the effect is subtle on a dark background: multiplying a near-black pixel by any
+colour leaves it near-black. That is accepted rather than worked around. Switching to `screen` on
+dark backgrounds would mean deciding per stroke - or per pixel - which mode applies, and a
+highlighter whose behaviour flips depending on what is underneath is worse than one that is
+consistently weak in one situation. Rectangle and Blur remain for emphasis that does not depend on
+the background.
+
+Two rendering details are load-bearing and neither is obvious from the result:
+
+- The stroke is drawn in **one** `stroke()` call. Canvas rasterizes a path as a single coverage
+  mask, so a stroke that crosses itself composites once and stays an even tone. Drawing it segment
+  by segment would darken every overlap and turn a scribble into a patchwork.
+- Caps are `butt`, not the round caps every other tool uses. At highlighter widths a round cap
+  overhangs the end of the drag by half the stroke width, so a stroke across a line of text would
+  visibly overshoot the word it stopped on.
+
+The highlighter also keeps its own width and its own slider range, separate from the pen's. They
+have no useful overlap: a pen capped at the height of a line of text is useless, and a highlighter
+that opens at the pen's few pixels is not a highlighter.

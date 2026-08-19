@@ -6,6 +6,12 @@
 
 ### Added
 
+- **Highlighter**, next to the Pen in the toolbar (`H`). It marks without covering: the stroke
+  multiplies into the image, so text underneath keeps its contrast and stays readable rather than
+  being washed towards the highlight colour. Every annotation color is available, **Shift** or
+  **Ctrl** locks the stroke straight for running along a line of text, and it has its own Size
+  range separate from the Pen's, plus the same smoothing.
+
 - **Color picker.** A new tray-menu entry below **New GIF** picks a color from anywhere on screen.
   A magnifier follows the pointer showing the pixels around it at 17x zoom with the sampled pixel
   outlined, and its hex value beside it. Holding **Shift** slows sampling to an eighth speed for
