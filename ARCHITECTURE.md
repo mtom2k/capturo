@@ -130,8 +130,8 @@ resulting displacement is bled off so the screen edges stay reachable, is pure a
 listener, because keyboard events only reach the focused overlay and a multi-display capture has
 several. See D-032.
 
-Picking copies the hex to the clipboard in the main process, then closes the capture session and
-opens the colour window, a plain window rather than an
+Picking copies the colour to the clipboard in the main process - in the format set under Settings,
+and only if copy-on-pick is on - then closes the capture session and opens the colour window, a plain window rather than an
 overlay because the colour outlives the session. It holds the sampled RGB and a separate HSL used
 only to position the sliders; the picked value is never round-tripped through HSL, which would
 quantize it. Conversions, the related-colour row, and naming are pure in `src/shared/color.ts`.

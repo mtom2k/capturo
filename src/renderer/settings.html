@@ -12,6 +12,7 @@
         <button class="tab selected" data-tab="global" role="tab" aria-selected="true">Global</button>
         <button class="tab" data-tab="capture" role="tab" aria-selected="false">Capture</button>
         <button class="tab" data-tab="gif" role="tab" aria-selected="false">GIF</button>
+        <button class="tab" data-tab="colorPicker" role="tab" aria-selected="false">Color picker</button>
       </nav>
 
       <section class="panel" data-panel="global" role="tabpanel">
@@ -159,6 +160,41 @@
           <div class="shortcut">
             <button class="recorder">Ctrl+Shift+3</button>
             <button class="reset" title="Reset to default">Reset</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="colorPicker" role="tabpanel" hidden>
+        <div class="row shortcut-field" data-shortcut="colorPicker">
+          <div class="label">
+            <span>Color picker shortcut</span>
+            <small class="shortcut-hint">Click, then press the keys.</small>
+          </div>
+          <div class="shortcut">
+            <button class="recorder">Ctrl+Shift+4</button>
+            <button class="reset" title="Reset to default">Reset</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <span>Copy on pick</span>
+            <small>Put the color on the clipboard as soon as it is picked.</small>
+          </div>
+          <button class="switch" id="copy-on-pick" role="switch" aria-checked="true" aria-label="Copy color to clipboard when picked">
+            <span class="knob"></span>
+          </button>
+        </div>
+
+        <div class="row" id="copy-format-row">
+          <div class="label">
+            <span>Copy format</span>
+            <small>The color window can still copy any format.</small>
+          </div>
+          <div class="segmented" id="copy-format" role="group" aria-label="Clipboard color format">
+            <button class="seg selected" data-copy-format="hex" aria-pressed="true">HEX</button>
+            <button class="seg" data-copy-format="rgb" aria-pressed="false">RGB</button>
+            <button class="seg" data-copy-format="hsl" aria-pressed="false">HSL</button>
           </div>
         </div>
       </section>

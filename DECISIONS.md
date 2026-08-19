@@ -486,6 +486,13 @@ of that saying so. Copying is what picking a colour is *for*; making the user pi
 Copy adds a step to the common path to save nothing on the rare one, since the window is still
 there to convert, adjust, or pick a neighbour before copying again.
 
+Both halves of that are settings, under a Color picker tab beside Capture and GIF. Copy-on-pick can
+be switched off by anyone who would rather their clipboard were never written to unasked, and the
+format it copies is theirs to choose - a developer wanting `rgb(...)` should not have to convert by
+hand every time. The colour window opens in that same format, so the value on screen is the one
+already on the clipboard, and the window reports the exact text that was written rather than
+re-deriving it: a window that assumed hex would name something the user never copied.
+
 The window says which value it put on the clipboard, and that line does not time out the way its
 other statuses do: it is the window describing its own state rather than acknowledging an action,
 and it needs to still be there when the user looks up from whatever they were doing. If the

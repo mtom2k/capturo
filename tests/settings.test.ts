@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
+  DEFAULT_COLOR_PICKER_SHORTCUT,
   DEFAULT_GIF_SHORTCUT,
   DEFAULT_SETTINGS,
   mergeSettings,
@@ -91,7 +92,8 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ capture: { showNotification: false } })).toEqual({
       global: DEFAULT_SETTINGS.global,
       capture: { ...DEFAULT_SETTINGS.capture, showNotification: false },
-      gif: DEFAULT_SETTINGS.gif
+      gif: DEFAULT_SETTINGS.gif,
+      colorPicker: DEFAULT_SETTINGS.colorPicker
     })
   })
 })
@@ -125,5 +127,57 @@ describe('mergeSettings', () => {
     expect(merged.global.lastUpdateCheckAt).toBe(1234)
     expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
     expect(merged.gif).toEqual(DEFAULT_SETTINGS.gif)
+  })
+})
+
+describe('color picker settings', () => {
+  it('defaults to copying hex on pick', () => {
+    expect(DEFAULT_SETTINGS.colorPicker).toEqual({
+      shortcut: DEFAULT_COLOR_PICKER_SHORTCUT,
+      copyOnPick: true,
+      copyFormat: 'hex'
+    })
+  })
+
+  it('fills in the whole section when it is missing', () => {
+    // Settings files written by an earlier version have no colorPicker at all, and must not stop
+    // the app from starting or leave the picker with no shortcut.
+    const normalized = normalizeSettings({ capture: { format: 'jpeg' } })
+    expect(normalized.colorPicker).toEqual(DEFAULT_SETTINGS.colorPicker)
+  })
+
+  it('keeps a custom shortcut and rejects an empty one', () => {
+    expect(normalizeSettings({ colorPicker: { shortcut: 'Alt+P' } }).colorPicker.shortcut).toBe('Alt+P')
+    for (const bad of ['', '   ', 42, null]) {
+      expect(normalizeSettings({ colorPicker: { shortcut: bad } }).colorPicker.shortcut)
+        .toBe(DEFAULT_COLOR_PICKER_SHORTCUT)
+    }
+  })
+
+  it('accepts only the three real formats', () => {
+    for (const format of ['hex', 'rgb', 'hsl']) {
+      expect(normalizeSettings({ colorPicker: { copyFormat: format } }).colorPicker.copyFormat).toBe(format)
+    }
+    for (const bad of ['cmyk', '', 7, null, undefined]) {
+      expect(normalizeSettings({ colorPicker: { copyFormat: bad } }).colorPicker.copyFormat).toBe('hex')
+    }
+  })
+
+  it('normalizes copyOnPick to a real boolean', () => {
+    expect(normalizeSettings({ colorPicker: { copyOnPick: false } }).colorPicker.copyOnPick).toBe(false)
+    // A truthy non-boolean must not be read as "on": the setting decides whether Capturo writes
+    // to the clipboard without being asked, so it falls back to the default rather than guessing.
+    expect(normalizeSettings({ colorPicker: { copyOnPick: 'yes' } }).colorPicker.copyOnPick).toBe(true)
+    expect(normalizeSettings({ colorPicker: { copyOnPick: 0 } }).colorPicker.copyOnPick).toBe(true)
+  })
+
+  it('overlays a color picker update without touching the other sections', () => {
+    const merged = mergeSettings(DEFAULT_SETTINGS, { colorPicker: { copyFormat: 'rgb' } })
+    expect(merged.colorPicker.copyFormat).toBe('rgb')
+    expect(merged.colorPicker.shortcut).toBe(DEFAULT_COLOR_PICKER_SHORTCUT)
+    expect(merged.colorPicker.copyOnPick).toBe(true)
+    expect(merged.capture).toEqual(DEFAULT_SETTINGS.capture)
+    expect(merged.gif).toEqual(DEFAULT_SETTINGS.gif)
+    expect(merged.global).toEqual(DEFAULT_SETTINGS.global)
   })
 })

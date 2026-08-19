@@ -1,12 +1,14 @@
 import './settings.css'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
+  DEFAULT_COLOR_PICKER_SHORTCUT,
   DEFAULT_GIF_SHORTCUT,
   type CaptureFormat,
   type Settings,
   type SettingsUpdate
 } from '../shared/settings'
 import { acceleratorFromKeyEvent, formatAccelerator } from '../shared/shortcut'
+import type { ColorFormat } from '../shared/color'
 import { presentScreenAccess, type ScreenAccessState } from '../shared/permissions'
 
 const tabs = document.querySelectorAll<HTMLButtonElement>('.tab')
@@ -32,6 +34,9 @@ const qualityRow = document.querySelector<HTMLElement>('#quality-row')!
 const qualitySlider = document.querySelector<HTMLInputElement>('#quality')!
 const qualityValue = document.querySelector<HTMLElement>('#quality-value')!
 const notifySwitch = document.querySelector<HTMLButtonElement>('#notify')!
+const copyOnPickSwitch = document.querySelector<HTMLButtonElement>('#copy-on-pick')!
+const copyFormatRow = document.querySelector<HTMLElement>('#copy-format-row')!
+const copyFormatButtons = document.querySelectorAll<HTMLButtonElement>('[data-copy-format]')
 
 // GIF tab
 const gifFps = document.querySelector<HTMLSelectElement>('#gif-fps')!
@@ -59,6 +64,17 @@ function setTab(name: string): void {
   for (const panel of panels) panel.hidden = panel.dataset.panel !== name
 }
 
+function renderCopyFormat(format: ColorFormat, enabled: boolean): void {
+  for (const button of copyFormatButtons) {
+    const selected = button.dataset.copyFormat === format
+    button.classList.toggle('selected', selected)
+    button.setAttribute('aria-pressed', String(selected))
+    button.disabled = !enabled
+  }
+  // The format only decides what copy-on-pick writes, so it means nothing while that is off.
+  copyFormatRow.classList.toggle('disabled', !enabled)
+}
+
 function renderFormat(format: CaptureFormat): void {
   for (const button of formatButtons) {
     const selected = button.dataset.format === format
@@ -76,7 +92,7 @@ function renderFormat(format: CaptureFormat): void {
 // with its own recorder button, reset, and hint; only one records at a time.
 
 type ShortcutField = {
-  kind: 'capture' | 'gif'
+  kind: 'capture' | 'gif' | 'colorPicker'
   recorder: HTMLButtonElement
   reset: HTMLButtonElement
   hint: HTMLElement
@@ -115,6 +131,12 @@ const fields: ShortcutField[] = [
     DEFAULT_GIF_SHORTCUT,
     (settings) => settings.gif.shortcut,
     (accelerator) => ({ gif: { shortcut: accelerator } })
+  ),
+  makeField(
+    'colorPicker',
+    DEFAULT_COLOR_PICKER_SHORTCUT,
+    (settings) => settings.colorPicker.shortcut,
+    (accelerator) => ({ colorPicker: { shortcut: accelerator } })
   )
 ]
 
@@ -144,6 +166,10 @@ function render(settings: Settings): void {
   gifPreTimerValue.textContent = settings.gif.preTimerSeconds === 0 ? 'Off' : `${settings.gif.preTimerSeconds}s`
   gifFrameCountSwitch.classList.toggle('on', settings.gif.showFrameCount)
   gifFrameCountSwitch.setAttribute('aria-checked', String(settings.gif.showFrameCount))
+
+  copyOnPickSwitch.classList.toggle('on', settings.colorPicker.copyOnPick)
+  copyOnPickSwitch.setAttribute('aria-checked', String(settings.colorPicker.copyOnPick))
+  renderCopyFormat(settings.colorPicker.copyFormat, settings.colorPicker.copyOnPick)
 
   for (const field of fields) field.recorder.textContent = formatAccelerator(field.currentOf(settings), isMac)
 }
@@ -324,6 +350,16 @@ qualitySlider.addEventListener('change', () => void apply({ capture: { jpegQuali
 notifySwitch.addEventListener('click', () => {
   void apply({ capture: { showNotification: !notifySwitch.classList.contains('on') } })
 })
+
+copyOnPickSwitch.addEventListener('click', () => {
+  void apply({ colorPicker: { copyOnPick: !copyOnPickSwitch.classList.contains('on') } })
+})
+
+for (const button of copyFormatButtons) {
+  button.addEventListener('click', () => {
+    void apply({ colorPicker: { copyFormat: button.dataset.copyFormat as ColorFormat } })
+  })
+}
 
 gifFps.addEventListener('change', () => void apply({ gif: { fps: Number(gifFps.value) } }))
 gifQuality.addEventListener('input', () => {

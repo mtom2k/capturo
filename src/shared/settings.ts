@@ -3,6 +3,8 @@
 // wraps normalizeSettings with the filesystem in src/main/settings.ts, and both the store
 // and its tests share this one definition of what a valid settings object is.
 
+import { COLOR_FORMATS, type ColorFormat } from './color'
+
 export type CaptureFormat = 'png' | 'jpeg'
 
 export type GlobalSettings = {
@@ -47,10 +49,23 @@ export type GifSettings = {
   shortcut: string
 }
 
+export type ColorPickerSettings = {
+  // Electron accelerator that opens the colour picker, e.g. 'CommandOrControl+Shift+4'.
+  shortcut: string
+  // Whether picking writes the colour to the clipboard on its own. On by default: copying is
+  // what picking a colour is for (D-034). Turning it off leaves the colour window's own Copy
+  // as the only writer, for anyone who would rather their clipboard was never touched
+  // without asking.
+  copyOnPick: boolean
+  // Which format the automatic copy uses. The colour window can still copy any of the three.
+  copyFormat: ColorFormat
+}
+
 export type Settings = {
   global: GlobalSettings
   capture: CaptureSettings
   gif: GifSettings
+  colorPicker: ColorPickerSettings
 }
 
 // A partial update to any section, as sent from the settings window.
@@ -58,6 +73,7 @@ export type SettingsUpdate = {
   global?: Partial<GlobalSettings>
   capture?: Partial<CaptureSettings>
   gif?: Partial<GifSettings>
+  colorPicker?: Partial<ColorPickerSettings>
 }
 
 // Result of a settings:update round trip. shortcutError is set when a requested shortcut could
@@ -76,6 +92,8 @@ export type CapturoSettingsApi = {
 
 export const DEFAULT_CAPTURE_SHORTCUT = 'CommandOrControl+Shift+2'
 export const DEFAULT_GIF_SHORTCUT = 'CommandOrControl+Shift+3'
+// Follows the 2/3 sequence of the other two capture actions.
+export const DEFAULT_COLOR_PICKER_SHORTCUT = 'CommandOrControl+Shift+4'
 
 export const MIN_JPEG_QUALITY = 60
 export const MAX_JPEG_QUALITY = 100
@@ -105,6 +123,11 @@ export const DEFAULT_SETTINGS: Settings = {
     preTimerSeconds: 3,
     showFrameCount: true,
     shortcut: DEFAULT_GIF_SHORTCUT
+  },
+  colorPicker: {
+    shortcut: DEFAULT_COLOR_PICKER_SHORTCUT,
+    copyOnPick: true,
+    copyFormat: 'hex'
   }
 }
 
@@ -183,6 +206,17 @@ function normalizeGif(raw: unknown): GifSettings {
   }
 }
 
+function normalizeColorPicker(raw: unknown): ColorPickerSettings {
+  const picker = isRecord(raw) ? raw : {}
+  return {
+    shortcut: normalizeShortcut(picker.shortcut, DEFAULT_COLOR_PICKER_SHORTCUT),
+    copyOnPick: normalizeBoolean(picker.copyOnPick, DEFAULT_SETTINGS.colorPicker.copyOnPick),
+    copyFormat: COLOR_FORMATS.includes(picker.copyFormat as ColorFormat)
+      ? (picker.copyFormat as ColorFormat)
+      : DEFAULT_SETTINGS.colorPicker.copyFormat
+  }
+}
+
 // Turns arbitrary parsed JSON (or a partial update) into a complete, valid Settings object.
 // Every field falls back to its default rather than throwing, so a corrupt or half-written
 // settings file can never stop the app from starting.
@@ -191,7 +225,8 @@ export function normalizeSettings(raw: unknown): Settings {
   return {
     global: normalizeGlobal(root.global),
     capture: normalizeCapture(root.capture),
-    gif: normalizeGif(root.gif)
+    gif: normalizeGif(root.gif),
+    colorPicker: normalizeColorPicker(root.colorPicker)
   }
 }
 
@@ -200,6 +235,7 @@ export function mergeSettings(current: Settings, update: SettingsUpdate): Settin
   return normalizeSettings({
     global: { ...current.global, ...(update.global ?? {}) },
     capture: { ...current.capture, ...(update.capture ?? {}) },
-    gif: { ...current.gif, ...(update.gif ?? {}) }
+    gif: { ...current.gif, ...(update.gif ?? {}) },
+    colorPicker: { ...current.colorPicker, ...(update.colorPicker ?? {}) }
   })
 }
