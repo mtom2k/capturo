@@ -23,7 +23,7 @@ Run `npm run dist:win`. The current build configuration produces these x64 artif
 - `Capturo-Setup-<version>-x64.exe`
 - `Capturo-Portable-<version>-x64.exe`
 
-The NSIS installer is interactive and allows destination selection. Official releases publish the installer only; the portable executable is local packaging output, stated explicitly in `README.md` and `PROJECT_STATE.md`. Supply a Windows signing certificate through the release environment; local unsigned artifacts will trigger reputation warnings. Before publishing, verify the intended artifact with `Get-AuthenticodeSignature` rather than interpreting electron-builder's `signing with signtool.exe` log as proof that a certificate was applied.
+The NSIS installer is interactive and allows destination selection. Releases publish both the installer and the portable executable: 0.20.0 and the 0.21.0 draft each carry the pair, and the portable build is what someone who cannot or will not install gets. Both are therefore release artifacts and both must be verified before publication, not just the installer. Supply a Windows signing certificate through the release environment; local unsigned artifacts will trigger reputation warnings. Before publishing, verify the intended artifact with `Get-AuthenticodeSignature` rather than interpreting electron-builder's `signing with signtool.exe` log as proof that a certificate was applied.
 
 The current updater is notification-only: it checks the public GitHub Release version and opens
 the official Releases page, but never downloads or installs an artifact. Do not introduce silent

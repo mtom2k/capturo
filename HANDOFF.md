@@ -14,6 +14,46 @@ Windows artifacts are always built into `release/`, and `release/BUILD-INFO.txt`
 
 The earlier `release-update/` directory has been removed. It existed only because a running Capturo instance held `release/win-unpacked` open during a build, and keeping two directories of similarly named installers made it impossible to tell which build was current. Close any running Capturo before packaging instead of writing to a second directory.
 
+## Verifying a build without a person at the keyboard
+
+Most of what breaks in this app is invisible to a type check and to unit tests: compositing,
+alignment, focus, and what actually reaches the clipboard. Three techniques cover it, in ascending
+order of fidelity. Reach for the cheapest that can answer the question.
+
+**1. Renderer harness.** Build with `npx electron-vite build`, copy `out/renderer` somewhere,
+inject a `<script>` that defines `window.capturo*` stubs, and serve it. The real renderer bundle
+then runs in a browser, driven with synthetic events. Fast, and enough for logic and layout. It
+cannot prove anything about the main process, the OS, or real input.
+
+**2. The packaged app over CDP.** Launch `release/win-unpacked/Capturo.exe` with
+`--remote-debugging-port=9222` and drive the actual packaged renderers: `GET /json/list` for
+targets, then `Runtime.evaluate`, `Page.captureScreenshot`, and `Input.dispatchKeyEvent` over a
+WebSocket. Node 24's global `WebSocket` is all that is needed; there is no dependency to add. This
+is how the highlighter's compositing and the picker's alignment were confirmed in a real build.
+Add `--inspect=9229` to attach to the **main** process the same way and ask Electron directly, for
+example `globalShortcut.isRegistered('CommandOrControl+Shift+4')`.
+
+Three traps, each of which produced a wrong conclusion first:
+
+- A multi-display capture opens one editor *and* one filler per display. Fillers ignore input, so
+  driving one looks like a completely broken app. Pick the target whose `#hint` is not hidden and
+  whose viewport is largest.
+- Cancelling destroys the window, so the CDP command that caused it never gets a reply. Treat the
+  timeout as a possible success and re-check `/json/list` rather than reporting a failure.
+- Coordinates are per display. One of the development machine's monitors is portrait, so hardcoded
+  points landed off-screen.
+
+**3. The app's own smoke flags.** `CAPTURO_CAPTURE_ON_START`, `CAPTURO_GIF_ON_START`,
+`CAPTURO_PICKER_ON_START`, `CAPTURO_SETTINGS_ON_START`, and `CAPTURO_SETTINGS_SCREENSHOT` with
+`CAPTURO_SETTINGS_SCREENSHOT_TAB` (which writes a PNG of a Settings tab straight to `%TEMP%`).
+These redirect `userData` to a development folder, so they never touch real settings. Keep the tab
+whitelist in `src/main/index.ts` in step when adding a Settings tab; it was missed once and the new
+tab silently fell back to GIF.
+
+**Sending real keystrokes.** Global shortcuts are registered with `RegisterHotKey`, which ignores
+`SendKeys` because that uses a journal hook. Use `keybd_event` or `SendInput` through P/Invoke
+instead. A shortcut that appears dead under `SendKeys` is a test artifact, not a regression.
+
 ## Product invariant
 
 Capturo opens directly into capture and disappears after copy, save, or cancel. Do not introduce a dashboard, account flow, cloud dependency, or persistent editor without an explicit product decision recorded in `DECISIONS.md`.
