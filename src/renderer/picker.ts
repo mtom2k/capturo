@@ -26,11 +26,9 @@ import type { CapturePayload, OverlayRole } from '../shared/types'
 const canvas = document.querySelector<HTMLCanvasElement>('#capture-canvas')!
 const context = canvas.getContext('2d')!
 const hint = document.querySelector<HTMLElement>('#hint')!
-const crosshair = document.querySelector<HTMLElement>('#crosshair')!
 const magnifier = document.querySelector<HTMLElement>('#magnifier')!
 const magnifierCanvas = document.querySelector<HTMLCanvasElement>('#magnifier-canvas')!
 const magnifierContext = magnifierCanvas.getContext('2d')!
-const magnifierSwatch = document.querySelector<HTMLElement>('#magnifier-swatch')!
 const magnifierHex = document.querySelector<HTMLElement>('#magnifier-hex')!
 const magnifierFine = document.querySelector<HTMLElement>('#magnifier-fine')!
 const status = document.querySelector<HTMLElement>('#status')!
@@ -38,7 +36,6 @@ const status = document.querySelector<HTMLElement>('#status')!
 // Odd so there is a true centre cell for the crosshair to sit on.
 const MAGNIFIER_CELLS = 17
 const MAGNIFIER_SIZE = 200
-const MAGNIFIER_GAP = 26
 
 let payload: CapturePayload | null = null
 let role: OverlayRole = 'editor'
@@ -139,21 +136,13 @@ function updateMagnifier(): void {
   const hex = color ? rgbToHex(color) : '#000000'
 
   magnifier.hidden = !hasPointer
-  crosshair.hidden = !hasPointer
   magnifierFine.hidden = !fine
   magnifierHex.textContent = hex
-  magnifierSwatch.style.background = hex
 
+  // Centred on the sampled pixel, so the magnifier stands in for the cursor rather than trailing
+  // beside it. Its middle cell is the pixel the hex describes.
   const client = clientFromPoint(pointer.point)
-  // The crosshair sits exactly on the sampled pixel; the magnifier is offset so it does not
-  // cover it. Both are driven from the same point, so they can never disagree.
-  crosshair.style.left = `${client.x}px`
-  crosshair.style.top = `${client.y}px`
-
-  const placement = magnifierPlacement(client, MAGNIFIER_SIZE, MAGNIFIER_GAP, {
-    width: window.innerWidth,
-    height: window.innerHeight
-  })
+  const placement = magnifierPlacement(client, MAGNIFIER_SIZE)
   magnifier.style.left = `${placement.x}px`
   magnifier.style.top = `${placement.y}px`
 
@@ -193,7 +182,7 @@ function pick(): void {
   const color = colorAt(pointer.point)
   if (!color) return
   picked = true
-  setStatus(`Picked ${rgbToHex(color)}`)
+  setStatus(`Copied ${rgbToHex(color)}`)
   void window.capturoColor.pick(payload.sessionId, color)
 }
 
@@ -340,7 +329,6 @@ canvas.addEventListener('pointerleave', () => {
   if (role === 'filler') return
   hasPointer = false
   magnifier.hidden = true
-  crosshair.hidden = true
 })
 canvas.addEventListener('pointerdown', (event) => {
   if (role === 'filler' || event.button !== 0) return
