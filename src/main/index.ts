@@ -128,7 +128,7 @@ const isPickerSmokeInstance = process.env.CAPTURO_PICKER_ON_START === '1'
 const isSettingsSmokeInstance = process.env.CAPTURO_SETTINGS_ON_START === '1'
 const isSettingsScreenshot = process.env.CAPTURO_SETTINGS_SCREENSHOT === '1'
 const requestedSettingsScreenshotTab = process.env.CAPTURO_SETTINGS_SCREENSHOT_TAB
-const settingsScreenshotTab = ['global', 'capture', 'gif'].includes(requestedSettingsScreenshotTab ?? '')
+const settingsScreenshotTab = ['global', 'capture', 'gif', 'colorPicker'].includes(requestedSettingsScreenshotTab ?? '')
   ? requestedSettingsScreenshotTab!
   : 'gif'
 const isSettingsUpdateCheckSmoke = process.env.CAPTURO_SETTINGS_CHECK_UPDATES === '1'
