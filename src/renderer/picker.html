@@ -11,15 +11,12 @@
 
     <div id="hint" class="hint">Click to pick a color · Hold Shift for pixel-by-pixel · Esc to cancel</div>
 
-    <div id="crosshair" class="crosshair" hidden aria-hidden="true"></div>
-
     <div id="magnifier" class="magnifier" hidden>
       <canvas id="magnifier-canvas" class="magnifier-canvas" width="200" height="200"></canvas>
-      <div class="magnifier-readout">
-        <span id="magnifier-swatch" class="magnifier-swatch"></span>
+      <div class="magnifier-caption">
         <span id="magnifier-hex" class="magnifier-hex">#000000</span>
+        <span id="magnifier-fine" class="magnifier-fine" hidden>Fine</span>
       </div>
-      <div id="magnifier-fine" class="magnifier-fine" hidden>Fine</div>
     </div>
 
     <div id="status" class="status" role="status" aria-live="polite"></div>

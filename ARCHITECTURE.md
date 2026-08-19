@@ -122,15 +122,16 @@ that display and null on the displays it is not on, so the picker opens on the p
 the pointer and only the display holding it shows a magnifier. The reveal focuses that display's
 editor rather than whichever overlay painted last.
 
-The overlay hides the system cursor, draws a crosshair on the sampled pixel, and draws a magnifier
-at a point it owns rather than at the OS cursor position. That indirection is what lets Shift slow sampling to an eighth speed without
+The overlay hides the system cursor and puts the magnifier in its place, centred on the sampled
+pixel, at a point it owns rather than at the OS cursor position. That indirection is what lets Shift slow sampling to an eighth speed without
 the operating system's pointer acceleration fighting it. The pointer model, including how the
 resulting displacement is bled off so the screen edges stay reachable, is pure and lives in
 `src/shared/picker.ts`. Fine movement reads the modifier from the pointer event, not from a key
 listener, because keyboard events only reach the focused overlay and a multi-display capture has
 several. See D-032.
 
-Picking closes the capture session and opens the colour window, a plain window rather than an
+Picking copies the hex to the clipboard in the main process, then closes the capture session and
+opens the colour window, a plain window rather than an
 overlay because the colour outlives the session. It holds the sampled RGB and a separate HSL used
 only to position the sliders; the picked value is never round-tripped through HSL, which would
 quantize it. Conversions, the related-colour row, and naming are pure in `src/shared/color.ts`.

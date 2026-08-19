@@ -1,54 +1,13 @@
-/* The picker overlay hides the system cursor and draws its own magnifier in its place, so the
-   sampled pixel is always the one under the crosshair rather than the one under a cursor hotspot
-   the user cannot see precisely. */
+/* The picker overlay hides the system cursor and puts the magnifier in its place, centred on the
+   sampled pixel. The magnifier is the cursor, so there is never a question of which pixel is
+   being read: it is the one in the middle of the aperture. */
 .picker-body #capture-canvas {
   cursor: none;
 }
 
-/* Marks the pixel actually being sampled. The system cursor is hidden and the magnifier is
-   deliberately offset so it does not cover the target, which leaves nothing at the sampled point
-   itself: without this the magnifier reads as floating somewhere unrelated to the pointer. Drawn
-   as a DOM element rather than onto the canvas so following the pointer costs no repaint of the
-   frozen desktop. */
-.crosshair {
-  position: fixed;
-  z-index: 7;
-  width: 21px;
-  height: 21px;
-  margin: -11px 0 0 -11px;
-  pointer-events: none;
-}
-
-/* Two lines per axis, black under white, so the mark stays visible on any colour it lands on. */
-.crosshair::before,
-.crosshair::after {
-  position: absolute;
-  background:
-    linear-gradient(#000000, #000000) padding-box,
-    linear-gradient(#ffffff, #ffffff) border-box;
-  content: '';
-}
-
-.crosshair::before {
-  top: 50%;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  margin-top: -1.5px;
-  border-top: 1px solid rgba(255, 255, 255, 0.95);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.95);
-}
-
-.crosshair::after {
-  top: 0;
-  left: 50%;
-  width: 3px;
-  height: 100%;
-  margin-left: -1.5px;
-  border-right: 1px solid rgba(255, 255, 255, 0.95);
-  border-left: 1px solid rgba(255, 255, 255, 0.95);
-}
-
+/* The magnifier is the cursor: it is centred on the sampled pixel rather than offset beside it,
+   and its middle cell is the pixel being read. Nothing else marks the point, because nothing
+   else needs to - the thing under the pointer is the thing showing the colour. */
 .magnifier {
   position: fixed;
   z-index: 6;
@@ -57,57 +16,49 @@
   user-select: none;
 }
 
-/* Circular, because a round aperture reads as a lens and keeps the crosshair the only square
-   thing in view. The ring is two-tone so it stays visible over both light and dark desktops. */
+/* A white rim over a dark hairline, so the aperture stays legible against both a pale desktop
+   and a dark one. */
 .magnifier-canvas {
   display: block;
   width: 200px;
   height: 200px;
-  border: 2px solid rgba(255, 255, 255, 0.92);
-  border-radius: 50%;
+  border: 3px solid #ffffff;
+  border-radius: 26px;
   background: #050910;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 8px 26px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
-.magnifier-readout {
+/* Sits under the aperture and is centred on it, so it never covers the pixel being picked. The
+   magnifier's own box is not clamped into the viewport (the centre must stay true), so the
+   caption travels with it and can clip at a screen edge along with everything else. */
+.magnifier-caption {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 8px;
-  padding: 5px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 5px;
-  background: rgba(17, 24, 39, 0.94);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
-}
-
-.magnifier-swatch {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 3px;
-  background: #000000;
+  margin-top: 12px;
 }
 
 .magnifier-hex {
+  padding: 5px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.94);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
   color: #f8fafc;
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
 .magnifier-fine {
-  margin-top: 5px;
-  padding: 3px 6px;
+  padding: 4px 8px;
   border: 1px solid rgba(56, 189, 248, 0.45);
-  border-radius: 4px;
-  background: rgba(14, 116, 144, 0.3);
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.55);
   color: #7dd3fc;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
-  text-align: center;
   text-transform: uppercase;
 }

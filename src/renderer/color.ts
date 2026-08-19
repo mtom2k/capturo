@@ -66,9 +66,14 @@ function applyRgb(next: Rgb): void {
   hsl = rgbToHsl(next)
 }
 
-function setStatus(message: string): void {
+// Transient by default. The copy confirmation on arrival is persistent instead: copying is now
+// what picking does, so that line is the window explaining its own state, not a passing
+// acknowledgement, and it should still be there when the user looks up.
+function setStatus(message: string, persist = false): void {
   status.textContent = message
   if (statusTimer !== null) window.clearTimeout(statusTimer)
+  statusTimer = null
+  if (persist) return
   statusTimer = window.setTimeout(() => {
     status.textContent = ''
     statusTimer = null
@@ -226,7 +231,15 @@ window.capturoColor.onInitialize((picked) => {
   alpha = 100
   format = 'hex'
   formatSelect.value = format
-  setColor(picked)
+  setColor(picked.color)
+  // Picking copies on its own, so say so rather than leaving the user to wonder whether they
+  // still need to press Copy.
+  setStatus(
+    picked.copied
+      ? `Copied ${formatColor(picked.color, 'hex')} to the clipboard`
+      : 'Capturo could not write to the clipboard.',
+    true
+  )
 })
 
 render()

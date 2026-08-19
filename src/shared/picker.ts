@@ -140,22 +140,14 @@ export function pixelAt(
 }
 
 /**
- * Places the magnifier next to the sampled point without letting it leave the viewport or sit
- * under the cursor. It prefers below-right, the way a tooltip does, and flips on whichever axis
- * runs out of room so the magnifier never covers the pixel being picked.
+ * Top-left of the magnifier, which is centred on the sampled point: the magnifier *is* the
+ * cursor, and its centre cell is the pixel being picked.
+ *
+ * Deliberately not clamped into the viewport. Nudging it back from an edge would slide its centre
+ * off the sampled pixel, and the centre is the whole readout - a magnifier that lies about which
+ * pixel it is showing is worse than one that is clipped. Near an edge it simply hangs off, and
+ * the overlay clips it.
  */
-export function magnifierPlacement(
-  point: Point,
-  size: number,
-  gap: number,
-  viewport: Bounds
-): Point {
-  const preferRight = point.x + gap + size <= viewport.width
-  const preferBelow = point.y + gap + size <= viewport.height
-  const x = preferRight ? point.x + gap : point.x - gap - size
-  const y = preferBelow ? point.y + gap : point.y - gap - size
-  return {
-    x: Math.min(Math.max(x, 0), Math.max(0, viewport.width - size)),
-    y: Math.min(Math.max(y, 0), Math.max(0, viewport.height - size))
-  }
+export function magnifierPlacement(point: Point, size: number): Point {
+  return { x: point.x - size / 2, y: point.y - size / 2 }
 }

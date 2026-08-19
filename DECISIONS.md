@@ -467,6 +467,39 @@ native helper's tone-mapped capture rather than a raw read-back, and it matches 
 of the same pixel would contain. It also inherits the freeze, so a colour cannot be picked out of
 a playing video; re-invoking the picker is the answer, which is what **Pick again** does.
 
+**Amended 2026-08-19: the magnifier is the cursor.** It was placed beside the sampled point so as
+not to cover it, with a crosshair marking the point itself. That is backwards: the magnifier shows
+the sampled pixel at its centre, so covering the point is exactly what it should do, and putting it
+anywhere else leaves the user tracking two things that look unrelated. It is now centred on the
+sampled pixel, and the crosshair is gone because the middle cell of the aperture already marks it.
+
+Its placement is deliberately not clamped into the viewport. Nudging it back from a screen edge
+would slide its centre off the sampled pixel, and a magnifier that lies about which pixel it is
+showing is worse than one that is clipped by the edge of the screen.
+
+## D-034: Picking a colour copies it
+
+**Status:** accepted
+
+Picking copies the hex to the clipboard without a second action, and the colour window opens on top
+of that saying so. Copying is what picking a colour is *for*; making the user pick and then press
+Copy adds a step to the common path to save nothing on the rare one, since the window is still
+there to convert, adjust, or pick a neighbour before copying again.
+
+The window says which value it put on the clipboard, and that line does not time out the way its
+other statuses do: it is the window describing its own state rather than acknowledging an action,
+and it needs to still be there when the user looks up from whatever they were doing. If the
+clipboard write fails the window says that instead, rather than quietly implying success.
+
+**Pick again hides the window first.** The picker freezes the desktop as it starts, so a window
+left on screen is baked into the frozen frame and everything it covers becomes unpickable - gone
+from the screen but still in the picture. Hiding it is not enough on its own: Windows animates the
+hide, and the frozen frame catches the window mid-fade, semi-transparent over the content behind
+it. The opacity is dropped to zero first, which is immediate and unanimated - the same reason the
+overlays themselves are shown at zero opacity (D-010, D-011) - and a short settle covers the
+compositor's remaining frame of lag. The window keeps its colour throughout and comes back whether
+the next pick succeeds or the user cancels out of the overlay.
+
 ## D-033: The picked colour is never round-tripped through HSL
 
 **Status:** accepted

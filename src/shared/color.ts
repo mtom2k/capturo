@@ -222,8 +222,12 @@ export function relatedColors(rgb: Rgb, count = 5): Rgb[] {
 
 // Bridge for the picker overlay and the colour window. The overlay reports the pixel it picked;
 // the window reads the result, copies it, and can send the user back for another pick.
+// Picking copies straight to the clipboard, so the window is told whether that succeeded rather
+// than having to ask or assume.
+export type PickedColor = { color: Rgb; copied: boolean }
+
 export type CapturoColorApi = {
-  onInitialize: (listener: (color: Rgb) => void) => () => void
+  onInitialize: (listener: (picked: PickedColor) => void) => () => void
   pick: (sessionId: string, color: Rgb) => Promise<boolean>
   copy: (text: string) => Promise<boolean>
   pickAgain: () => Promise<void>

@@ -4,7 +4,7 @@ import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
 import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
 import type { CapturoUpdatesApi } from '../shared/updates'
 import type { CapturoPermissionsApi } from '../shared/permissions'
-import type { CapturoColorApi, Rgb } from '../shared/color'
+import type { CapturoColorApi, PickedColor, Rgb } from '../shared/color'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -82,7 +82,7 @@ const permissionsApi: CapturoPermissionsApi = {
 // anything, and nothing here can name a file or a URL.
 const colorApi: CapturoColorApi = {
   onInitialize(listener) {
-    const handler = (_event: Electron.IpcRendererEvent, color: Rgb): void => listener(color)
+    const handler = (_event: Electron.IpcRendererEvent, picked: PickedColor): void => listener(picked)
     ipcRenderer.on('color:initialize', handler)
     return () => ipcRenderer.removeListener('color:initialize', handler)
   },

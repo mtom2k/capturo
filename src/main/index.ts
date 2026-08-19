@@ -34,7 +34,7 @@ import {
   type UpdateCheckResult
 } from '../shared/updates'
 import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
-import { normalizeRgb, rgbToHex, type Rgb } from '../shared/color'
+import { normalizeRgb, rgbToHex, type PickedColor, type Rgb } from '../shared/color'
 import { cursorForDisplay } from '../shared/picker'
 import {
   hasGifSignature,
@@ -104,7 +104,13 @@ let gifPreviewState: GifPreviewState | null = null
 // The window that shows a picked colour. One at a time: picking again reuses it rather than
 // leaving a trail of windows behind.
 let colorWindow: BrowserWindow | null = null
-let pickedColor: Rgb | null = null
+let pickedColor: PickedColor | null = null
+// Set while the colour window is hidden for a Pick again, so it comes back whether the next pick
+// succeeds or the user cancels out of the overlay.
+let colorWindowHiddenForPick = false
+// How long to let the desktop recomposite after the colour window goes invisible, before freezing
+// it for a Pick again. See the comment at its use.
+const COLOR_WINDOW_HIDE_SETTLE_MS = 90
 let automaticUpdateTimer: ReturnType<typeof setTimeout> | null = null
 let updateCheckInFlight: Promise<UpdateCheckResult> | null = null
 let availableUpdateVersion: string | null = null
@@ -117,6 +123,7 @@ let isQuitting = false
 const isMac = process.platform === 'darwin'
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
 const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
+const isPickerSmokeInstance = process.env.CAPTURO_PICKER_ON_START === '1'
 const isSettingsSmokeInstance = process.env.CAPTURO_SETTINGS_ON_START === '1'
 const isSettingsScreenshot = process.env.CAPTURO_SETTINGS_SCREENSHOT === '1'
 const requestedSettingsScreenshotTab = process.env.CAPTURO_SETTINGS_SCREENSHOT_TAB
@@ -152,7 +159,7 @@ function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
-if (isSmokeInstance || isGifSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance || ocrSmokeImagePath) {
+if (isSmokeInstance || isGifSmokeInstance || isPickerSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance || ocrSmokeImagePath) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
 
@@ -217,6 +224,17 @@ function closeSession(): void {
   for (const entry of active.overlays.values()) {
     if (!entry.window.isDestroyed()) entry.window.destroy()
   }
+}
+
+// Brings the colour window back after a Pick again that did not end in a pick. Deliberately not
+// called from closeSession: openSelectionOverlays tears down the previous session as it starts the
+// new one, so restoring there would un-hide the window the moment it was hidden.
+function restoreColorWindow(): void {
+  if (!colorWindowHiddenForPick) return
+  colorWindowHiddenForPick = false
+  if (!colorWindow || colorWindow.isDestroyed()) return
+  colorWindow.show()
+  colorWindow.setOpacity(1)
 }
 
 // The renderer has painted the frozen desktop, so the overlay can be revealed. The window
@@ -759,8 +777,11 @@ function startCapture(): Promise<void> {
 // The colour picker reuses the same frozen desktop as a screenshot, so the colour reported is
 // the tone-mapped pixel Capturo would capture rather than an untreated read-back (D-014). It
 // also means the desktop is frozen: a colour cannot be picked out of a running animation.
-function startColorPicker(): Promise<void> {
-  return openSelectionOverlays('picker')
+async function startColorPicker(): Promise<void> {
+  await openSelectionOverlays('picker')
+  // No overlay came up - screen permission refused, or no display returned an image - so a colour
+  // window hidden for this pick would otherwise stay hidden with the colour still inside it.
+  if (!session) restoreColorWindow()
 }
 
 function startGifCapture(): Promise<void> {
@@ -986,7 +1007,10 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('capture:cancel', (event, sessionId: string) => {
-    if (validSession(event, sessionId)) closeSession()
+    if (!validSession(event, sessionId)) return
+    closeSession()
+    // Cancelling out of a Pick again puts the colour window back, still holding its colour.
+    restoreColorWindow()
   })
 
   // A colour was picked off the frozen desktop. Only an overlay of the live picker session may
@@ -999,10 +1023,21 @@ function registerIpc(): void {
     const { r, g, b } = color as Partial<Rgb>
     if (typeof r !== 'number' || typeof g !== 'number' || typeof b !== 'number') return false
 
-    const picked = normalizeRgb({ r, g, b })
+    const value = normalizeRgb({ r, g, b })
     closeSession()
-    openColorWindow(picked)
-    logTiming(`color picked ${rgbToHex(picked)}`)
+
+    // Copying is the point of picking a colour, so it happens without a second action. The
+    // window still opens on top of it for adjusting, converting, or picking a neighbour, and it
+    // reports whether the clipboard write actually landed rather than claiming it did.
+    let copied = true
+    try {
+      clipboard.writeText(rgbToHex(value))
+    } catch {
+      copied = false
+    }
+
+    openColorWindow({ color: value, copied })
+    logTiming(`color picked ${rgbToHex(value)}${copied ? ' and copied' : ' (clipboard write failed)'}`)
     return true
   })
 
@@ -1023,9 +1058,24 @@ function registerIpc(): void {
   ipcMain.handle('color:pick-again', (event) => {
     if (!colorWindow || colorWindow.isDestroyed()) return
     if (event.sender.id !== colorWindow.webContents.id) return
-    // The window stays open behind the overlay and is updated in place by the next pick, so the
-    // user does not lose the colour they already have if they cancel.
-    void startColorPicker()
+
+    // Hide the window for the duration of the pick. It would otherwise sit over the very pixels
+    // the user is trying to sample - the desktop is frozen with it in shot, so whatever it covers
+    // is unpickable - and, being the foreground window, it would keep the keyboard and leave
+    // Escape doing nothing on the overlay. It keeps its colour while hidden and comes back on
+    // either outcome; see restoreColorWindow.
+    colorWindowHiddenForPick = true
+
+    // The picker freezes the desktop the moment it starts, so the colour window has to be off the
+    // screen before that happens or everything it covers is unpickable: gone from the screen but
+    // still in the picture. hide() alone is not enough, because Windows animates it out and the
+    // frozen frame catches it mid-fade, semi-transparent over the content behind it. Dropping the
+    // opacity first is immediate and unanimated - the same reason the overlays themselves are
+    // shown at zero opacity (D-010, D-011) - so hide() then animates something already invisible.
+    // The short settle covers the compositor's own frame of lag.
+    colorWindow.setOpacity(0)
+    colorWindow.hide()
+    setTimeout(() => void startColorPicker(), COLOR_WINDOW_HIDE_SETTLE_MS)
   })
 
   // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
@@ -1651,12 +1701,16 @@ function createTray(): void {
 // Opens (or reuses) the window that shows a picked colour. Deliberately a plain window rather
 // than an overlay: the colour outlives the capture session, and the user is expected to sit in it
 // adjusting sliders and copying values while doing something else.
-function openColorWindow(color: Rgb): void {
-  pickedColor = normalizeRgb(color)
+function openColorWindow(picked: PickedColor): void {
+  pickedColor = picked
+  colorWindowHiddenForPick = false
 
   if (colorWindow && !colorWindow.isDestroyed()) {
     if (colorWindow.isMinimized()) colorWindow.restore()
     colorWindow.show()
+    // Cleared in case this pick came from a Pick again, which hides the window by dropping its
+    // opacity to zero first.
+    colorWindow.setOpacity(1)
     colorWindow.focus()
     colorWindow.webContents.send('color:initialize', pickedColor)
     return
@@ -1792,6 +1846,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     if (isSmokeInstance) void startCapture()
     if (isGifSmokeInstance) void startGifCapture()
+    if (isPickerSmokeInstance) void startColorPicker()
     if (isGifRecordSmoke) {
       openRecordingWindow(screen.getPrimaryDisplay(), {
         crop: { x: 0.3, y: 0.3, width: 0.4, height: 0.4 },

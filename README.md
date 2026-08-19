@@ -117,16 +117,17 @@ The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places th
 
 ## 🎨 Color picker
 
-**Color picker** in the tray menu freezes the desktop and follows your pointer with a magnifier
-showing the surrounding pixels at 17x, the sampled pixel outlined in the middle, and its hex value
-beside it. Hold **Shift** to slow sampling to an eighth speed, which is what makes a one-pixel
+**Color picker** in the tray menu freezes the desktop and replaces your mouse cursor with a
+magnifier, centred on the pixel it is reading: the surrounding pixels at 17x, the sampled one
+outlined in the middle of the aperture, and its hex value below. Hold **Shift** to slow sampling to an eighth speed, which is what makes a one-pixel
 border or an anti-aliased edge pickable; the arrow keys nudge exactly one pixel. Click, `Enter`,
 or `Space` picks; `Esc` cancels.
 
-The color window then shows the value as HEX, RGB, or HSL with live hue, saturation, lightness and
+**Picking copies the color straight to your clipboard.** The color window then shows the value as HEX, RGB, or HSL with live hue, saturation, lightness and
 alpha sliders, a row of related colors, and the nearest color name. Type a hex value to jump to one
-directly, copy with `Ctrl/Cmd+C`, or use **Pick again** to go back to the screen without losing the
-color you already have.
+directly, copy again in another format with `Ctrl/Cmd+C`, or use **Pick again** to go back to the
+screen without losing the color you already have. The window gets out of the way while you pick, so
+you can sample the pixels it was covering.
 
 Because the desktop is frozen when the picker opens, a color cannot be picked out of a playing
 video or animation; reopen the picker to sample the current frame.

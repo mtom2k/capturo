@@ -185,32 +185,28 @@ describe('pixelAt', () => {
 })
 
 describe('magnifierPlacement', () => {
-  const viewport = { width: 1000, height: 800 }
-
-  it('prefers below and to the right of the sampled point', () => {
-    expect(magnifierPlacement({ x: 100, y: 100 }, 180, 24, viewport)).toEqual({ x: 124, y: 124 })
+  it('centres the magnifier on the sampled point', () => {
+    // The magnifier replaces the cursor, so its centre must land exactly on the pixel it reads.
+    const size = 200
+    const placed = magnifierPlacement({ x: 400, y: 300 }, size)
+    expect(placed).toEqual({ x: 300, y: 200 })
+    expect(placed.x + size / 2).toBe(400)
+    expect(placed.y + size / 2).toBe(300)
   })
 
-  it('flips rather than covering the pixel being picked', () => {
-    const nearRight = magnifierPlacement({ x: 980, y: 100 }, 180, 24, viewport)
-    expect(nearRight.x + 180).toBeLessThanOrEqual(980)
-    const nearBottom = magnifierPlacement({ x: 100, y: 780 }, 180, 24, viewport)
-    expect(nearBottom.y + 180).toBeLessThanOrEqual(780)
-  })
-
-  it('keeps the magnifier fully inside the viewport in every corner', () => {
-    for (const point of [
-      { x: 0, y: 0 },
-      { x: 999, y: 0 },
-      { x: 0, y: 799 },
-      { x: 999, y: 799 }
-    ]) {
-      const placed = magnifierPlacement(point, 180, 24, viewport)
-      expect(placed.x).toBeGreaterThanOrEqual(0)
-      expect(placed.y).toBeGreaterThanOrEqual(0)
-      expect(placed.x + 180).toBeLessThanOrEqual(viewport.width)
-      expect(placed.y + 180).toBeLessThanOrEqual(viewport.height)
+  it('keeps the centre on the pixel at every edge rather than nudging into view', () => {
+    // Clamping the magnifier back onto the screen would slide its centre off the sampled pixel
+    // and make the readout a lie. Hanging off the edge is the correct trade.
+    for (const point of [{ x: 0, y: 0 }, { x: 1919, y: 0 }, { x: 0, y: 1079 }, { x: 1919, y: 1079 }]) {
+      const placed = magnifierPlacement(point, 200)
+      expect(placed.x + 100).toBe(point.x)
+      expect(placed.y + 100).toBe(point.y)
     }
+  })
+
+  it('handles an odd size without drifting half a pixel off centre', () => {
+    const placed = magnifierPlacement({ x: 100, y: 100 }, 101)
+    expect(placed.x + 101 / 2).toBe(100)
   })
 })
 
