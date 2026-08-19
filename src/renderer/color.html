@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo Color</title>
+  </head>
+  <body class="color-body">
+    <div id="preview" class="color-preview">
+      <button id="pick-again" class="preview-action" type="button" title="Pick another color from the screen">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 3.2a1.8 1.8 0 012.5 2.5l-1.2 1.2-2.5-2.5zM11.4 5.3l3.3 3.3-6.6 6.6-3.9.6.6-3.9z"/></svg>
+        Pick again
+      </button>
+    </div>
+
+    <div class="color-body-inner">
+      <div class="value-row">
+        <input id="value" class="value-field" aria-label="Color value" spellcheck="false" autocomplete="off" />
+        <div class="select-wrap">
+          <select id="format" aria-label="Color format">
+            <option value="hex">HEX</option>
+            <option value="rgb">RGB</option>
+            <option value="hsl">HSL</option>
+          </select>
+        </div>
+        <button id="copy" class="icon-btn" type="button" aria-label="Copy color" title="Copy (Ctrl/Cmd+C)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="10" rx="1"/><path d="M5 13H4V4h9v1"/></svg>
+        </button>
+      </div>
+
+      <div class="slider-grid">
+        <label class="slider-label" for="hue">Hue</label>
+        <input id="hue" class="color-slider" type="range" min="0" max="360" step="1" />
+        <output id="hue-value" class="slider-value" for="hue">0</output>
+
+        <label class="slider-label" for="saturation">Saturation</label>
+        <input id="saturation" class="color-slider" type="range" min="0" max="100" step="1" />
+        <output id="saturation-value" class="slider-value" for="saturation">0</output>
+
+        <label class="slider-label" for="lightness">Lightness</label>
+        <input id="lightness" class="color-slider" type="range" min="0" max="100" step="1" />
+        <output id="lightness-value" class="slider-value" for="lightness">0</output>
+
+        <label class="slider-label" for="alpha">Alpha</label>
+        <input id="alpha" class="color-slider alpha-slider" type="range" min="0" max="100" step="1" />
+        <output id="alpha-value" class="slider-value" for="alpha">100</output>
+      </div>
+
+      <dl class="readouts">
+        <div class="readout"><dt>HEX</dt><dd id="readout-hex">#000000</dd></div>
+        <div class="readout"><dt>RGB</dt><dd id="readout-rgb">0, 0, 0</dd></div>
+        <div class="readout"><dt>HSL</dt><dd id="readout-hsl">0, 0%, 0%</dd></div>
+      </dl>
+
+      <div class="palette">
+        <div class="palette-head">
+          <span id="palette-name" class="palette-name">Color</span>
+          <span class="palette-hint">Similar colors · click to use</span>
+        </div>
+        <div id="swatches" class="swatches" role="list" aria-label="Similar colors"></div>
+      </div>
+    </div>
+
+    <div id="status" class="color-status" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./color.ts"></script>
+  </body>
+</html>

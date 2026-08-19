@@ -34,6 +34,7 @@ import {
   type UpdateCheckResult
 } from '../shared/updates'
 import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
+import { normalizeRgb, rgbToHex, type Rgb } from '../shared/color'
 import {
   hasGifSignature,
   isExpiredGifClipboardFile,
@@ -66,7 +67,7 @@ type DisplayImage = { bytes: Uint8Array; width: number; height: number }
 
 // A screenshot capture and a GIF capture share the same region-selection overlays; the mode
 // decides which renderer they load and what happens once a region is chosen.
-type CaptureMode = 'screenshot' | 'gif'
+type CaptureMode = 'screenshot' | 'gif' | 'picker'
 
 // The two global shortcuts Capturo registers.
 type ShortcutKind = 'capture' | 'gif'
@@ -99,6 +100,10 @@ type GifPreviewState = {
 }
 let gifPreviewWindow: BrowserWindow | null = null
 let gifPreviewState: GifPreviewState | null = null
+// The window that shows a picked colour. One at a time: picking again reuses it rather than
+// leaving a trail of windows behind.
+let colorWindow: BrowserWindow | null = null
+let pickedColor: Rgb | null = null
 let automaticUpdateTimer: ReturnType<typeof setTimeout> | null = null
 let updateCheckInFlight: Promise<UpdateCheckResult> | null = null
 let availableUpdateVersion: string | null = null
@@ -647,7 +652,9 @@ function createOverlayWindow(area: Rect): BrowserWindow {
 // Creates one overlay window for a region and loads the renderer into it. Resolves once the
 // renderer has loaded; the caller awaits all overlays together so they load concurrently.
 function overlayHtml(mode: CaptureMode): string {
-  return mode === 'gif' ? 'gif.html' : 'index.html'
+  if (mode === 'gif') return 'gif.html'
+  if (mode === 'picker') return 'picker.html'
+  return 'index.html'
 }
 
 async function spawnOverlay(
@@ -673,7 +680,7 @@ async function spawnOverlay(
 
   const devUrl = rendererUrl()
   const html = overlayHtml(owner.mode)
-  if (devUrl) await overlay.loadURL(owner.mode === 'gif' ? `${devUrl}/${html}` : devUrl)
+  if (devUrl) await overlay.loadURL(owner.mode === 'screenshot' ? devUrl : `${devUrl}/${html}`)
   else await overlay.loadFile(path.join(__dirname, `../renderer/${html}`))
 }
 
@@ -729,6 +736,13 @@ async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
 
 function startCapture(): Promise<void> {
   return openSelectionOverlays('screenshot')
+}
+
+// The colour picker reuses the same frozen desktop as a screenshot, so the colour reported is
+// the tone-mapped pixel Capturo would capture rather than an untreated read-back (D-014). It
+// also means the desktop is frozen: a colour cannot be picked out of a running animation.
+function startColorPicker(): Promise<void> {
+  return openSelectionOverlays('picker')
 }
 
 function startGifCapture(): Promise<void> {
@@ -955,6 +969,45 @@ function registerIpc(): void {
 
   ipcMain.handle('capture:cancel', (event, sessionId: string) => {
     if (validSession(event, sessionId)) closeSession()
+  })
+
+  // A colour was picked off the frozen desktop. Only an overlay of the live picker session may
+  // report one, and the value is clamped here rather than trusted: it crosses a process boundary
+  // and ends up in the clipboard.
+  ipcMain.handle('color:pick', (event, sessionId: string, color: unknown) => {
+    const active = validSession(event, sessionId)
+    if (!active || active.mode !== 'picker') return false
+    if (!color || typeof color !== 'object') return false
+    const { r, g, b } = color as Partial<Rgb>
+    if (typeof r !== 'number' || typeof g !== 'number' || typeof b !== 'number') return false
+
+    const picked = normalizeRgb({ r, g, b })
+    closeSession()
+    openColorWindow(picked)
+    logTiming(`color picked ${rgbToHex(picked)}`)
+    return true
+  })
+
+  // Only the colour window may copy, and only text. Nothing here can name a file or a format
+  // other than plain text.
+  ipcMain.handle('color:copy', (event, text: unknown) => {
+    if (!colorWindow || colorWindow.isDestroyed()) return false
+    if (event.sender.id !== colorWindow.webContents.id) return false
+    if (typeof text !== 'string' || !text || text.length > 64) return false
+    try {
+      clipboard.writeText(text)
+    } catch {
+      return false
+    }
+    return true
+  })
+
+  ipcMain.handle('color:pick-again', (event) => {
+    if (!colorWindow || colorWindow.isDestroyed()) return
+    if (event.sender.id !== colorWindow.webContents.id) return
+    // The window stays open behind the overlay and is updated in place by the next pick, so the
+    // user does not lose the colour they already have if they cancel.
+    void startColorPicker()
   })
 
   // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
@@ -1541,6 +1594,7 @@ function refreshTray(): void {
   trayMenu = Menu.buildFromTemplate([
     { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
     { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
+    { label: 'Color picker', click: () => void startColorPicker() },
     { label: 'Settings…', click: () => openSettings() },
     ...(availableUpdateVersion
       ? [{ label: `Update available: v${availableUpdateVersion}`, click: () => void openCapturoReleases() }]
@@ -1576,6 +1630,55 @@ function createTray(): void {
 
 // A small, framed, on-demand preferences window. Reused if already open. It is not a
 // resident surface: closing it destroys it and the app stays tray-only. See D-016.
+// Opens (or reuses) the window that shows a picked colour. Deliberately a plain window rather
+// than an overlay: the colour outlives the capture session, and the user is expected to sit in it
+// adjusting sliders and copying values while doing something else.
+function openColorWindow(color: Rgb): void {
+  pickedColor = normalizeRgb(color)
+
+  if (colorWindow && !colorWindow.isDestroyed()) {
+    if (colorWindow.isMinimized()) colorWindow.restore()
+    colorWindow.show()
+    colorWindow.focus()
+    colorWindow.webContents.send('color:initialize', pickedColor)
+    return
+  }
+
+  const window = new BrowserWindow({
+    width: 340,
+    height: 560,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Capturo Color',
+    icon: taskbarIcon(),
+    backgroundColor: '#171b22',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  colorWindow = window
+  window.on('closed', () => {
+    if (colorWindow === window) {
+      colorWindow = null
+      pickedColor = null
+    }
+  })
+  window.once('ready-to-show', () => window.show())
+  window.webContents.on('did-finish-load', () => {
+    if (!window.isDestroyed() && pickedColor) window.webContents.send('color:initialize', pickedColor)
+  })
+
+  const devUrl = rendererUrl()
+  if (devUrl) void window.loadURL(`${devUrl}/color.html`)
+  else void window.loadFile(path.join(__dirname, '../renderer/color.html'))
+}
+
 function openSettings(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore()

@@ -73,6 +73,7 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 - Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
 - Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
 - Extract visible text with local Windows OCR and copy it as plain text (Windows only).
+- Pick a color from anywhere on screen with a magnifier, and adjust or copy it as HEX, RGB, or HSL.
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
 - Capture HDR displays through a native Windows helper without washed-out SDR content (Windows only).
@@ -113,6 +114,22 @@ The recording bar supports Pause, Resume, Stop, a timer, and optional frame tota
 ![Finished GIF preview](./docs/gif-preview.png)
 
 The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places the animated `.gif` *file* on the clipboard rather than flattening it to a still image, on Windows through `CF_HDROP` and on macOS through a `public.file-url` pasteboard entry, so the animation survives the paste. An unsaved GIF is written to Capturo's temporary clipboard folder only after you explicitly choose Copy, and expired copies are cleaned during a later launch.
+
+## 🎨 Color picker
+
+**Color picker** in the tray menu freezes the desktop and follows your pointer with a magnifier
+showing the surrounding pixels at 17x, the sampled pixel outlined in the middle, and its hex value
+beside it. Hold **Shift** to slow sampling to an eighth speed, which is what makes a one-pixel
+border or an anti-aliased edge pickable; the arrow keys nudge exactly one pixel. Click, `Enter`,
+or `Space` picks; `Esc` cancels.
+
+The color window then shows the value as HEX, RGB, or HSL with live hue, saturation, lightness and
+alpha sliders, a row of related colors, and the nearest color name. Type a hex value to jump to one
+directly, copy with `Ctrl/Cmd+C`, or use **Pick again** to go back to the screen without losing the
+color you already have.
+
+Because the desktop is frozen when the picker opens, a color cannot be picked out of a playing
+video or animation; reopen the picker to sample the current frame.
 
 ## ⌨️ Shortcuts
 

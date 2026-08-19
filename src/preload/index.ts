@@ -4,6 +4,7 @@ import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
 import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
 import type { CapturoUpdatesApi } from '../shared/updates'
 import type { CapturoPermissionsApi } from '../shared/permissions'
+import type { CapturoColorApi, Rgb } from '../shared/color'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -76,8 +77,23 @@ const permissionsApi: CapturoPermissionsApi = {
   relaunch: () => ipcRenderer.invoke('permissions:relaunch')
 }
 
+// Exposed to the colour picker overlay and the colour window. The overlay may only report a
+// colour for a session it belongs to; the main process validates the sender before opening
+// anything, and nothing here can name a file or a URL.
+const colorApi: CapturoColorApi = {
+  onInitialize(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, color: Rgb): void => listener(color)
+    ipcRenderer.on('color:initialize', handler)
+    return () => ipcRenderer.removeListener('color:initialize', handler)
+  },
+  pick: (sessionId: string, color: Rgb) => ipcRenderer.invoke('color:pick', sessionId, color),
+  copy: (text: string) => ipcRenderer.invoke('color:copy', text),
+  pickAgain: () => ipcRenderer.invoke('color:pick-again')
+}
+
 contextBridge.exposeInMainWorld('capturo', api)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
 contextBridge.exposeInMainWorld('capturoGif', gifApi)
 contextBridge.exposeInMainWorld('capturoUpdates', updatesApi)
 contextBridge.exposeInMainWorld('capturoPermissions', permissionsApi)
+contextBridge.exposeInMainWorld('capturoColor', colorApi)

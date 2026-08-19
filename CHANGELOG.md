@@ -4,9 +4,18 @@
 
 ## 0.21.0 - 2026-08-18
 
-A release vehicle for the first published macOS build. There is no Windows behaviour change: the
-Windows artifacts are rebuilt from the same source as 0.20.0 and differ from it only by version
-number, so there is no reason to upgrade from 0.20.0 on Windows alone.
+### Added
+
+- **Color picker.** A new tray-menu entry below **New GIF** picks a color from anywhere on screen.
+  A magnifier follows the pointer showing the pixels around it at 17x zoom with the sampled pixel
+  outlined, and its hex value beside it. Holding **Shift** slows sampling to an eighth speed for
+  picking a one-pixel border or an anti-aliased edge; the arrow keys nudge exactly one pixel.
+  `Esc` cancels.
+- Picking opens a color window with the value in HEX, RGB, or HSL, live hue, saturation, lightness
+  and alpha sliders, a row of related colors a click away, and the nearest color name. Every
+  readout updates while a slider is dragged rather than on release. The value can also be typed as
+  hex, copied with the button or `Ctrl/Cmd+C`, and **Pick again** returns to the screen without
+  losing the color already held.
 
 ## 0.20.0 - 2026-08-18
 

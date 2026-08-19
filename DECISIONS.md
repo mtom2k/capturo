@@ -403,3 +403,59 @@ That ordering is the fragile part and the reason the implementation looks the wa
 Escape unwinds one level at a time rather than cancelling the capture outright. While a text box is open, Escape discards that text and stops there; a second Escape cancels the capture. Both keystrokes are the same key on the same window, so the text box's handler must stop propagation - otherwise the window-level shortcut sees an editor that the first handler has already hidden and cancels the whole capture on a single press, discarding every other annotation with it. This matches how Escape already unwinds the transparency panel and annotation selection before reaching cancel.
 
 The resize grip is a Capturo element (`#text-editor-resize`), not the textarea's native corner. The native grip is a fixed ~15px square that CSS cannot enlarge, which at this box size demanded near-pixel accuracy; the replacement is 24px square and straddles the corner, so roughly 2.6x the area and half of it reachable from outside the box. A manual resize then locks the height, because the box otherwise re-fits itself to its content on the next keystroke and undoes the drag.
+
+## D-032: The colour picker samples a point Capturo owns, not the OS cursor
+
+**Status:** accepted
+
+The picker overlay hides the system cursor and draws a magnifier at a position this renderer
+maintains. Sampling follows that position rather than the cursor's, and the whole feature depends
+on the difference.
+
+Slowing the pointer down is the reason. Shift moves the sample an eighth as far as the mouse
+travels, which is what makes a one-pixel border or an anti-aliased edge pickable at all. Nothing
+in Electron can slow the operating system's cursor, and warping it is not exposed either, so a
+picker that samples wherever the OS cursor happens to be cannot offer fine movement. Owning the
+sampled point is the only way to have it.
+
+The cost is that the sampled point and the physical cursor drift apart during fine movement. Three
+options existed and two are wrong:
+
+- **Snap the sample back to the cursor when Shift is released.** The magnifier jumps away from the
+  pixel the user just spent effort aiming at, which defeats the point of aiming.
+- **Leave the displacement standing forever.** The physical cursor stops at the edge of the screen
+  while the sample sits hundreds of pixels away from it, so a band along one edge becomes
+  permanently unpickable.
+- **Bleed the displacement off over ordinary coarse movement**, which is what Capturo does. Coarse
+  movement is deliberately not one-to-one: it spends half of each movement pulling the sample back
+  onto the cursor. Nothing jumps, and the whole screen stays reachable within one ordinary sweep.
+  Clamping also recomputes the displacement from the clamped result, which collapses it at an edge.
+
+None of that is observable by reading the code, and all of it regresses silently, so the pointer
+model is pure in `src/shared/picker.ts` and covered by `tests/picker.test.ts` rather than living in
+the overlay. Arrow keys nudge exactly one pixel as a guaranteed-exact fallback.
+
+The picked colour is the pixel of the frozen desktop, so it inherits D-014: on Windows it is the
+native helper's tone-mapped capture rather than a raw read-back, and it matches what a screenshot
+of the same pixel would contain. It also inherits the freeze, so a colour cannot be picked out of
+a playing video; re-invoking the picker is the answer, which is what **Pick again** does.
+
+## D-033: The picked colour is never round-tripped through HSL
+
+**Status:** accepted
+
+The colour window shows sliders for hue, saturation and lightness, so the obvious implementation
+holds the colour as HSL and derives RGB for display. That is wrong, and visibly so: HSL is stored
+as integer degrees and percents, one step of lightness is already 2.55 levels of a channel, and
+`#9CAA33` comes back from the round trip as `#9BA932`. A colour picker that cannot report the pixel
+it just sampled has failed at the only thing it does.
+
+Deriving HSL from RGB on every render instead fails in the other direction. Every hue maps to the
+same grey, so dragging the hue slider across a grey would compute hue back as zero and snap the
+thumb to the left on release.
+
+The window therefore holds both. The sampled RGB is authoritative for every readout and for the
+swatch row; the HSL exists only to position the sliders. Moving a slider makes HSL authoritative
+for that edit and recomputes RGB from it; a colour arriving whole - picked, typed as hex, or chosen
+from the related row - is stored exactly and the sliders are repositioned from it. Neither
+representation is continuously derived from the other.
