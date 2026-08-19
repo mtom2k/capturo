@@ -1,0 +1,69 @@
+/* The picker overlay hides the system cursor and draws its own magnifier in its place, so the
+   sampled pixel is always the one under the crosshair rather than the one under a cursor hotspot
+   the user cannot see precisely. */
+.picker-body #capture-canvas {
+  cursor: none;
+}
+
+.magnifier {
+  position: fixed;
+  z-index: 6;
+  width: 200px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Circular, because a round aperture reads as a lens and keeps the crosshair the only square
+   thing in view. The ring is two-tone so it stays visible over both light and dark desktops. */
+.magnifier-canvas {
+  display: block;
+  width: 200px;
+  height: 200px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  background: #050910;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+
+.magnifier-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: rgba(17, 24, 39, 0.94);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+}
+
+.magnifier-swatch {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 3px;
+  background: #000000;
+}
+
+.magnifier-hex {
+  color: #f8fafc;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.magnifier-fine {
+  margin-top: 5px;
+  padding: 3px 6px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 4px;
+  background: rgba(14, 116, 144, 0.3);
+  color: #7dd3fc;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}

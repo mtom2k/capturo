@@ -3,6 +3,7 @@ import type { CapturoSettingsApi } from './shared/settings'
 import type { CapturoGifApi } from './shared/gif'
 import type { CapturoUpdatesApi } from './shared/updates'
 import type { CapturoPermissionsApi } from './shared/permissions'
+import type { CapturoColorApi } from './shared/color'
 
 declare global {
   interface Window {
@@ -11,6 +12,7 @@ declare global {
     capturoGif: CapturoGifApi
     capturoUpdates: CapturoUpdatesApi
     capturoPermissions: CapturoPermissionsApi
+    capturoColor: CapturoColorApi
   }
 }
 

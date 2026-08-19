@@ -110,6 +110,28 @@ The selected FPS is a requested sampling cadence, not the playback clock. Every 
 
 For a distinct frame whose changed pixels cover at most 25% of the region, the encoder collects those pixels in the equality scan and quantizes/maps only that compact set; unchanged positions receive the transparent index directly. Frames with broader motion use the full-frame path, avoiding a large sparse copy when it would not help. Fully identical frames still coalesce. The threshold bounds scratch memory and preserves per-frame palettes while making the ordinary desktop case proportional to changed content rather than total region area. See D-020.
 
+## Color picker
+
+The tray menu's **Color picker** opens the same frozen-desktop session a screenshot does, in
+`picker` mode, so the overlay renderer is `picker.html` instead of `index.html`. The colour
+reported is therefore a pixel of the tone-mapped native capture (D-014), not an untreated
+read-back, and it is frozen at invocation: a colour cannot be picked out of a running animation.
+
+The overlay hides the system cursor and draws a magnifier at a point it owns rather than at the
+OS cursor position. That indirection is what lets Shift slow sampling to an eighth speed without
+the operating system's pointer acceleration fighting it. The pointer model, including how the
+resulting displacement is bled off so the screen edges stay reachable, is pure and lives in
+`src/shared/picker.ts`. See D-032.
+
+Picking closes the capture session and opens the colour window, a plain window rather than an
+overlay because the colour outlives the session. It holds the sampled RGB and a separate HSL used
+only to position the sliders; the picked value is never round-tripped through HSL, which would
+quantize it. Conversions, the related-colour row, and naming are pure in `src/shared/color.ts`.
+
+The renderer can send only a colour and a plain-text clipboard write. The main process validates
+the sender, clamps the channels, and bounds the clipboard string; no path or URL crosses this
+bridge.
+
 ## Platform conventions
 
 Capturo is one codebase for Windows and macOS, not a fork per platform. The platforms differ in
@@ -150,13 +172,13 @@ the README rather than papered over.
 ```text
 src/main/       Electron lifecycle, capture, tray, native integrations, settings/update checks + capture-helper,
                 GIF recording windows (selection, chrome, preview, file actions)
-src/preload/    contextBridge API (capture + settings + GIF + updates + permissions)
+src/preload/    contextBridge API (capture + settings + GIF + updates + permissions + color)
 src/renderer/   capture/editor UI, settings window, GIF selection + recording + preview windows,
-                canvas rendering, styles, GIF encoder + worker
+                color picker overlay + color window, canvas rendering, styles, GIF encoder + worker
 src/shared/     IPC, geometry, settings, update-version validation, OCR text normalization,
-                screen-permission presentation, transparency, and GIF logic
+                screen-permission presentation, transparency, GIF, and color/picker logic
 tests/          deterministic unit tests for pure geometry/model/settings/update/OCR/permission/
-                transparency/GIF behavior
+                transparency/GIF/color/picker behavior
 ```
 
 ## Security boundary

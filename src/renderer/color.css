@@ -1,0 +1,324 @@
+/* The colour window follows Capturo's own neutral dark system (D-007) rather than the light
+   reference design it was specified from: it sits beside Settings and the GIF preview, and a
+   second visual language in the same app would be the odd one out. The layout is the reference's
+   - swatch, value, sliders, palette row - because that is what the feature needs to show. */
+
+:root {
+  color: #f8fafc;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  user-select: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #171b22;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.color-body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  background: #171b22;
+}
+
+/* Large enough to judge the colour by, which is the point of showing it at all. The chequerboard
+   underneath is what makes a reduced alpha visible rather than merely numeric. */
+.color-preview {
+  position: relative;
+  height: 132px;
+  flex: 0 0 auto;
+  background-color: #000000;
+  background-image:
+    linear-gradient(45deg, #2a3039 25%, transparent 25%),
+    linear-gradient(-45deg, #2a3039 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a3039 75%),
+    linear-gradient(-45deg, transparent 75%, #2a3039 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.color-preview::after {
+  position: absolute;
+  inset: 0;
+  background: var(--preview, transparent);
+  content: '';
+}
+
+.preview-action {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.preview-action:hover,
+.preview-action:focus-visible {
+  outline: none;
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.preview-action svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.color-body-inner {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 13px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.value-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.value-field {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #3a414c;
+  border-radius: 4px;
+  outline: none;
+  background: #20252d;
+  color: #f8fafc;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.value-field:focus-visible {
+  border-color: #1683ff;
+}
+
+.value-field.invalid {
+  border-color: #dc2626;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: #1677e8;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  outline: none;
+  background: #0f6bd5;
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.slider-grid {
+  display: grid;
+  align-items: center;
+  gap: 8px 10px;
+  grid-template-columns: auto 1fr auto;
+}
+
+.slider-label {
+  color: #aeb6c2;
+  font-size: 11px;
+}
+
+.slider-value {
+  min-width: 30px;
+  color: #f8fafc;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Each track is painted with the range it controls, so the slider previews its own outcome
+   instead of being an unlabelled grey bar. */
+.color-slider {
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.color-slider::-webkit-slider-runnable-track {
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: var(--track, #3a414c);
+}
+
+.alpha-slider::-webkit-slider-runnable-track {
+  background-color: #2a3039;
+  background-image:
+    var(--track, none),
+    linear-gradient(45deg, #454c58 25%, transparent 25%),
+    linear-gradient(-45deg, #454c58 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #454c58 75%),
+    linear-gradient(-45deg, transparent 75%, #454c58 75%);
+  background-size: auto, 8px 8px, 8px 8px, 8px 8px, 8px 8px;
+  background-position: 0 0, 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+.color-slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -3px;
+  appearance: none;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.color-slider:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid #1683ff;
+  outline-offset: 1px;
+}
+
+.readouts {
+  display: grid;
+  margin: 0;
+  gap: 4px 10px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.readout {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 5px;
+  background: #20252d;
+}
+
+.readout dt {
+  color: #7c8695;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.readout dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.palette-name {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.palette-hint {
+  color: #7c8695;
+  font-size: 10px;
+}
+
+.swatches {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.swatch {
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch:hover,
+.swatch:focus-visible {
+  outline: none;
+  border-color: #ffffff;
+}
+
+.swatch.current {
+  border-color: #1683ff;
+  box-shadow: 0 0 0 1px #1683ff;
+}
+
+.color-status {
+  min-height: 22px;
+  flex: 0 0 auto;
+  padding: 0 14px 10px;
+  color: #7dd3fc;
+  font-size: 11px;
+}
