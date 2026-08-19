@@ -435,6 +435,33 @@ None of that is observable by reading the code, and all of it regresses silently
 model is pure in `src/shared/picker.ts` and covered by `tests/picker.test.ts` rather than living in
 the overlay. Arrow keys nudge exactly one pixel as a guaranteed-exact fallback.
 
+**Amended 2026-08-19: owning the sampled point means owning where it starts and how it is shown.**
+The first implementation owned the point but neither seeded nor displayed it, and both omissions
+read to the user as the picker having lost the cursor.
+
+`CapturePayload` now carries the pointer position, in CSS pixels relative to that display, or null
+on the displays it is not on. Without it the overlay had nothing to start from and opened its
+magnifier at the centre of the frozen image while the cursor sat somewhere else entirely; it only
+came right once the user happened to move. The mapping is `cursorForDisplay` in
+`src/shared/picker.ts`, pure and tested, because "which display owns this pointer" is wrong in a
+way that looks like nothing at all - the overlay simply opens somewhere the user is not pointing.
+
+A crosshair is drawn on the sampled pixel. Hiding the system cursor and placing the magnifier
+deliberately clear of the target leaves nothing at the sampled point itself, so the offset
+magnifier reads as floating at random. Both are positioned from the same point, so they cannot
+disagree.
+
+**Amended 2026-08-19: modifier state comes from the pointer event.** Fine movement was driven by
+a window `keydown` listener, and keyboard events only reach the focused window. A multi-display
+capture has one overlay per display and only one of them is focused, so Shift worked on a single
+monitor and silently did nothing on the others. Pointer events carry the modifier state and arrive
+at whichever overlay the pointer is over, so `movePointer` reads `shiftKey` from the event. The key
+listeners remain only to keep the Fine badge honest while the pointer is still.
+
+The reveal also focused every editor overlay as each finished painting, so whichever was revealed
+last held the keyboard regardless of where the user was pointing. It now focuses the editor the
+pointer is actually over, which puts Escape on the same screen as the user for every capture mode.
+
 The picked colour is the pixel of the frozen desktop, so it inherits D-014: on Windows it is the
 native helper's tone-mapped capture rather than a raw read-back, and it matches what a screenshot
 of the same pixel would contain. It also inherits the freeze, so a colour cannot be picked out of

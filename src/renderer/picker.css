@@ -5,6 +5,50 @@
   cursor: none;
 }
 
+/* Marks the pixel actually being sampled. The system cursor is hidden and the magnifier is
+   deliberately offset so it does not cover the target, which leaves nothing at the sampled point
+   itself: without this the magnifier reads as floating somewhere unrelated to the pointer. Drawn
+   as a DOM element rather than onto the canvas so following the pointer costs no repaint of the
+   frozen desktop. */
+.crosshair {
+  position: fixed;
+  z-index: 7;
+  width: 21px;
+  height: 21px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+}
+
+/* Two lines per axis, black under white, so the mark stays visible on any colour it lands on. */
+.crosshair::before,
+.crosshair::after {
+  position: absolute;
+  background:
+    linear-gradient(#000000, #000000) padding-box,
+    linear-gradient(#ffffff, #ffffff) border-box;
+  content: '';
+}
+
+.crosshair::before {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.95);
+}
+
+.crosshair::after {
+  top: 0;
+  left: 50%;
+  width: 3px;
+  height: 100%;
+  margin-left: -1.5px;
+  border-right: 1px solid rgba(255, 255, 255, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.95);
+}
+
 .magnifier {
   position: fixed;
   z-index: 6;

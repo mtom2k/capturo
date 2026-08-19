@@ -35,6 +35,7 @@ import {
 } from '../shared/updates'
 import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
 import { normalizeRgb, rgbToHex, type Rgb } from '../shared/color'
+import { cursorForDisplay } from '../shared/picker'
 import {
   hasGifSignature,
   isExpiredGifClipboardFile,
@@ -234,6 +235,13 @@ function revealOverlay(entry: OverlayEntry): void {
   // it focus so Escape cancels from the moment the frozen desktop appears. Only the editor takes
   // input; fillers are left unfocused so they never steal it from the editor.
   if (entry.payload.role !== 'editor') return
+
+  // With more than one display there is an editor per display, and each was focused as it
+  // finished painting, so whichever happened to be revealed last held the keyboard. Keyboard
+  // input then landed on a screen the user was not pointing at: the colour picker's Shift did
+  // nothing on the other monitor, and Escape was equally arbitrary. Focus the editor the pointer
+  // is actually over, and leave the others alone.
+  if (!entry.payload.cursor) return
   // macOS will not make a window key while its application is inactive, and Capturo is a
   // background tray app with no Dock icon, so the click that starts a capture leaves whatever the
   // user was in as the active application. `focus()` alone therefore silently did nothing and
@@ -569,10 +577,12 @@ function buildPayload(
   sessionId: string,
   display: Electron.Display,
   region: OverlayRegion,
-  image: DisplayImage
+  image: DisplayImage,
+  cursor: Point
 ): CapturePayload {
   const bounds = display.bounds
   const area = region.rect
+  const localCursor = cursorForDisplay(cursor, bounds)
   return {
     sessionId,
     displayId: String(display.id),
@@ -589,7 +599,8 @@ function buildPayload(
     safeArea: {
       top: Math.max(0, display.workArea.y - area.y),
       bottom: Math.max(0, area.y + area.height - (display.workArea.y + display.workArea.height))
-    }
+    },
+    cursor: localCursor
   }
 }
 
@@ -661,9 +672,10 @@ async function spawnOverlay(
   owner: CaptureSession,
   display: Electron.Display,
   region: OverlayRegion,
-  image: DisplayImage
+  image: DisplayImage,
+  cursor: Point
 ): Promise<void> {
-  const payload = buildPayload(owner.id, display, region, image)
+  const payload = buildPayload(owner.id, display, region, image, cursor)
   const overlay = createOverlayWindow(region.rect)
 
   const webContentsId = overlay.webContents.id
@@ -714,11 +726,17 @@ async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
   const nextSession: CaptureSession = { id: randomUUID(), mode, overlays: new Map() }
   session = nextSession
 
+  // Read once for the whole session so every overlay agrees on where the pointer was, rather
+  // than each sampling it at a slightly different moment as the windows are created.
+  const cursor = screen.getCursorScreenPoint()
+
   const loads: Promise<void>[] = []
   displays.forEach((display, index) => {
     const image = images[index]
     if (!image) return
-    for (const region of displayOverlayRegions(display)) loads.push(spawnOverlay(nextSession, display, region, image))
+    for (const region of displayOverlayRegions(display)) {
+      loads.push(spawnOverlay(nextSession, display, region, image, cursor))
+    }
   })
   await Promise.all(loads)
 

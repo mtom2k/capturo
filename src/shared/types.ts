@@ -125,6 +125,14 @@ export type CapturePayload = {
   // the selection hint. The bottom edge is the Dock. Zero on Windows, where overlays are tiled
   // inside the work area already.
   safeArea: { top: number; bottom: number }
+  // Where the pointer was when the capture was invoked, in CSS pixels relative to this display,
+  // or null when the pointer is on a different display. Carried in CSS pixels rather than image
+  // pixels so it survives the renderer correcting the frame size after decode.
+  //
+  // The colour picker needs this because it samples a point it owns rather than the OS cursor
+  // (D-032): without a starting position it would open its magnifier in the middle of the screen
+  // while the user's cursor sat somewhere else entirely.
+  cursor: Point | null
 }
 
 // The editor owns all interaction; fillers are passive and repaint from these updates so

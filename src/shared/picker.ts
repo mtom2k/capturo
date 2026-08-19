@@ -103,6 +103,26 @@ export function magnifierRegion(center: Point, cells: number): { x: number; y: n
   return { x: Math.round(center.x) - half, y: Math.round(center.y) - half, size }
 }
 
+/**
+ * Where the pointer sits within one display, in CSS pixels relative to that display's origin, or
+ * null when it is on a different display.
+ *
+ * Every overlay of a multi-display capture receives the same screen-space pointer position and
+ * has to decide for itself whether it is the one under the pointer. Getting this wrong is not
+ * visibly wrong: the overlay simply opens its magnifier somewhere the user is not pointing.
+ */
+export function cursorForDisplay(
+  cursor: Point,
+  bounds: { x: number; y: number; width: number; height: number }
+): Point | null {
+  const inside =
+    cursor.x >= bounds.x &&
+    cursor.x < bounds.x + bounds.width &&
+    cursor.y >= bounds.y &&
+    cursor.y < bounds.y + bounds.height
+  return inside ? { x: cursor.x - bounds.x, y: cursor.y - bounds.y } : null
+}
+
 /** Reads one pixel out of RGBA image data, or null when the point lies outside it. */
 export function pixelAt(
   data: Uint8ClampedArray | Uint8Array,
