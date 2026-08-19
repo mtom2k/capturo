@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto'
 import type { CapturePayload, CopyTextResult, Point, Rect, SaveResult } from '../shared/types'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
+  DEFAULT_COLOR_PICKER_SHORTCUT,
   DEFAULT_GIF_SHORTCUT,
   type CaptureSettings,
   type SettingsUpdate,
@@ -34,7 +35,7 @@ import {
   type UpdateCheckResult
 } from '../shared/updates'
 import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
-import { normalizeRgb, rgbToHex, type PickedColor, type Rgb } from '../shared/color'
+import { formatColor, normalizeRgb, rgbToHex, type PickedColor, type Rgb } from '../shared/color'
 import { cursorForDisplay } from '../shared/picker'
 import {
   hasGifSignature,
@@ -71,7 +72,7 @@ type DisplayImage = { bytes: Uint8Array; width: number; height: number }
 type CaptureMode = 'screenshot' | 'gif' | 'picker'
 
 // The two global shortcuts Capturo registers.
-type ShortcutKind = 'capture' | 'gif'
+type ShortcutKind = 'capture' | 'gif' | 'colorPicker'
 
 type CaptureSession = {
   id: string
@@ -966,6 +967,11 @@ function registerIpc(): void {
       next = updateSettings({ gif: { shortcut: before.gif.shortcut } })
       shortcutError = `${formatAccelerator(update.gif?.shortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(before.gif.shortcut, isMac)}.`
     }
+    if (next.colorPicker.shortcut !== before.colorPicker.shortcut &&
+        !applyShortcut('colorPicker', next.colorPicker.shortcut)) {
+      next = updateSettings({ colorPicker: { shortcut: before.colorPicker.shortcut } })
+      shortcutError = `${formatAccelerator(update.colorPicker?.shortcut ?? '', isMac)} is unavailable. Kept ${formatAccelerator(before.colorPicker.shortcut, isMac)}.`
+    }
     refreshTray()
     return { settings: next, shortcutError, startupError }
   })
@@ -1026,18 +1032,24 @@ function registerIpc(): void {
     const value = normalizeRgb({ r, g, b })
     closeSession()
 
-    // Copying is the point of picking a colour, so it happens without a second action. The
-    // window still opens on top of it for adjusting, converting, or picking a neighbour, and it
-    // reports whether the clipboard write actually landed rather than claiming it did.
-    let copied = true
-    try {
-      clipboard.writeText(rgbToHex(value))
-    } catch {
-      copied = false
+    // Copying is the point of picking a colour, so it happens without a second action unless the
+    // user has turned that off in Settings. The window still opens on top of it for adjusting,
+    // converting, or picking a neighbour, and it reports whether the write actually landed rather
+    // than claiming it did.
+    const picker = getSettings().colorPicker
+    let copied: string | null = null
+    if (picker.copyOnPick) {
+      const text = formatColor(value, picker.copyFormat)
+      try {
+        clipboard.writeText(text)
+        copied = text
+      } catch {
+        copied = null
+      }
     }
 
-    openColorWindow({ color: value, copied })
-    logTiming(`color picked ${rgbToHex(value)}${copied ? ' and copied' : ' (clipboard write failed)'}`)
+    openColorWindow({ color: value, copied, format: picker.copyFormat })
+    logTiming(`color picked ${rgbToHex(value)}${copied ? ` and copied ${copied}` : ''}`)
     return true
   })
 
@@ -1606,7 +1618,9 @@ function registerDisplayMediaHandler(): void {
 }
 
 function shortcutHandler(kind: ShortcutKind): () => void {
-  return kind === 'gif' ? () => void startGifCapture() : () => void startCapture()
+  if (kind === 'gif') return () => void startGifCapture()
+  if (kind === 'colorPicker') return () => void startColorPicker()
+  return () => void startCapture()
 }
 
 // Registers an accelerator for one action with the OS, replacing whatever it currently has
@@ -1650,6 +1664,11 @@ function registerInitialShortcuts(): void {
       applyShortcut('gif', DEFAULT_GIF_SHORTCUT)) {
     updateSettings({ gif: { shortcut: DEFAULT_GIF_SHORTCUT } })
   }
+  if (!applyShortcut('colorPicker', settings.colorPicker.shortcut) &&
+      settings.colorPicker.shortcut !== DEFAULT_COLOR_PICKER_SHORTCUT &&
+      applyShortcut('colorPicker', DEFAULT_COLOR_PICKER_SHORTCUT)) {
+    updateSettings({ colorPicker: { shortcut: DEFAULT_COLOR_PICKER_SHORTCUT } })
+  }
 }
 
 // The tray tooltip and menu both surface the version and the live capture shortcut, so the
@@ -1662,7 +1681,7 @@ function refreshTray(): void {
   trayMenu = Menu.buildFromTemplate([
     { label: 'New screenshot', accelerator: settings.capture.captureShortcut, click: () => void startCapture() },
     { label: 'New GIF', accelerator: settings.gif.shortcut, click: () => void startGifCapture() },
-    { label: 'Color picker', click: () => void startColorPicker() },
+    { label: 'Color picker', accelerator: settings.colorPicker.shortcut, click: () => void startColorPicker() },
     { label: 'Settings…', click: () => openSettings() },
     ...(availableUpdateVersion
       ? [{ label: `Update available: v${availableUpdateVersion}`, click: () => void openCapturoReleases() }]

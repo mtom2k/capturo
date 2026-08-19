@@ -229,17 +229,15 @@ window.addEventListener('keydown', (event) => {
 
 window.capturoColor.onInitialize((picked) => {
   alpha = 100
-  format = 'hex'
+  // Open in whichever format the user has picking set to copy, so the value on screen is the one
+  // already on their clipboard.
+  format = picked.format
   formatSelect.value = format
   setColor(picked.color)
-  // Picking copies on its own, so say so rather than leaving the user to wonder whether they
-  // still need to press Copy.
-  setStatus(
-    picked.copied
-      ? `Copied ${formatColor(picked.color, 'hex')} to the clipboard`
-      : 'Capturo could not write to the clipboard.',
-    true
-  )
+  // Report the exact text that was written rather than re-deriving it, and say nothing at all
+  // when copy-on-pick is switched off - there is no news to report in that case.
+  if (picked.copied) setStatus(`Copied ${picked.copied} to the clipboard`, true)
+  else setStatus('', true)
 })
 
 render()

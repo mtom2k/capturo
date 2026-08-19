@@ -12,6 +12,9 @@
   picking a one-pixel border or an anti-aliased edge; the arrow keys nudge exactly one pixel.
   `Esc` cancels. The magnifier replaces the mouse cursor and is centred on the pixel it is
   reading, which is the one outlined in the middle of its aperture.
+- A **Color picker** tab in Settings with a rebindable shortcut, defaulting to
+  `Ctrl/Cmd+Shift+4` alongside the existing capture and GIF bindings, plus switches for whether
+  picking copies automatically and which format it copies.
 - **Picking copies the color to the clipboard**, so the common case takes one action. The color
   window still opens on top of that to convert, adjust, or pick a neighbouring shade, and it says
   which value it copied. **Pick again** hides that window for the duration of the next pick, so
