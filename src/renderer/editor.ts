@@ -889,7 +889,7 @@ async function copyText(): Promise<void> {
   const dataUrl = exportedImage()
   if (!dataUrl) return
   setExportBusy(true)
-  setStatus('Extracting text with Windows OCR…', 0)
+  setStatus('Extracting text…', 0)
   try {
     const result = await window.capturo.copyText(payload.sessionId, dataUrl)
     if (!result.copied) {

@@ -12,11 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icons": "node scripts/generate-icon.mjs",
+    "ocr:mac": "sh native/capturo-ocr-mac/build.sh",
     "build": "npm run typecheck && npm run test && electron-vite build",
     "manifest": "node scripts/build-manifest.mjs",
     "dist": "npm run icons && npm run build && electron-builder && npm run manifest",
     "dist:win": "npm run icons && npm run build && electron-builder --win && npm run manifest",
-    "dist:mac": "npm run icons && npm run build && electron-builder --mac && npm run manifest"
+    "dist:mac": "npm run ocr:mac && npm run icons && npm run build && electron-builder --mac && npm run manifest"
   },
   "build": {
     "appId": "com.capturo.app",
@@ -49,6 +50,15 @@
       "target": [
         "dmg",
         "zip"
+      ],
+      "extraResources": [
+        {
+          "from": "native/capturo-ocr-mac/build",
+          "to": "ocr",
+          "filter": [
+            "capturo-ocr"
+          ]
+        }
       ],
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "Capturo needs screen recording access to let you select and annotate screenshots."

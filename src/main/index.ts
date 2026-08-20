@@ -28,7 +28,7 @@ import {
   type SettingsUpdateResult
 } from '../shared/settings'
 import { formatAccelerator } from '../shared/shortcut'
-import { normalizeRecognizedText } from '../shared/ocr'
+import { normalizeRecognizedText, recognitionFailureMessage, textRecognitionUnavailableMessage } from '../shared/ocr'
 import {
   CAPTURO_RELEASES_URL,
   nextAutomaticUpdateDelay,
@@ -48,13 +48,14 @@ import { integerRect, overlayRegions, surroundingStrips, type OverlayRegion } fr
 import { getSettings, loadSettings, updateSettings } from './settings'
 import {
   captureDisplays,
+  captureHelperAvailable,
   copyFileToClipboard,
-  helperAvailable,
   MAX_OCR_PNG_BYTES,
   recognizeTextFromPng,
   startCaptureHelper,
   stopCaptureHelper,
-  suppressWindowBorder
+  suppressWindowBorder,
+  textRecognitionAvailable
 } from './capture-helper'
 import { checkGithubForUpdate } from './updates'
 
@@ -383,7 +384,7 @@ function sourceForDisplay(
 // pointer. See D-014, D-015, D-017. Returns one DisplayImage per display, null where the
 // helper could not serve it (the caller falls back to desktopCapturer for those).
 async function captureWithHelper(displays: Electron.Display[]): Promise<(DisplayImage | null)[]> {
-  if (!helperAvailable()) return displays.map(() => null)
+  if (!captureHelperAvailable()) return displays.map(() => null)
 
   // DXGI enumerates outputs in its own order, so each monitor is identified by its physical
   // desktop origin. dipToScreenRect performs the per-monitor scaling conversion.
@@ -807,16 +808,13 @@ function imageFromDataUrl(dataUrl: string): Electron.NativeImage | null {
 }
 
 async function recognizeAndCopyText(image: Electron.NativeImage): Promise<CopyTextResult> {
-  if (!helperAvailable()) {
-    return { copied: false, error: 'Copy text requires Capturo\u2019s Windows OCR component.' }
+  if (!textRecognitionAvailable()) {
+    return { copied: false, error: textRecognitionUnavailableMessage(process.platform) }
   }
 
   const result = await recognizeTextFromPng(image.toPNG())
   if (!result.ok) {
-    const error = result.stage === 'language'
-      ? 'Install a Windows OCR language pack, then try Copy text again.'
-      : 'Capturo could not extract text from this selection.'
-    return { copied: false, error }
+    return { copied: false, error: recognitionFailureMessage(result.stage, process.platform) }
   }
 
   const text = normalizeRecognizedText(result.text)

@@ -47,9 +47,11 @@ the overlay covers the whole display including the menu bar and the Dock, `Esc` 
 region selection and annotation, save, clipboard copy, GIF recording and preview, GIF copy as an
 animated file, Screen Recording permission flow in Settings, and Open on startup.
 
-**Not available on macOS:** **Copy text**. OCR runs through the native Windows helper and
-`Windows.Media.Ocr`; there is no macOS equivalent yet. HDR-correct capture is likewise Windows-only,
-since macOS falls back to Electron's `desktopCapturer`.
+**Copy text** works on both platforms, through each system's own local recognizer: Windows OCR on
+Windows and Apple's Vision framework on macOS. Neither uploads the image or downloads a model.
+
+**Not available on macOS:** HDR-correct capture, which depends on the Windows helper's FP16
+pipeline; macOS falls back to Electron's `desktopCapturer`.
 
 **Permissions.** Only one is required — **Screen Recording**, which covers screenshots and GIF alike.
 Notifications and Login Items are optional and only appear if you use those features. Capturo
@@ -78,7 +80,7 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
   readable. Hold **Shift** or **Ctrl** to run it straight along a line of text.
 - Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
 - Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
-- Extract visible text with local Windows OCR and copy it as plain text (Windows only).
+- Extract visible text with local OCR and copy it as plain text — Windows OCR on Windows, Apple's Vision framework on macOS.
 - Pick a color from anywhere on screen with a magnifier that replaces the cursor, copied to the clipboard on the spot, then adjust it as HEX, RGB, or HSL.
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
@@ -99,11 +101,11 @@ The primary toolbar stays close to the selection. A second row appears only when
 
 Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
 
-### Copy text with Windows OCR
+### Copy text
 
 **Copy text** sits beside regular Copy. It recognizes the final visible selection, including its crop, annotations, Blur or Pixelate regions, and any pending transparency preview. Successful recognition copies plain text and closes the editor. Empty or failed recognition leaves the editor open with a useful message.
 
-OCR runs locally through Windows and uses language packs installed for the current user. Capturo does not upload the image, download a model, or create a temporary screenshot. OCR can still confuse small, stylized, rotated, low-contrast, or obscured characters, so review important results.
+Recognition runs locally on both platforms and never leaves the machine: Capturo does not upload the image, download a model, or create a temporary screenshot. On Windows it uses the OCR language packs installed for the current user, so a missing language is something you may need to add. On macOS it uses Apple's Vision framework, whose recognition languages ship with the operating system, so there is nothing to install. Either way OCR can confuse small, stylized, rotated, low-contrast, or obscured characters, so review important results.
 
 ### Transparent backgrounds
 
@@ -137,7 +139,7 @@ tints the text rather than the background behind it.
 
 ## 🎨 Color picker
 
-**Color picker** in the tray menu, or `Ctrl/Cmd+Shift+4`, freezes the desktop and replaces your mouse cursor with a
+**Color picker** in the tray menu, or `Ctrl/Cmd+Shift+9`, freezes the desktop and replaces your mouse cursor with a
 magnifier, centred on the pixel it is reading: the surrounding pixels at 17x, the sampled one
 outlined in the middle of the aperture, and its hex value below. Hold **Shift** to slow sampling to an eighth speed, which is what makes a one-pixel
 border or an anti-aliased edge pickable; the arrow keys nudge exactly one pixel. Click, `Enter`,
@@ -158,11 +160,11 @@ video or animation; reopen the picker to sample the current frame.
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl/Cmd + Shift + 2` | Start screenshot capture |
-| `Ctrl/Cmd + Shift + 3` | Start GIF capture |
-| `Ctrl/Cmd + Shift + 4` | Pick a color from the screen |
+| `Ctrl/Cmd + Shift + 7` | Start screenshot capture |
+| `Ctrl/Cmd + Shift + 8` | Start GIF capture |
+| `Ctrl/Cmd + Shift + 9` | Pick a color from the screen |
 | `Ctrl/Cmd + C` | Copy image |
-| `Ctrl/Cmd + Shift + C` | Extract and copy visible text (Windows) |
+| `Ctrl/Cmd + Shift + C` | Extract and copy visible text |
 | `Ctrl/Cmd + S` | Save |
 | `Ctrl/Cmd + Z` | Undo |
 | `Delete` | Delete selected annotation |
@@ -196,7 +198,7 @@ Preferences live in `settings.json` under Capturo's user-data folder. The file c
 
 - A selection stays on one physical display and cannot span monitors.
 - A drag must start in the work area, although it can continue over the taskbar.
-- OCR quality depends on the source image and installed Windows language packs.
+- OCR quality depends on the source image, and on Windows also on the installed language packs. Recognized text is plain text, not document layout, and the two platforms group lines slightly differently.
 - Windows packages are unsigned and may trigger SmartScreen.
 - macOS is unsupported. Capture itself works — it was verified end to end on macOS 26.2 — but the
   builds are ad-hoc signed rather than notarized, so Gatekeeper refuses them after download and the
@@ -226,14 +228,25 @@ npm run dist:win   # build Windows Setup and Portable artifacts into release/
 npm run dist:mac   # build macOS DMG and ZIP into release/ (run on macOS)
 ```
 
-HDR capture, local OCR, GIF file copy, and recording-window styling use `native/capturo-capture`. Build it with the Visual Studio **Desktop development with C++** workload and Windows SDK:
+Each platform has a small native helper for the things Electron cannot reach itself.
+
+HDR capture, local OCR, GIF file copy, and recording-window styling use `native/capturo-capture` on
+Windows. Build it with the Visual Studio **Desktop development with C++** workload and Windows SDK:
 
 ```powershell
 native\capturo-capture\build.cmd
 ```
 
-That helper is Windows-only and is scoped to the Windows target, so a macOS build does not need it
-and simply goes without HDR-correct capture and Copy text.
+macOS needs a helper for text recognition alone, since its captures come from `desktopCapturer` and
+its clipboard from Electron. `npm run dist:mac` builds it automatically; to build it on its own:
+
+```bash
+npm run ocr:mac
+```
+
+It needs only the Xcode Command Line Tools (`xcode-select --install`) and links against Vision,
+which ships with macOS. Each helper is scoped to its own target, so neither build carries the
+other's binary, and a macOS build simply goes without HDR-correct capture.
 
 Capturo is one codebase, not a fork per platform. Platform differences are decided in the main
 process and handed to the renderers as data, and platform-varying logic is written as pure

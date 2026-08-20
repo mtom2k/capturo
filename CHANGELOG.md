@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+
+- **Copy text now works on macOS.** It recognizes text through Apple's Vision framework, which
+  ships with macOS, so the feature keeps the same guarantees it has on Windows: recognition is
+  local, no image leaves the machine, nothing is downloaded, and no temporary screenshot file is
+  written. Thirty recognition languages are available with nothing to install, and unlike Windows
+  there is no language pack to add, so the "install a language pack" message can no longer appear
+  on a Mac. Recognition runs in a small helper alongside the app rather than inside it, matching
+  the Windows arrangement. See D-036.
+
+### Changed
+
+- **New default shortcuts:** `Ctrl/Cmd+Shift+7` for a screenshot, `+8` for a GIF, and `+9` for the
+  color picker. The old `+3` and `+4` defaults were macOS's own screenshot shortcuts, so on a Mac
+  they fought with the system rather than starting a capture. Existing shortcuts are untouched —
+  whatever is saved in your settings stays bound, and only a fresh install or **Reset** picks up the
+  new values. See D-037.
+- Every Settings tab now leads with its shortcut, so the one control the tabs have in common is in
+  the same place on each. Capture and GIF previously listed theirs last.
+- The **Copy text** button tooltip and its progress message no longer say "Windows OCR"; the
+  feature exists on both platforms now and each one names its own recognizer only when something
+  goes wrong.
+
 ## 0.21.0 - 2026-08-18
 
 ### Added

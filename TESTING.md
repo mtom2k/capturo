@@ -63,7 +63,7 @@ Verify on at least 100% and one scaled DPI setting:
 10. With Select active, click every annotation type, drag it, resize all eight handles, change each applicable property, and press Delete.
 11. Move the crop frame after placing annotations and confirm the crop moves while annotations stay at their original desktop coordinates.
 12. Type new text, commit with `Ctrl+Enter`, edit it by double-clicking with Select, and verify text in the exported PNG. Repeat the commit by clicking away instead of `Ctrl+Enter` and confirm the exported PNG is identical.
-13. **Color picker.** Open **Color picker** from the tray menu and confirm it sits directly below **New GIF**, showing its current shortcut as its accelerator. Confirm the default `Ctrl/Cmd+Shift+4` opens it too, from another application being frontmost.
+13. **Color picker.** Open **Color picker** from the tray menu and confirm it sits directly below **New GIF**, showing its current shortcut as its accelerator. Confirm the default `Ctrl/Cmd+Shift+9` opens it too, from another application being frontmost. On macOS also confirm the default does not trigger the system screenshot UI, which the previous `Ctrl/Cmd+Shift+4` default did (D-037).
     - The system cursor must disappear and the magnifier take its place, **centred on the pixel it is reading**, with that pixel outlined in the middle of the aperture and the hex below. Check the outline stays visible over both white and black areas.
     - **The magnifier must be on the pointer the instant the picker opens, before the mouse is moved at all.** Park the pointer somewhere distinctive, invoke the picker, and confirm the aperture is centred there rather than in the middle of the screen. Repeat near each screen edge and corner: the centre must stay on the pixel even where that means the magnifier is clipped by the edge — it must never slide inwards to fit, because that would put its centre on a different pixel than the one it reports.
     - Hover a known color (a saturated app icon, pure white, pure black) and confirm the hex is exactly right rather than approximately right. Compare against the same pixel in a saved screenshot.
@@ -73,7 +73,7 @@ Verify on at least 100% and one scaled DPI setting:
     - Confirm the color is right on a scaled (non-100% DPI) display and on an HDR display, and that fine movement resolves single device pixels on a scaled display rather than single CSS pixels.
 14. **Color window.** After picking, confirm the value shown is the exact pixel color, not one level off, and that it **matches the hex the magnifier was showing at the moment of the click**.
     - **Picking copies on its own.** Without pressing Copy, paste into Notepad and confirm you get the hex that was picked. The window must say which value it copied, and that line must still be there a minute later rather than fading like the other statuses. Copy is still there for changing format or copying an adjusted color.
-    - **Settings → Color picker.** Rebind the shortcut, confirm the tray label follows it and the new binding works from another app. Bind it to a chord another application already owns and confirm the field rolls back to the previous shortcut with a red explanation rather than silently keeping the new label. Reset returns it to `Ctrl/Cmd+Shift+4`. Restart and confirm the binding persisted.
+    - **Settings → Color picker.** Rebind the shortcut, confirm the tray label follows it and the new binding works from another app. Bind it to a chord another application already owns and confirm the field rolls back to the previous shortcut with a red explanation rather than silently keeping the new label. Reset returns it to `Ctrl/Cmd+Shift+9`. Restart and confirm the binding persisted.
     - Turn **Copy on pick** off and confirm picking no longer touches the clipboard: put known text on the clipboard first, pick a color, and confirm the text is still there and the window shows no "Copied" line. The **Copy format** row must dim and stop responding while it is off, because it decides nothing then. Turn it back on, set the format to RGB and then HSL, and confirm each pick copies that form and the color window opens in the same format.
     - **Pick again must clear the way.** Position the color window over something you want to sample, press **Pick again**, and confirm the window disappears completely from the frozen screen — no window, and no half-faded ghost of one — so the pixels underneath can be picked. Pick one of them and confirm the window comes back at full opacity with the new color. Repeat but cancel with `Esc`, and confirm the window returns still holding the previous color.
     - Switch HEX/RGB/HSL and confirm the field and the copy both change format. Copy with the button and with `Ctrl/Cmd+C`, then paste to verify.
@@ -103,7 +103,7 @@ Verify on at least 100% and one scaled DPI setting:
     - **Global → Updates.** With automatic checks off, restart and confirm Capturo makes no GitHub request. Press **Check for updates** in a packaged build and verify the inline current/latest result against the public feed; an available version must expose **View release**, add one tray action, and show at most one notification per version in that run. The link must open `https://github.com/mtom2k/capturo/releases/latest`. Enable automatic checks and confirm the opt-in persists, the last-check timestamp prevents another automatic request for 24 hours across restarts, and an active screenshot/GIF recording defers rather than interrupts the check. Offline, HTTP error, rate-limit, 404/private feed, malformed JSON, draft/prerelease, and invalid-tag cases must remain non-fatal and must never request a credential or download an executable. In development, **Check for updates** must explain that packaged Capturo is required. Reconfirm the available-version notification/tray/link path whenever the public feed first becomes newer than the packaged test build.
     - **Notification.** Turn it off, capture and copy, and confirm no toast appears; turn it on and confirm it returns.
     - **Format and quality.** Set JPEG at a low quality and Save: the file is a `.jpg`, decodes correctly, and is visibly smaller than a PNG of the same region. Switch back to PNG and confirm Save writes a `.png`. In both cases, Copy still places a lossless bitmap on the clipboard, and the JPEG quality slider is inactive while PNG is selected. Also type an explicit `.png` extension into the dialog while JPEG is the setting, and confirm the written bytes match the extension you chose.
-    - **Shortcut rebind.** Record a new combination (e.g. `Ctrl+Shift+4`): the new chord starts capture, the old one no longer does, and the tray tooltip and menu label both show the new binding. Then try a combination already owned by another app and confirm the settings window reports it and keeps the previous shortcut. Restart and confirm the last accepted shortcut is still bound.
+    - **Shortcut rebind.** Record a new combination (e.g. `Ctrl+Shift+4`, which is deliberately not a default any more): the new chord starts capture, the old one no longer does, and the tray tooltip and menu label both show the new binding. Then try a combination already owned by another app and confirm the settings window reports it and keeps the previous shortcut. Restart and confirm the last accepted shortcut is still bound.
 
 21. Measure invocation latency with `CAPTURO_TIMING=1`. Run capture from both a **static** desktop (no animated wallpaper or moving content) and a busy one. Read the per-capture stderr summary: total frame-grab time, the helper's own `setup`/`acquire`/`convert`/`encode` breakdown, and overlays-loaded time. The static-desktop `acquire` must be bounded (no multi-hundred-millisecond stall), and the overlay must appear with no perceptible delay. This is also where the native-helper acquire change is re-verified for behaviour: on a static screen the capture must still contain the live desktop, not a black or stale frame. Pair it with the HDR known-pattern check under [DECISIONS.md](./DECISIONS.md) D-015. The greys `0/32/64/96/128/160/192/255` must round-trip exactly, confirming that bounded acquire has not altered the pixels.
 
@@ -178,7 +178,25 @@ In addition to the common matrix:
 15. Verify Retina exports match the dimension label and contain no scaling blur.
 16. Verify `Cmd + Shift + 2`, `Cmd+C`, `Cmd+S`, Spaces, and fullscreen applications.
 17. Verify the app has no Dock icon while resident.
-18. Verify Copy text is absent or degrades with a clear message: OCR is Windows-only and the native helper is not packaged for macOS.
+18. Verify **Copy text** on macOS (D-036). Recognition runs through `native/capturo-ocr-mac` and Apple's Vision framework, so it must work without any permission prompt and without a network connection — test with Wi-Fi off. Check a real selection with annotations, a Blur region (whose text must *not* be recoverable), and a no-text selection, which must leave the editor open with a message. Nothing may tell a macOS user to install a language pack; that message is Windows-only and `tests/ocr.test.ts` pins it.
+
+    Isolate the recognizer from the app with the one-shot mode, which mirrors the Windows helper's `--ocr`:
+
+    ```bash
+    /Applications/Capturo.app/Contents/Resources/ocr/capturo-ocr --ocr <non-sensitive-image>
+    npm run ocr:mac && native/capturo-ocr-mac/build/capturo-ocr --languages
+    ```
+
+    Then run the whole app/helper/clipboard path against the packaged build. Smoke flags reach a packaged app through `open --env`, and this one deliberately overwrites the clipboard:
+
+    ```bash
+    open -a /Applications/Capturo.app --env CAPTURO_OCR_SMOKE_IMAGE=/path/to/ocr-sample.png
+    pbpaste
+    ```
+
+    Confirm the helper is actually inside the bundle at `Contents/Resources/ocr/capturo-ocr`, that `lipo -archs` on it covers the architectures the app was built for, and that `codesign --verify --deep --strict` still passes with it present — an unsigned nested binary passes locally but is a standard notarization rejection.
+
+19. Verify the macOS build has no Dock icon while resident: `lsappinfo list` must report `type="UIElement"`.
 19. Confirm `codesign --verify --deep --strict` passes and `codesign -dv` reports `Identifier=com.capturo.app` with sealed resources.
 
 ## Packaging checks
