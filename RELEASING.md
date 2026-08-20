@@ -44,7 +44,9 @@ Rebuild `native/capturo-capture/build/capturo-capture.exe` before Windows packag
 source changes. For releases containing Copy text, verify the packaged helper (not only the
 development executable) recognizes a representative image with the current user's Windows OCR
 language, writes plain text through the real application clipboard path, and leaves no screenshot
-file behind. OCR is local and Windows-only; do not add a model download or claim macOS support.
+file behind. OCR is local on both platforms and must stay that way: do not add a model download or
+a network call. macOS support is real as of D-036 and runs through its own helper, so a claim about
+one platform's OCR must not be written as a claim about the other's.
 
 ## macOS
 
@@ -52,6 +54,16 @@ Run `npm run dist:mac` on macOS. It produces `Capturo-<version>-<arch>.dmg` and
 `Capturo-<version>-<arch>-mac.zip` for the host architecture only; an Intel or universal build
 needs an explicit `--x64` or `--universal`. The Windows native helper is scoped to the `win`
 target, so a macOS build does not need `native/capturo-capture/build` to exist.
+
+`dist:mac` rebuilds the macOS text-recognition helper first (`npm run ocr:mac`), so a change to
+`native/capturo-ocr-mac/main.swift` cannot ship as a stale binary the way the Windows helper can.
+It needs the Xcode Command Line Tools and fails the build loudly if they are missing, rather than
+packaging an app whose Copy text silently does nothing. The helper is built universal regardless of
+the app's architecture, so one binary serves arm64, x64 and universal builds alike; confirm it
+landed at `Contents/Resources/ocr/capturo-ocr` before publishing. Being an extra Mach-O inside the
+bundle it must be signed with the app — `--deep` covers the local ad-hoc case, but a Developer ID
+build must sign it inside-out under the hardened runtime or notarization will reject the bundle.
+See D-036.
 
 `scripts/sign-mac.mjs` runs as an `afterPack` hook and signs the app before the DMG and ZIP are
 produced. Without it electron-builder leaves the bundle linker-signed with the identifier

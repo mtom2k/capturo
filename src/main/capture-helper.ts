@@ -1,12 +1,19 @@
-// Owns the persistent native capture helper. The helper (native/capturo-capture) is spawned
-// once and kept alive: it creates the Direct3D device and desktop duplication a single time
-// and answers capture requests over stdin/stdout, so the per-capture setup cost is paid only
-// on the first (warm-up) run rather than every capture. See D-017.
+// Owns the persistent native helper process. Each platform ships whatever native capability
+// Electron cannot reach on its own, and no more:
+//
+//   Windows  native/capturo-capture   desktop duplication, DWM, CF_HDROP and OCR (D-017, D-026)
+//   macOS    native/capturo-ocr-mac   Vision text recognition only; captures come from
+//                                     desktopCapturer and the clipboard from Electron (D-036)
+//
+// The helper is spawned once and kept alive: on Windows it creates the Direct3D device and
+// desktop duplication a single time, so the per-capture setup cost is paid only on the first
+// (warm-up) run rather than every capture. See D-017.
 //
 // Protocol: one request per line on stdin. Capture requests are
 // "<originX>\t<originY>\t<outputPath>"; window-border requests are
 // "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>";
-// OCR requests are "ocr-png\t<base64Png>" and keep captured pixels in memory.
+// OCR requests are "ocr-png\t<base64Png>" and keep captured pixels in memory. That request is
+// the one both helpers implement, which is what lets this module drive either unchanged.
 // The helper writes one JSON result per request, in order.
 // This module keeps a single batch in flight and serializes callers so responses never
 // interleave.
@@ -31,14 +38,39 @@ export type HelperResult = {
   timings?: Record<string, number>
 }
 
-function helperPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'capture', 'capturo-capture.exe')
-    : path.join(app.getAppPath(), 'native', 'capturo-capture', 'build', 'capturo-capture.exe')
+// Null on a platform with no helper at all, which is the ordinary case on Linux.
+function helperPath(): string | null {
+  if (process.platform === 'win32') {
+    return app.isPackaged
+      ? path.join(process.resourcesPath, 'capture', 'capturo-capture.exe')
+      : path.join(app.getAppPath(), 'native', 'capturo-capture', 'build', 'capturo-capture.exe')
+  }
+  if (process.platform === 'darwin') {
+    return app.isPackaged
+      ? path.join(process.resourcesPath, 'ocr', 'capturo-ocr')
+      : path.join(app.getAppPath(), 'native', 'capturo-ocr-mac', 'build', 'capturo-ocr')
+  }
+  return null
 }
 
-export function helperAvailable(): boolean {
-  return process.platform === 'win32' && existsSync(helperPath())
+function helperAvailable(): boolean {
+  const helper = helperPath()
+  return helper !== null && existsSync(helper)
+}
+
+// Display capture, DWM border suppression and CF_HDROP are Windows requests that the macOS
+// helper does not implement. Gating them on the platform as well as on the binary keeps a
+// present-but-different helper from being handed a request it cannot serve; without this the
+// macOS helper would answer every capture with a "request" failure and the fallback would only
+// ever be reached the slow way, through a protocol error.
+export function captureHelperAvailable(): boolean {
+  return process.platform === 'win32' && helperAvailable()
+}
+
+// Copy text is served by the Windows helper and the macOS Vision helper alike, because
+// "ocr-png" is the request both of them answer.
+export function textRecognitionAvailable(): boolean {
+  return helperAvailable()
 }
 
 // A capture must never hang the app; a helper that has not answered within this bound is
@@ -103,10 +135,11 @@ function onResponseLine(line: string): void {
 
 function ensureStarted(): boolean {
   if (child) return true
-  if (!helperAvailable()) return false
+  const helper = helperPath()
+  if (!helper || !existsSync(helper)) return false
   let proc: HelperProcess
   try {
-    proc = spawn(helperPath(), [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+    proc = spawn(helper, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
   } catch {
     child = null
     return false
@@ -133,7 +166,9 @@ function ensureStarted(): boolean {
 }
 
 // Start (and warm) the helper. Safe to call more than once; a no-op if already running or the
-// helper is not present on this platform/build.
+// helper is not present on this platform/build. Warming matters on both platforms: Windows
+// pays for the Direct3D device and duplication, macOS for the first load of Vision's
+// recognition model, and neither cost belongs on the user's first action.
 export function startCaptureHelper(): void {
   ensureStarted()
 }
@@ -211,8 +246,9 @@ export type OcrHelperResult =
   | { ok: true; text: string }
   | { ok: false; stage: string }
 
-// Runs Windows.Media.Ocr in the existing native helper. PNG bytes travel through its private
-// stdin pipe as base64, avoiding a temporary screenshot file or any network transfer.
+// Runs the platform's local recognizer -- Windows.Media.Ocr on Windows, Vision on macOS --
+// in the persistent helper. PNG bytes travel through its private stdin pipe as base64,
+// avoiding a temporary screenshot file or any network transfer. See D-026 and D-036.
 export async function recognizeTextFromPng(png: Buffer): Promise<OcrHelperResult> {
   if (png.length === 0 || png.length > MAX_OCR_PNG_BYTES) return { ok: false, stage: 'image' }
   try {

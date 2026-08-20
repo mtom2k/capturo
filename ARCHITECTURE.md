@@ -35,7 +35,7 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
 6. Copy, Copy text, and save exports render the base image plus edit commands into an offscreen canvas, then crop to the selection. A pending transparency preview is committed before every export.
 7. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency.
-8. On Windows, Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper. The helper recognizes it with `Windows.Media.Ocr`; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the capture, while no-text or failure leaves the editor open.
+8. Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper, on Windows and macOS alike. The helper recognizes it with `Windows.Media.Ocr` or with Apple's Vision framework respectively; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the capture, while no-text or failure leaves the editor open.
 
 Capturo currently selects within one display at a time. This is deliberate: spanning displays with different scale factors requires a normalized virtual-desktop compositor and is outside the minimal first release.
 
@@ -66,11 +66,15 @@ Geometric sizes are continuous and expressed in pixels. Stroke width and numbere
 
 Blur and Pixelate are not geometric stroke sizes. Their `effectIntensity` is stored independently as 1-100%. Rendering maps that percentage monotonically to a 1-32 CSS-pixel-equivalent canvas blur radius or a 2-64 CSS-pixel-equivalent pixel block, multiplied by the capture's source-pixel scale so the visible strength is consistent on scaled displays. This gives both tools a common direction (higher always obscures more) without allowing a previous pen width to change the next privacy effect. Existing effect annotations retain their percentage and capture scale when selected, moved, resized, or exported.
 
-## Copy text (Windows OCR)
+## Copy text (local OCR)
 
 Copy text deliberately reuses the final screenshot export rather than OCRing the original display frame. Crop, annotations, privacy effects, and automatically committed transparency therefore match what the user sees. The sandboxed renderer receives no native capability: it can request `capture:copy-text` only for its active session and supplies a PNG data URL under the same typed context bridge as image Copy/Save.
 
-`src/main/capture-helper.ts` converts the validated PNG to base64 and sends one `ocr-png` request over the existing serialized private stdin/stdout protocol. The request is bounded to 64 MiB of PNG bytes and a 20-second timeout. `native/capturo-capture/main.cpp` decodes entirely into a WinRT in-memory stream, downsizes images beyond `OcrEngine::MaxImageDimension`, obtains an engine from the current user's installed OCR languages, and returns JSON-escaped UTF-8 text. It never writes OCR pixels to disk or opens a network connection. The main process trims only outer/presentation whitespace, preserves internal spaces and blank lines, and owns `clipboard.writeText`.
+`src/main/capture-helper.ts` converts the validated PNG to base64 and sends one `ocr-png` request over the existing serialized private stdin/stdout protocol. The request is bounded to 64 MiB of PNG bytes and a 20-second timeout. That request is the one both helpers implement, which is what lets this module drive either unchanged.
+
+On Windows, `native/capturo-capture/main.cpp` decodes entirely into a WinRT in-memory stream, downsizes images beyond `OcrEngine::MaxImageDimension`, obtains an engine from the current user's installed OCR languages, and returns JSON-escaped UTF-8 text. On macOS, `native/capturo-ocr-mac/main.swift` decodes through `CGImageSource` and recognizes with `VNRecognizeTextRequest` at `.accurate`, in the user's preferred languages among those Vision supports. Vision returns observations in no guaranteed order and in a bottom-left origin space, so that helper reconstructs reading order — top to bottom, then left to right — where Windows inherits it from `OcrResult.Lines`. Neither helper writes OCR pixels to disk or opens a network connection. The main process trims only outer/presentation whitespace, preserves internal spaces and blank lines, and owns `clipboard.writeText`.
+
+Because the two recognizers group lines differently, output is comparable across platforms but not identical, and the failure vocabulary differs: only Windows can fail for a missing language pack. That mapping lives in `src/shared/ocr.ts` as pure functions so both branches are unit-tested on any machine. See D-026 and D-036.
 
 The helper initializes a multithreaded COM apartment because the synchronous C++/WinRT `.get()` calls used by its private worker process are not legal in a single-threaded apartment. DXGI desktop duplication, WIC encoding, DWM attributes, `CF_HDROP`, and OCR all share this process and serialized protocol; a change to its COM apartment requires rerunning both the OCR/clipboard smoke and a native screenshot regression. See D-026.
 
@@ -163,18 +167,24 @@ calculation is a branch that will only ever be tested on one platform.
 
 **Capability, not platform, decides behaviour where it can.** The screen-permission API reports
 `supported: false` rather than making the renderer ask whether it is on macOS, so the Settings row
-disappears on Windows without Windows knowing why. `helperAvailable()` gates the native helper the
-same way, which is also what lets a Windows machine without the helper fall back cleanly.
+disappears on Windows without Windows knowing why. The native helper is gated the same way, and by capability rather than
+by platform: `captureHelperAvailable()` covers display capture, DWM borders and `CF_HDROP`, which
+only the Windows helper implements, while `textRecognitionAvailable()` is satisfied by the Windows
+helper or the macOS one. That split is what lets a Windows machine without the helper fall back
+cleanly, and what keeps the macOS helper from being handed a request it cannot serve.
 
 **Native code and packaging are scoped at the build.** `native/capturo-capture` is Windows-only and
-is declared under the `win` target, so a macOS build neither needs nor copies it. macOS-only
-concerns — ad-hoc signing, stripping Electron's unused usage descriptions — live in the
-`afterPack` hook and no-op elsewhere. Platform-specific behaviour that cannot be shared is
-therefore visible at the edges of the build rather than scattered through the source.
+is declared under the `win` target; `native/capturo-ocr-mac` is macOS-only and declared under the
+`mac` target. Neither build copies the other's binary. macOS-only concerns — ad-hoc signing,
+stripping Electron's unused usage descriptions — live in the `afterPack` hook and no-op elsewhere.
+Platform-specific behaviour that cannot be shared is therefore visible at the edges of the build
+rather than scattered through the source.
 
-The cost of this is honest feature asymmetry rather than divergence: **Copy text** and HDR-correct
-capture are Windows-only because they depend on the native helper, and that is stated in the UI and
-the README rather than papered over.
+The cost of this is honest feature asymmetry rather than divergence: HDR-correct capture is
+Windows-only because it depends on the Windows helper's FP16 pipeline, and that is stated in the UI
+and the README rather than papered over. **Copy text** was in that category until macOS gained its
+own recognizer (D-036); each platform now supplies the capability its own OS already has, which is
+the same principle rather than an exception to it.
 
 ## Source layout
 
@@ -184,8 +194,11 @@ src/main/       Electron lifecycle, capture, tray, native integrations, settings
 src/preload/    contextBridge API (capture + settings + GIF + updates + permissions + color)
 src/renderer/   capture/editor UI, settings window, GIF selection + recording + preview windows,
                 color picker overlay + color window, canvas rendering, styles, GIF encoder + worker
-src/shared/     IPC, geometry, settings, update-version validation, OCR text normalization,
-                screen-permission presentation, transparency, GIF, and color/picker logic
+src/shared/     IPC, geometry, settings, update-version validation, OCR text normalization and
+                platform messages, screen-permission presentation, transparency, GIF, and
+                color/picker logic
+native/         per-platform helpers for what Electron cannot reach: capturo-capture (Windows
+                HDR capture, OCR, DWM, CF_HDROP) and capturo-ocr-mac (macOS Vision OCR)
 tests/          deterministic unit tests for pure geometry/model/settings/update/OCR/permission/
                 transparency/GIF/color/picker behavior
 ```
