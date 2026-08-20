@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.22.0 - 2026-08-19
+
 ### Added
 
 - **Copy text now works on macOS.** It recognizes text through Apple's Vision framework, which
