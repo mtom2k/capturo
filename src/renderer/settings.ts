@@ -88,8 +88,9 @@ function renderFormat(format: CaptureFormat): void {
 }
 
 // --- Shortcut recorders ------------------------------------------------------------------
-// Both the capture and GIF shortcut rows share this logic. Each row is a `.shortcut-field`
-// with its own recorder button, reset, and hint; only one records at a time.
+// The capture, GIF and colour-picker shortcut rows all share this logic. Each row is a
+// `.shortcut-field` with its own recorder button, reset, and hint; only one records at a time.
+// Every panel that has one leads with it, so the binding is in the same place on each tab.
 
 type ShortcutField = {
   kind: 'capture' | 'gif' | 'colorPicker'

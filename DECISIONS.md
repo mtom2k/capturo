@@ -559,3 +559,44 @@ Two rendering details are load-bearing and neither is obvious from the result:
 The highlighter also keeps its own width and its own slider range, separate from the pen's. They
 have no useful overlap: a pen capped at the height of a line of text is useless, and a highlighter
 that opens at the pen's few pixels is not a highlighter.
+
+## D-036: macOS text recognition uses Apple's Vision framework behind a dedicated helper
+
+**Status:** accepted
+
+D-026 chose `Windows.Media.Ocr` for Copy text and left macOS with no OCR claim "until a native implementation is designed and tested on real Apple hardware". This is that implementation, and it reaches the same conclusion by the same reasoning: the platform already ships a local recognizer, so Capturo uses it rather than carrying one.
+
+`VNRecognizeTextRequest` is the macOS counterpart of `OcrEngine` on every axis D-026 weighed. It runs entirely on device, so the local-first privacy boundary is unchanged: no network request, no credential, no telemetry, no downloaded model, and no temporary screenshot file. It ships with macOS, so there is no package-size or update burden, and no language data to manage — 30 recognition languages were enumerated on the development machine with nothing installed. It needs no TCC entitlement, so Copy text raises no permission of its own. It predates the `LSMinimumSystemVersion` of 12.0 the app already sets. Bundling Tesseract or a model was rejected here for exactly the reasons D-026 rejected it on Windows.
+
+macOS 26's `RecognizeDocumentsRequest` returns richer structure, including tables and paragraphs, and was rejected: it would raise the minimum supported macOS from 12 to 26 for a refinement of an output format that Copy text flattens to plain text anyway.
+
+**A separate sidecar rather than a native Node addon.** An Objective-C++ addon would avoid a base64 hop, but it binds the app to Electron's ABI and an `@electron/rebuild` step on every Electron upgrade, and a crash inside it takes the main process with it. The sidecar costs roughly 0.2s per request and gives up none of the process isolation D-026 treats as a privacy property. Measured on Apple Silicon: 0.30s for a small selection and 1.19s for a 3024x1964 retina-sized capture with 40 lines of text, against the 20-second request timeout.
+
+The helper answers `ocr-png\t<base64Png>` with the same single-line JSON as `capturo-capture.exe`, which is why `src/main/capture-helper.ts` drives either one unchanged. It implements that request and nothing else: macOS captures come from `desktopCapturer` and its clipboard from Electron, so the display-capture, DWM-border and `CF_HDROP` requests have no macOS counterpart. The availability gate is therefore split by capability rather than by platform — `captureHelperAvailable()` stays Windows-only while `textRecognitionAvailable()` is satisfied by either helper. Without that split the macOS helper would be sent capture requests it can only refuse, and the `desktopCapturer` fallback would be reached through a protocol error rather than directly.
+
+**Reading order is reconstructed, not inherited.** `OcrResult.Lines` arrives in reading order on Windows. Vision instead returns observations in no guaranteed order, in a normalized coordinate space whose origin is bottom-left, so the helper sorts them top to bottom and then left to right, treating observations within one per cent of the image height as the same visual line. A naive sort is correct for the single-column selections Copy text is used on and can interleave genuinely multi-column text; column detection is deliberately not attempted until a real case calls for it.
+
+Two consequences are load-bearing for anyone changing this:
+
+- **Output is not identical across platforms.** Vision and Windows OCR group lines differently, so any test asserting the same string on both will fail. Assert on content.
+- **The `language` failure stage cannot occur on macOS.** Windows can fail because the user has no OCR language pack; Vision's models ship with the OS. The message mapping in `src/shared/ocr.ts` is therefore platform-aware and covered by `tests/ocr.test.ts`, so a Mac user is never sent looking for a Windows language pack.
+
+The helper is built universal by `native/capturo-ocr-mac/build.sh` regardless of the app's architecture, so one binary serves an arm64, x64 or universal build and packaging can never pair an app with a helper that lacks its slice. It is an additional Mach-O inside the bundle and must be signed with it: `--deep` covers this for the ad-hoc local builds of D-028, but an unsigned nested binary is a standard notarization rejection, so the Developer ID path must sign it inside-out under the hardened runtime.
+
+This decision changes what Capturo may claim about macOS text extraction; it changes nothing about D-028. HDR-correct capture remains Windows-only, because that depends on the capture helper's FP16 pipeline rather than on OCR.
+
+## D-037: Capture shortcuts default to 7/8/9, and each tab leads with its binding
+
+**Status:** accepted
+
+The three capture actions defaulted to `Ctrl/Cmd+Shift+2`, `+3` and `+4`. On macOS the last two are the operating system's own: `Shift-Cmd-3` through `Shift-Cmd-6` are reserved for its screenshot and screen-recording shortcuts, so Capturo's GIF default sat on "screenshot selection to file" and its colour-picker default on "screenshot and recording options". The defaults now move to `Ctrl/Cmd+Shift+7`, `+8` and `+9`, which nothing in macOS or Windows claims, and the sequential family is preserved so the set stays learnable as a group.
+
+The collision was invisible from inside the app, and that is the part worth remembering. `globalShortcut.register` returns `true` for a system-reserved combination — measured on macOS 26.2, where registering `CommandOrControl+Shift+4` succeeded and `isRegistered` then reported `true`. Nothing failed, nothing logged, and `registerInitialShortcuts`' fallback to the default never fired because the default *was* the conflict. A reserved binding therefore presents as a shortcut that quietly does the wrong thing rather than as an error, which is why `tests/settings.test.ts` pins the defaults out of the reserved range: that test is the only place this can fail loudly.
+
+The change is scoped to defaults. Every shortcut remains rebindable in Settings, and `normalizeSettings` keeps any accelerator already stored in `settings.json`, so existing installations on either platform keep the binding they have and only new installations and explicit **Reset** see the new values.
+
+**One family for both platforms rather than a per-platform default.** Windows has no conflict at 2/3/4, so a macOS-only default was considered. It was rejected because two divergent sets have to be kept true in the README, the tray tooltip, the settings UI and every support answer, in exchange for keeping values that no shipped user loses anyway — a stored shortcut survives the change. `Ctrl+Alt+<digit>` was also considered and rejected: on European keyboard layouts `Ctrl+Alt` is `AltGr`, so those chords would collide with ordinary character entry on Windows.
+
+The remaining overlap is with application shortcuts rather than system ones — `Ctrl+Shift+8` toggles formatting marks in Word, for instance. A global shortcut wins over an application binding by definition, so this is a trade any global default makes; it is left to the rebinding UI rather than chased through every application's key map.
+
+**Each settings tab leads with its shortcut.** Capture and GIF previously ended with their binding while Color picker began with it, so the one control every tab has in common was in a different place on each. The shortcut row is now first in all three panels. It is the setting most likely to be looked for and the only one shared across tabs, so a fixed position makes the tabs scan as variations of one layout rather than three unrelated forms.

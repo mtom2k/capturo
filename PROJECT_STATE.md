@@ -6,11 +6,11 @@ Last updated: 2026-08-19
 
 `0.21.0` is the current source version, prepared as an unpublished GitHub Release draft carrying the Windows x64 Setup and Portable executables. `0.20.0` is the latest *published* stable Release, published 2026-08-18 with Windows x64 and universal macOS artifacts. Windows x64 remains the only *supported* platform; the macOS artifacts attached to 0.20.0 are ad-hoc signed and carry the Gatekeeper warning described under macOS state. Note that 0.20.0 was published before the hands-on acceptance matrix in `TESTING.md` had been run against the packaged app, which inverts the order `RELEASING.md` requires.
 
-The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. **Copy text** and HDR-correct capture stay Windows-only because both run through the native helper. See the macOS section below and D-027 through D-030.
+The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
 Version 0.21.0 adds two features.
 
-**The screen colour picker.** **Color picker** in the tray menu, directly below **New GIF**, or `Ctrl/Cmd+Shift+4`. It freezes the desktop the way a screenshot does and *replaces the mouse cursor* with a 17x magnifier centred on the pixel it reads; Shift slows sampling to an eighth speed and the arrow keys nudge one pixel. Picking copies the colour to the clipboard on its own and opens a colour window with HEX/RGB/HSL output, live hue/saturation/lightness/alpha sliders, a related-colour row, and the nearest colour name. A Color picker tab in Settings carries the rebindable shortcut, a copy-on-pick switch, and the clipboard format. See D-032 through D-034.
+**The screen colour picker.** **Color picker** in the tray menu, directly below **New GIF**, or `Ctrl/Cmd+Shift+9`. It freezes the desktop the way a screenshot does and *replaces the mouse cursor* with a 17x magnifier centred on the pixel it reads; Shift slows sampling to an eighth speed and the arrow keys nudge one pixel. Picking copies the colour to the clipboard on its own and opens a colour window with HEX/RGB/HSL output, live hue/saturation/lightness/alpha sliders, a related-colour row, and the nearest colour name. A Color picker tab in Settings carries the rebindable shortcut, a copy-on-pick switch, and the clipboard format. See D-032 through D-034.
 
 **The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; what makes it a highlighter is compositing with `multiply` at 45% alpha, so text under the stroke keeps its contrast and stays readable rather than being covered. Shift or Ctrl locks it straight, every annotation colour applies, and it keeps its own width and slider range separate from the Pen's. See D-035.
 
@@ -46,6 +46,7 @@ The package version is `0.21.0`. `release/BUILD-INFO.txt` inventories the curren
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
 - [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
+- [x] macOS Copy text through Apple's Vision framework, local and in-memory, sharing the Windows request protocol
 - [x] Escape cancellation
 - [x] Pen with smoothing and modifier-axis lock
 - [x] Line and arrow
@@ -91,6 +92,7 @@ The package version is `0.21.0`. `release/BUILD-INFO.txt` inventories the curren
 - [x] Windows smoke test (through 0.6.0)
 - [ ] Settings GUI smoke test on Windows
 - [x] macOS smoke test of capture, GIF, settings, permissions, and login item (arm64; hands-on matrix not yet walked by a second person)
+- [x] macOS Copy text smoke through the packaged app, helper, and real clipboard (arm64, 2026-08-19)
 - [x] Windows packages
 - [ ] Signed/notarized macOS packages
 
@@ -316,8 +318,14 @@ on this host:
   `public.file-url` rather than writing a bogus pasteboard type and reporting success.
 - Open on startup registers and unregisters an SMAppService login item, exercised end to end.
 
-Not available on macOS, by dependency rather than defect: **Copy text** and HDR-correct capture both
-run through the Windows-only native helper.
+**Copy text** now works on macOS through Apple's Vision framework, behind `native/capturo-ocr-mac`
+(D-036). Verified on 2026-08-19 with the packaged arm64 0.21.0 build: a 3024x1964 retina-sized image
+of 40 lines recognized every line exactly, through the real app, the real helper, and Electron's
+real clipboard, in about 1.2 seconds. Recognition is local, needs no permission, and has no language
+pack to install.
+
+Not available on macOS, by dependency rather than defect: HDR-correct capture, which runs through
+the Windows-only native helper.
 
 Still blocked on a certificate, not on code:
 
@@ -358,7 +366,7 @@ Still blocked on a certificate, not on code:
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
-- Copy text is Windows-only, depends on OCR languages installed for the current user, returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters.
+- Copy text returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters. On Windows it depends on the OCR languages installed for the current user; on macOS the recognition languages ship with the OS and nothing needs installing. The two recognizers group lines differently, so output is comparable but not identical across platforms, and macOS reconstructs reading order itself, which can interleave genuinely multi-column text (D-036).
 - macOS screen capture requires user-granted Screen Recording permission, and macOS applies a new grant only to a freshly launched app. macOS also has no readable "not asked yet" state for this permission, so Capturo cannot distinguish a first run from a refusal and must attempt the request before reporting either.
 - An ad-hoc signed macOS build cannot hold that grant at all, so local macOS builds cannot capture.
 - Animated GIF clipboard behavior is implemented on Windows as a file drop and its native protocol is verified; an end-to-end paste from the preview remains in the hands-on checklist. The macOS raw-GIF pasteboard fallback remains unverified with real applications.

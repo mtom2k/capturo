@@ -181,3 +181,30 @@ describe('color picker settings', () => {
     expect(merged.global).toEqual(DEFAULT_SETTINGS.global)
   })
 })
+
+describe('default shortcuts', () => {
+  const defaults = [DEFAULT_CAPTURE_SHORTCUT, DEFAULT_GIF_SHORTCUT, DEFAULT_COLOR_PICKER_SHORTCUT]
+
+  // macOS owns Shift-Cmd-3 through Shift-Cmd-6 for its own screenshot and screen-recording
+  // shortcuts. Electron's globalShortcut.register returns true for those anyway, so a collision
+  // never announces itself at startup -- it shows up as a default that silently does the wrong
+  // thing on a Mac. Pinning the range here is the only place it can fail loudly. See D-037.
+  it('avoids the combinations macOS reserves for its own screenshot shortcuts', () => {
+    for (const shortcut of defaults) {
+      for (const reserved of ['3', '4', '5', '6']) {
+        expect(shortcut).not.toBe(`CommandOrControl+Shift+${reserved}`)
+      }
+    }
+  })
+
+  it('gives each capture action a distinct binding', () => {
+    expect(new Set(defaults).size).toBe(defaults.length)
+  })
+
+  it('ships defaults that survive normalization unchanged', () => {
+    const settings = normalizeSettings({})
+    expect(settings.capture.captureShortcut).toBe(DEFAULT_CAPTURE_SHORTCUT)
+    expect(settings.gif.shortcut).toBe(DEFAULT_GIF_SHORTCUT)
+    expect(settings.colorPicker.shortcut).toBe(DEFAULT_COLOR_PICKER_SHORTCUT)
+  })
+})

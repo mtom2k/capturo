@@ -30,7 +30,7 @@ export type CaptureSettings = {
   jpegQuality: number
   // Whether the toast fires after a copy or save.
   showNotification: boolean
-  // Electron accelerator that opens capture, e.g. 'CommandOrControl+Shift+2'.
+  // Electron accelerator that opens capture, e.g. 'CommandOrControl+Shift+7'.
   captureShortcut: string
 }
 
@@ -45,12 +45,12 @@ export type GifSettings = {
   preTimerSeconds: number
   // Whether the protected recording bar shows sampled, skipped, processed, and encoded counts.
   showFrameCount: boolean
-  // Electron accelerator that starts a GIF capture, e.g. 'CommandOrControl+Shift+3'.
+  // Electron accelerator that starts a GIF capture, e.g. 'CommandOrControl+Shift+8'.
   shortcut: string
 }
 
 export type ColorPickerSettings = {
-  // Electron accelerator that opens the colour picker, e.g. 'CommandOrControl+Shift+4'.
+  // Electron accelerator that opens the colour picker, e.g. 'CommandOrControl+Shift+9'.
   shortcut: string
   // Whether picking writes the colour to the clipboard on its own. On by default: copying is
   // what picking a colour is for (D-034). Turning it off leaves the colour window's own Copy
@@ -90,10 +90,21 @@ export type CapturoSettingsApi = {
   update: (update: SettingsUpdate) => Promise<SettingsUpdateResult>
 }
 
-export const DEFAULT_CAPTURE_SHORTCUT = 'CommandOrControl+Shift+2'
-export const DEFAULT_GIF_SHORTCUT = 'CommandOrControl+Shift+3'
-// Follows the 2/3 sequence of the other two capture actions.
-export const DEFAULT_COLOR_PICKER_SHORTCUT = 'CommandOrControl+Shift+4'
+// The three capture actions share one sequential family so the set is learnable as a group.
+//
+// It sits at 7/8/9 rather than the more obvious 2/3/4 because macOS reserves Shift-Cmd-3 through
+// Shift-Cmd-6 for its own screenshot and recording shortcuts, which the earlier defaults collided
+// with directly: GIF sat on the system's "screenshot selection to file" and the colour picker on
+// "screenshot and recording options". Electron's globalShortcut.register returns true for a
+// system-reserved combination, so the conflict does not surface as an error at startup -- it
+// surfaces as a shortcut that quietly does the wrong thing. Nothing in the 7/8/9 range is claimed
+// by macOS or by Windows. See D-037.
+//
+// These are defaults, not constraints: every one is rebindable in Settings, and a shortcut already
+// stored in settings.json is kept, so changing these moves new installations only.
+export const DEFAULT_CAPTURE_SHORTCUT = 'CommandOrControl+Shift+7'
+export const DEFAULT_GIF_SHORTCUT = 'CommandOrControl+Shift+8'
+export const DEFAULT_COLOR_PICKER_SHORTCUT = 'CommandOrControl+Shift+9'
 
 export const MIN_JPEG_QUALITY = 60
 export const MAX_JPEG_QUALITY = 100
