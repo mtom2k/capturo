@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.20.0-blue)
+![version](https://img.shields.io/badge/version-0.22.1-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -32,11 +32,11 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 
 Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
 
-Source is at **0.21.0**, prepared as a draft; the newest *published* release is **0.20.0**, since a stable release is cut only after its Windows installer passes acceptance. A universal macOS build is attached to 0.20.0 but macOS is not supported — see [macOS](#-macos).
+Source is at **0.22.1**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.21.0 adds the Highlighter and the screen color picker. Version 0.20.0 introduced the rounded-card "C" logo shown above, applied across the installer, executable, Settings window, taskbar, notification area, and notifications. Its delivered backdrop is keyed out so the icon has transparent corners, and the macOS menu bar gets a monochrome version that follows the system bar. Version 0.19.0 made macOS a working preview.
+Version 0.22.1 fixes washed-out or falsely saturated HDR screenshots by preserving RGB channel ratios when bright FP16 pixels are mapped into an SDR image. Version 0.22.0 adds local macOS Copy text, moves the default capture shortcuts away from macOS system bindings, and includes the Highlighter and screen color picker introduced in 0.21.0.
 
 ## 🍎 macOS
 
@@ -84,13 +84,13 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 - Pick a color from anywhere on screen with a magnifier that replaces the cursor, copied to the clipboard on the spot, then adjust it as HEX, RGB, or HSL.
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
-- Capture HDR displays through a native Windows helper without washed-out SDR content (Windows only).
+- Capture HDR displays through a native Windows helper without washed-out SDR content or discolored HDR highlights (Windows only).
 - Save PNG or JPEG files, copy a lossless image, and rebind the screenshot, GIF, and color picker shortcuts.
 - Start at login on Windows or macOS, and check GitHub Releases for updates when you choose.
 
 ## 🖼️ Screenshot workflow
 
-1. Click the Capturo tray or menu-bar icon, or press `Ctrl/Cmd + Shift + 2`.
+1. Click the Capturo tray or menu-bar icon, or press `Ctrl/Cmd + Shift + 7`.
 2. Drag a region. Move it from inside, or resize it from an edge or corner.
 3. Annotate or apply privacy and transparency tools.
 4. Copy the image, copy its visible text, or save it.
@@ -115,7 +115,7 @@ Tolerance includes nearby tones, and Edge feather smooths the cutout from 0 to 1
 
 ## 🎬 GIF recording
 
-Choose **New GIF** from the tray or menu bar, or press `Ctrl/Cmd + Shift + 3`. Select a region, then press **Start Recording**. Capturo prepares the live stream and shows a protected countdown, 3 seconds by default, before active capture begins.
+Choose **New GIF** from the tray or menu bar, or press `Ctrl/Cmd + Shift + 8`. Select a region, then press **Start Recording**. Capturo prepares the live stream and shows a protected countdown, 3 seconds by default, before active capture begins.
 
 The recording bar supports Pause, Resume, Stop, a timer, and optional frame totals. Its red border, dimmed surroundings, and controls are excluded from the finished GIF. Playback timing follows real elapsed recording time, and encoder backpressure keeps memory bounded when a large region cannot sustain the requested frame rate.
 

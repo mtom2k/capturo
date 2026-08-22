@@ -36,5 +36,8 @@ cl /nologo /std:c++17 /O2 /EHsc /W4 /DUNICODE /D_UNICODE ^
    "%~dp0main.cpp"
 if errorlevel 1 exit /b 1
 
+"%~dp0build\capturo-capture.exe" --self-test
+if errorlevel 1 exit /b 1
+
 echo Built %~dp0build\capturo-capture.exe
 endlocal

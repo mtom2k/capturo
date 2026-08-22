@@ -600,3 +600,25 @@ The change is scoped to defaults. Every shortcut remains rebindable in Settings,
 The remaining overlap is with application shortcuts rather than system ones — `Ctrl+Shift+8` toggles formatting marks in Word, for instance. A global shortcut wins over an application binding by definition, so this is a trade any global default makes; it is left to the rebinding UI rather than chased through every application's key map.
 
 **Each settings tab leads with its shortcut.** Capture and GIF previously ended with their binding while Color picker began with it, so the one control every tab has in common was in a different place on each. The shortcut row is now first in all three panels. It is the setting most likely to be looked for and the only one shared across tabs, so a fixed position makes the tabs scan as variations of one layout rather than three unrelated forms.
+
+## D-038: HDR-to-SDR gamut mapping preserves channel ratios
+
+**Status:** accepted
+
+D-015 established the correct Windows input: FP16 scRGB divided by the display's live SDR-white
+scale. Its original handling above SDR white was not color-preserving, however. It applied the
+highlight curve to red, green, and blue independently, pushing every component above 1.0 close to
+white. A bright colored pixel therefore changed hue and chroma depending on which components
+crossed SDR white. On an HDR display this presented as washed-out highlights, false saturation,
+and visible color changes when Capturo froze a scene dominated by very bright or very dark content.
+
+Capturo now maps an out-of-gamut pixel with one shared multiplier derived from its brightest linear
+component. The brightest component lands at SDR white and the other two retain their ratios. This
+is a colorimetric trade: highlight intensity beyond SDR white is clipped because an 8-bit sRGB PNG
+has no HDR headroom, but ordinary SDR pixels remain byte-exact and bright colors retain their hue.
+Per-channel clipping and independent Reinhard-style curves were rejected because both change the
+ratios that define the color.
+
+The native helper's `--self-test` pins four load-bearing properties: SDR values are untouched, HDR
+component ratios survive, neutral HDR white stays neutral, and invalid/negative FP16 values cannot
+reach the PNG conversion. `native/capturo-capture/build.cmd` runs that test after every native build.

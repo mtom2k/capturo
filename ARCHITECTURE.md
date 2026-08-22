@@ -37,6 +37,8 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 7. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency.
 8. Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper, on Windows and macOS alike. The helper recognizes it with `Windows.Media.Ocr` or with Apple's Vision framework respectively; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the capture, while no-text or failure leaves the editor open.
 
+On Windows, FP16 scRGB pixels are divided by the display's live SDR-white scale before sRGB encoding. Pixels already inside the SDR gamut pass through unchanged. Pixels with HDR headroom are mapped with one multiplier shared by red, green, and blue, derived from the brightest linear component; this clips intensity that an 8-bit PNG cannot represent while retaining the component ratios that define hue and chroma. Applying a shoulder independently to each channel is forbidden because it drives bright colors toward white and produces scene-dependent washing or saturation. See D-015 and D-038.
+
 Capturo currently selects within one display at a time. This is deliberate: spanning displays with different scale factors requires a normalized virtual-desktop compositor and is outside the minimal first release.
 
 ## Annotation model

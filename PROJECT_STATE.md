@@ -1,10 +1,10 @@
 # Project State
 
-Last updated: 2026-08-19
+Last updated: 2026-08-22
 
 ## Phase
 
-`0.22.0` is the current source version. `0.21.0` was published 2026-08-19 carrying Windows x64 Setup and Portable executables only; its tag `v0.21.0` points at `effb655`, the source those artifacts were built from, and the macOS build was deliberately held back because it already contained 0.22.0 changes. `0.20.0`, published 2026-08-18, carries Windows x64 and universal macOS artifacts. Windows x64 remains the only *supported* platform; the macOS artifacts attached to 0.20.0 are ad-hoc signed and carry the Gatekeeper warning described under macOS state. Note that 0.20.0 was published before the hands-on acceptance matrix in `TESTING.md` had been run against the packaged app, which inverts the order `RELEASING.md` requires.
+`0.22.1` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -16,7 +16,7 @@ Version 0.21.0 adds two features.
 
 Version 0.22.0 brings **Copy text to macOS** through Apple's Vision framework (D-036) and moves the capture shortcuts to `Ctrl/Cmd+Shift+7/8/9`, because `+3` and `+4` were macOS's own screenshot keys (D-037). Every Settings tab now leads with its shortcut.
 
-0.22.0 ships an arm64 macOS artifact and no Windows artifact: it was packaged on Apple Silicon, and Windows packaging cannot run from a macOS host. Publishing it makes it the `releases/latest` answer for every platform, so Windows users on 0.21.0 are offered an update whose Windows binary does not exist yet; building and attaching `Capturo-Setup-0.22.0-x64.exe` and `Capturo-Portable-0.22.0-x64.exe` on a Windows host is the outstanding work.
+Version 0.22.1 corrects the Windows HDR-to-SDR gamut map. The native helper still divides FP16 scRGB by the display's live SDR-white scale, but pixels above SDR white now use one multiplier shared by all three channels instead of independent highlight curves. SDR pixels remain exact; HDR intensity outside an 8-bit PNG's range is clipped without changing the ratios that define hue and chroma. A native `--self-test`, run automatically by `build.cmd`, pins SDR pass-through, HDR channel ratios, neutral white, and invalid-value handling. See D-038.
 
 The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
@@ -34,7 +34,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.21.0`. `release/BUILD-INFO.txt` inventories the current v0.21.0 Setup and Portable executables, which include the colour picker and the highlighter. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
+The package version is `0.22.1`. `release/BUILD-INFO.txt` inventories the current v0.22.1 Setup and Portable executables. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -303,6 +303,15 @@ The package version is `0.21.0`. `release/BUILD-INFO.txt` inventories the curren
   - `Esc` cancels a capture: a CDP `Input.dispatchKeyEvent` tore down all four overlays within half a second. An earlier report that Escape did nothing came from the desktop-automation tool's key mapping, and was already shown to fail identically against the unchanged screenshot overlay
   - `CAPTURO_SETTINGS_SCREENSHOT_TAB` rejected `colorPicker` and silently fell back to GIF, because its whitelist was never updated when the tab was added. Fixed in the same session; it was found only by running the packaged build
 
+- 2026-08-22 v0.22.1 Windows HDR patch release gate:
+  - the defect was isolated to above-SDR FP16 headroom: a known CSS sRGB chart remained byte-exact on the HDR desktop, while the old independent per-channel highlight curve changed RGB ratios in bright HDR pixels
+  - live tests covered bright colored content over predominantly black and white HDR scenes at the display's current 240-nit SDR-white setting; the rebuilt overlay retained channel balance and neutral highlights instead of washing colors toward white or increasing their saturation
+  - an exact legacy/fixed A/B over the bright reference frame changed 41,714 pixels (0.50% of the frame), confined to the HDR-to-SDR mapping rather than ordinary SDR content
+  - the native helper rebuild passed `/W4` and its new `--self-test`; the packaged helper passed the same test from `win-unpacked/resources/capture`
+  - `npm run dist:win` passed strict type checking, all 173 tests, the production build, and Windows x64 Setup and Portable packaging
+  - only fresh v0.22.1 executables remain locally, both report 0.22.1; Setup SHA-256 is `e727c9557b16cb6abf143fcc751b8802fea46966a48b9276879241f3fac2a945` and Portable SHA-256 is `6361a447484376aea09e3e8217625ed7a902f0546db9a562e3ad988dc50edb95`
+  - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts, so the draft release must retain the unknown-publisher warning
+
 ## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
 
 macOS moved from "launches but cannot capture" to a working preview during this session. Verified
@@ -354,7 +363,7 @@ Still blocked on a certificate, not on code:
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 - Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
 - Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 shipped macOS assets on that shared feed already.
-- Decide whether to publish 0.21.0. Publishing makes it the `releases/latest` answer, so every 0.20.0 user is offered it; the draft holds Windows artifacts only, and a macOS build for this version has not been made.
+- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.1 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
 
 ### GIF optimization status
 

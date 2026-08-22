@@ -45,6 +45,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <utility>
@@ -277,13 +278,46 @@ float QuerySdrWhiteNits(const std::wstring& deviceName) {
 }
 
 // Everything at or below SDR white is reproduced exactly, so ordinary UI comes out with the
-// values it was authored with. Above SDR white the signal is genuine HDR headroom, rolled off
-// asymptotically toward white so bright areas stay ordered instead of turning into one flat
-// patch. See D-015.
-float ToneMap(float value) {
-    if (value <= 1.0f) return value;
-    constexpr float kHeadroom = 0.02f;
-    return 1.0f - kHeadroom / value;
+// values it was authored with. A pixel above SDR white is brought into the SDR gamut with one
+// shared scale derived from its brightest component. Scaling the components independently drives
+// every bright channel toward 1.0, destroying their ratios and making HDR colours look washed out
+// or falsely saturated. The shared scale clips highlight intensity but preserves hue and chroma.
+// See D-015 and D-038.
+void ToneMapToSdr(float& red, float& green, float& blue) {
+    red = std::isfinite(red) ? std::max(0.0f, red) : 0.0f;
+    green = std::isfinite(green) ? std::max(0.0f, green) : 0.0f;
+    blue = std::isfinite(blue) ? std::max(0.0f, blue) : 0.0f;
+
+    const float peak = std::max({ red, green, blue });
+    if (peak <= 1.0f) return;
+
+    const float scale = 1.0f / peak;
+    red *= scale;
+    green *= scale;
+    blue *= scale;
+}
+
+bool RunToneMapSelfTest() {
+    float r = 0.18f, g = 0.50f, b = 1.0f;
+    ToneMapToSdr(r, g, b);
+    const bool preservesSdr = r == 0.18f && g == 0.50f && b == 1.0f;
+
+    r = 4.0f; g = 2.0f; b = 1.0f;
+    ToneMapToSdr(r, g, b);
+    const bool preservesHdrRatios =
+        std::abs(r - 1.0f) < 0.00001f &&
+        std::abs(g - 0.5f) < 0.00001f &&
+        std::abs(b - 0.25f) < 0.00001f;
+
+    r = 2.0f; g = 2.0f; b = 2.0f;
+    ToneMapToSdr(r, g, b);
+    const bool mapsNeutralWhite = r == 1.0f && g == 1.0f && b == 1.0f;
+
+    r = -0.25f; g = std::numeric_limits<float>::quiet_NaN(); b = 0.25f;
+    ToneMapToSdr(r, g, b);
+    const bool sanitizesInvalidValues = r == 0.0f && g == 0.0f && b == 0.25f;
+
+    return preservesSdr && preservesHdrRatios && mapsNeutralWhite && sanitizesInvalidValues;
 }
 
 float LinearToSrgb(float value) {
@@ -551,9 +585,13 @@ Attempt ProcessToPng(ID3D11DeviceContext* context, OutputCapture& oc, float sdrW
         float rr, gg, bb;
         if (isFloat) {
             const auto* px = reinterpret_cast<const DirectX::PackedVector::HALF*>(srcRow) + static_cast<size_t>(sx) * 4;
-            rr = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[0]) / whiteScale));
-            gg = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[1]) / whiteScale));
-            bb = LinearToSrgb(ToneMap(DirectX::PackedVector::XMConvertHalfToFloat(px[2]) / whiteScale));
+            rr = DirectX::PackedVector::XMConvertHalfToFloat(px[0]) / whiteScale;
+            gg = DirectX::PackedVector::XMConvertHalfToFloat(px[1]) / whiteScale;
+            bb = DirectX::PackedVector::XMConvertHalfToFloat(px[2]) / whiteScale;
+            ToneMapToSdr(rr, gg, bb);
+            rr = LinearToSrgb(rr);
+            gg = LinearToSrgb(gg);
+            bb = LinearToSrgb(bb);
         } else {
             const BYTE* px = srcRow + static_cast<size_t>(sx) * 4;
             bb = px[0] / 255.0f; gg = px[1] / 255.0f; rr = px[2] / 255.0f;
@@ -781,6 +819,12 @@ int wmain(int argc, wchar_t** argv) {
     if (FAILED(hr)) { std::printf("{\"ok\":false,\"stage\":\"CoInitializeEx\",\"hr\":\"0x%08lX\"}\n", static_cast<unsigned long>(hr)); return 1; }
 
     Capturer cap;
+
+    if (argc == 2 && std::wstring(argv[1]) == L"--self-test") {
+        const bool passed = RunToneMapSelfTest();
+        std::printf("{\"ok\":%s,\"test\":\"tone-map\"}\n", passed ? "true" : "false");
+        return passed ? 0 : 3;
+    }
 
     // One-shot OCR is a native smoke/debug path. The app uses the in-memory serve request.
     if (argc == 3 && std::wstring(argv[1]) == L"--ocr") {

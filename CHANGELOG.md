@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.22.1 - 2026-08-22
+
+### Fixed
+
+- **HDR screenshots keep their intended colors in bright and dark scenes.** The Windows FP16
+  capture path previously compressed red, green, and blue above SDR white independently. That
+  changed their ratios, pushing bright colors toward white or making them appear falsely
+  saturated when Capturo froze the screen. Out-of-gamut pixels now use one shared scale, retaining
+  hue and chroma while clipping only the HDR intensity an 8-bit PNG cannot represent. Ordinary SDR
+  pixels remain unchanged, and the native helper now runs a tone-mapping regression self-test as
+  part of every build. See D-038.
+
 ## 0.22.0 - 2026-08-19
 
 ### Added
