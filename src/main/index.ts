@@ -18,7 +18,14 @@ import {
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { CapturePayload, CopyTextResult, Point, Rect, SaveResult } from '../shared/types'
+import type {
+  CapturePayload,
+  CopyTextResult,
+  OpenDetachedEditorResult,
+  Point,
+  Rect,
+  SaveResult
+} from '../shared/types'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
   DEFAULT_COLOR_PICKER_SHORTCUT,
@@ -81,11 +88,23 @@ type CaptureSession = {
   overlays: Map<number, OverlayEntry>
 }
 
+type DetachedEditorState = {
+  id: string
+  window: BrowserWindow
+  payload: CapturePayload
+  revealed: boolean
+}
+
 let tray: Tray | null = null
 // Kept so macOS can pop the menu up on demand: it is deliberately not assigned to the Tray there,
 // because an assigned menu would also open on the primary click. See D-030.
 let trayMenu: Menu | null = null
 let session: CaptureSession | null = null
+// A selected screenshot can leave the full-screen overlay and live in one ordinary editor
+// window. It is intentionally independent from `session`, so starting another capture does not
+// destroy work that the user moved aside. A second detach focuses this editor instead of replacing
+// an unsaved image.
+let detachedEditor: DetachedEditorState | null = null
 let settingsWindow: BrowserWindow | null = null
 // The GIF recording control window, plus which display it records and how. The display id
 // drives setDisplayMediaRequestHandler so the renderer's getDisplayMedia targets it.
@@ -149,6 +168,7 @@ const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 // runs stay quiet; used to measure the invocation latency end to end.
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
 const MAX_OCR_DATA_URL_CHARS = 'data:image/png;base64,'.length + Math.ceil(MAX_OCR_PNG_BYTES * 4 / 3) + 4
+const MAX_DETACHED_IMAGE_DATA_URL_CHARS = 128 * 1024 * 1024
 const AUTOMATIC_UPDATE_INITIAL_DELAY_MS = 15_000
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 const AUTOMATIC_UPDATE_BUSY_RETRY_MS = 5 * 60 * 1000
@@ -225,6 +245,35 @@ function closeSession(): void {
   if (!active) return
   for (const entry of active.overlays.values()) {
     if (!entry.window.isDestroyed()) entry.window.destroy()
+  }
+}
+
+function closeDetachedEditor(expected: DetachedEditorState | null = detachedEditor): void {
+  if (!expected || detachedEditor !== expected) return
+  detachedEditor = null
+  if (!expected.window.isDestroyed()) expected.window.destroy()
+}
+
+type CaptureOwner =
+  | { kind: 'overlay'; session: CaptureSession }
+  | { kind: 'detached'; editor: DetachedEditorState }
+
+function validCaptureOwner(event: Electron.IpcMainInvokeEvent, sessionId: string): CaptureOwner | null {
+  const active = validSession(event, sessionId)
+  if (active?.mode === 'screenshot') return { kind: 'overlay', session: active }
+  const editor = detachedEditor
+  if (editor && editor.id === sessionId && !editor.window.isDestroyed() &&
+      editor.window.webContents.id === event.sender.id) {
+    return { kind: 'detached', editor }
+  }
+  return null
+}
+
+function closeCaptureOwner(owner: CaptureOwner): void {
+  if (owner.kind === 'overlay') {
+    if (session === owner.session) closeSession()
+  } else {
+    closeDetachedEditor(owner.editor)
   }
 }
 
@@ -680,6 +729,85 @@ function createOverlayWindow(area: Rect): BrowserWindow {
   return overlay
 }
 
+async function openDetachedEditorWindow(
+  image: Electron.NativeImage,
+  displayId: string,
+  forcePng: boolean
+): Promise<boolean> {
+  if (detachedEditor && !detachedEditor.window.isDestroyed()) {
+    if (detachedEditor.window.isMinimized()) detachedEditor.window.restore()
+    detachedEditor.window.show()
+    detachedEditor.window.focus()
+    return false
+  }
+
+  const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === displayId)
+    ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const workArea = display.workArea
+  const width = Math.max(640, Math.min(1400, workArea.width - 48))
+  const height = Math.max(520, Math.min(920, workArea.height - 48))
+  const window = new BrowserWindow({
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+    minWidth: 640,
+    minHeight: 520,
+    title: 'Capturo — Full editor',
+    icon: taskbarIcon(),
+    backgroundColor: '#050910',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  const size = image.getSize()
+  const state: DetachedEditorState = {
+    id: randomUUID(),
+    window,
+    revealed: false,
+    payload: {
+      sessionId: '',
+      displayId,
+      role: 'detached',
+      imageBytes: image.toPNG(),
+      imageWidth: size.width,
+      imageHeight: size.height,
+      imageOrigin: { x: 0, y: 0 },
+      captureSize: { width: size.width, height: size.height },
+      safeArea: { top: 0, bottom: 0 },
+      cursor: null,
+      forcePng
+    }
+  }
+  state.payload.sessionId = state.id
+  detachedEditor = state
+
+  window.on('closed', () => {
+    if (detachedEditor === state) detachedEditor = null
+  })
+  window.webContents.on('did-finish-load', () => {
+    if (!window.isDestroyed() && detachedEditor === state) {
+      window.webContents.send('capture:initialize', state.payload)
+    }
+  })
+
+  try {
+    const devUrl = rendererUrl()
+    if (devUrl) await window.loadURL(devUrl)
+    else await window.loadFile(path.join(__dirname, '../renderer/index.html'))
+    return true
+  } catch (error) {
+    console.error('Could not open detached screenshot editor', error)
+    closeDetachedEditor(state)
+    return false
+  }
+}
+
 // Creates one overlay window for a region and loads the renderer into it. Resolves once the
 // renderer has loaded; the caller awaits all overlays together so they load concurrently.
 function overlayHtml(mode: CaptureMode): string {
@@ -977,14 +1105,25 @@ function registerIpc(): void {
   ipcMain.handle('capture:ready', (event, sessionId: string) => {
     const active = validSession(event, sessionId)
     const entry = active?.overlays.get(event.sender.id)
-    if (!entry || entry.window.isDestroyed()) return false
-    revealOverlay(entry)
+    if (entry && !entry.window.isDestroyed()) {
+      revealOverlay(entry)
+      return true
+    }
+    const editor = detachedEditor
+    if (!editor || editor.id !== sessionId || editor.window.isDestroyed() ||
+        editor.window.webContents.id !== event.sender.id) return false
+    if (!editor.revealed) {
+      editor.revealed = true
+      editor.window.show()
+      editor.window.focus()
+    }
     return true
   })
 
   // Claiming closes the other displays, but not the fillers of the claimed display: those
   // cover its taskbar strip and remain part of the same capture surface.
   ipcMain.handle('capture:claim', (event, sessionId: string) => {
+    if (detachedEditor?.id === sessionId && detachedEditor.window.webContents.id === event.sender.id) return true
     const active = validSession(event, sessionId)
     const claimed = active?.overlays.get(event.sender.id)
     if (!active || !claimed) return false
@@ -1011,6 +1150,11 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('capture:cancel', (event, sessionId: string) => {
+    const owner = validCaptureOwner(event, sessionId)
+    if (owner) {
+      closeCaptureOwner(owner)
+      return
+    }
     if (!validSession(event, sessionId)) return
     closeSession()
     // Cancelling out of a Pick again puts the colour window back, still holding its colour.
@@ -1252,17 +1396,57 @@ function registerIpc(): void {
   // A renderer could not open its capture stream. Tear the session down rather than
   // leaving an invisible overlay holding the pointer.
   ipcMain.handle('capture:failed', (event, sessionId: string) => {
-    if (!validSession(event, sessionId)) return
-    closeSession()
+    const owner = validCaptureOwner(event, sessionId)
+    if (owner) closeCaptureOwner(owner)
+    else if (validSession(event, sessionId)) closeSession()
+    else return
     notify('Capture unavailable', 'Capturo could not read an image from the display.')
   })
 
+  ipcMain.handle(
+    'capture:open-detached',
+    async (
+      event,
+      sessionId: string,
+      dataUrl: string,
+      forcePng: boolean
+    ): Promise<OpenDetachedEditorResult> => {
+      const active = validSession(event, sessionId)
+      const entry = active?.overlays.get(event.sender.id)
+      if (!active || active.mode !== 'screenshot' || !entry || entry.payload.role !== 'editor') {
+        return { opened: false, error: 'This capture is no longer available.' }
+      }
+      if (detachedEditor && !detachedEditor.window.isDestroyed()) {
+        if (detachedEditor.window.isMinimized()) detachedEditor.window.restore()
+        detachedEditor.window.show()
+        detachedEditor.window.focus()
+        return { opened: false, error: 'A full editor is already open. Finish or close it before opening another.' }
+      }
+      if (typeof dataUrl !== 'string' || dataUrl.length > MAX_DETACHED_IMAGE_DATA_URL_CHARS) {
+        return { opened: false, error: 'This selection is too large to open in the full editor.' }
+      }
+      const image = imageFromDataUrl(dataUrl)
+      if (!image) return { opened: false, error: 'Capturo could not prepare this selection.' }
+
+      const opened = await openDetachedEditorWindow(image, entry.payload.displayId, forcePng === true)
+      if (!opened) return { opened: false, error: 'Capturo could not open the full editor.' }
+
+      // Let the invoke response reach the overlay before destroying its webContents. The new
+      // editor is already loaded and will reveal only after its selected image is decoded.
+      setImmediate(() => {
+        if (session === active) closeSession()
+      })
+      return { opened: true }
+    }
+  )
+
   ipcMain.handle('capture:copy', (event, sessionId: string, dataUrl: string) => {
-    if (!validSession(event, sessionId)) return false
+    const owner = validCaptureOwner(event, sessionId)
+    if (!owner) return false
     const image = imageFromDataUrl(dataUrl)
     if (!image) return false
     clipboard.writeImage(image)
-    closeSession()
+    closeCaptureOwner(owner)
     notify('Copied to clipboard', 'Your screenshot is ready to paste.')
     return true
   })
@@ -1273,14 +1457,14 @@ function registerIpc(): void {
       if (typeof dataUrl !== 'string' || dataUrl.length > MAX_OCR_DATA_URL_CHARS) {
         return { copied: false, error: 'This selection is too large for text extraction.' }
       }
-      const active = validSession(event, sessionId)
+      const owner = validCaptureOwner(event, sessionId)
       const image = imageFromDataUrl(dataUrl)
-      if (!active || !image) {
+      if (!owner || !image) {
         return { copied: false, error: 'The selected image is no longer available.' }
       }
       const result = await recognizeAndCopyText(image)
       if (!result.copied) return result
-      closeSession()
+      closeCaptureOwner(owner)
       notify('Text copied to clipboard', 'Extracted text is ready to paste.')
       return { copied: true }
     }
@@ -1289,10 +1473,10 @@ function registerIpc(): void {
   ipcMain.handle(
     'capture:save',
     async (event, sessionId: string, dataUrl: string, forcePng = false): Promise<SaveResult> => {
-      const active = validSession(event, sessionId)
+      const captureOwner = validCaptureOwner(event, sessionId)
       const image = imageFromDataUrl(dataUrl)
-      if (!active || !image) return { saved: false, canceled: false }
-      const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      if (!captureOwner || !image) return { saved: false, canceled: false }
+      const dialogOwner = BrowserWindow.fromWebContents(event.sender) ?? undefined
       const stamp = fileTimestamp()
       const settings = getSettings().capture
       const jpeg = !forcePng && settings.format === 'jpeg'
@@ -1305,7 +1489,7 @@ function registerIpc(): void {
           ? [{ name: 'JPEG image', extensions: ['jpg', 'jpeg'] }, { name: 'PNG image', extensions: ['png'] }]
           : [{ name: 'PNG image', extensions: ['png'] }, { name: 'JPEG image', extensions: ['jpg', 'jpeg'] }]
       }
-      const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+      const result = dialogOwner ? await dialog.showSaveDialog(dialogOwner, options) : await dialog.showSaveDialog(options)
       if (result.canceled || !result.filePath) return { saved: false, canceled: true }
       const chosenPath = forcePng
         ? (path.extname(result.filePath).toLowerCase() === '.png'
@@ -1313,7 +1497,7 @@ function registerIpc(): void {
             : `${result.filePath.slice(0, result.filePath.length - path.extname(result.filePath).length)}.png`)
         : result.filePath
       await fs.writeFile(chosenPath, forcePng ? image.toPNG() : encodeCapture(image, chosenPath, settings))
-      closeSession()
+      closeCaptureOwner(captureOwner)
       notify('Screenshot saved', path.basename(chosenPath))
       return { saved: true, canceled: false, filePath: chosenPath }
     }

@@ -38,7 +38,7 @@ Verify on at least 100% and one scaled DPI setting:
 
     An aligned export scores SSIM 1.000000. Validate the comparison itself with a deliberately offset crop; a 4 px shift over detailed content should drop it to roughly 0.64. Over a flat region SSIM stays at 1.0 no matter how far it is shifted, so always compare over detailed content.
 
-2. `Ctrl + Shift + 2` opens the same flow.
+2. `Ctrl + Shift + 7` opens the same flow.
 3. On multiple displays, interact with each display in separate captures and confirm the selected display remains while sibling overlays close.
 4. Drag a region in every direction; move it; resize every edge and corner.
 5. Exercise every annotation tool. For pen, test Low/Medium/High smoothing and hold Shift or Control. For line/arrow, verify 45-degree locking.
@@ -53,13 +53,22 @@ Verify on at least 100% and one scaled DPI setting:
     - **Resize grip.** The corner grip must be easy to grab without precise aiming, including from just outside the box, and must resize on drag without placing or closing the text. Keep typing after a manual resize and confirm the box keeps the size you dragged rather than snapping back to fit the content.
 7. Apply Blur and Pixelate over fine text. Each tool must show **Intensity**, never **Size**, as a live 1-100% slider with a clear hover explanation. At 1%, text should be only lightly obscured; at 50%, the effect should be visibly stronger; at 100%, Blur should use its widest radius and Pixelate its largest blocks. Select each existing region and confirm its percentage is restored, then change it and confirm both the preview and exported image (not only the selection overlay) match the new strength.
 8. Verify `Ctrl+C`, `Ctrl+S`, toolbar Copy, toolbar Save, Undo, and Escape.
+    - **Open in full tab.** Confirm the cyan action is exactly between **Copy text** and **Save**.
+      Add annotations, move the crop, and leave a transparency preview pending, then open the full
+      editor. The full-screen overlays must disappear only after one normal taskbar window appears;
+      the checkpoint must match the visible crop, retain alpha, and remain sharp at the source
+      dimensions. Resize and minimize/restore the window, add another annotation, then exercise
+      Copy, Copy text, Save, and Close. Each terminal action must close only this window while the
+      tray process stays alive. Start a new capture while the full editor is open and confirm it
+      remains; attempting to detach the second capture must focus the existing editor and must not
+      overwrite either image.
     - **Copy text (Windows).** Confirm the OCR action is immediately beside regular Copy and its hover tooltip explains both local Windows OCR and `Ctrl/Cmd+Shift+C`. Select clear multiline text, use the button, paste into Notepad, and verify plausible reading order and line breaks. Repeat through the shortcut. Success must close the editor; a blank/non-text selection or recognition failure must leave it open with useful status. Test a language installed in the Windows profile and a language without its OCR pack. Important text must be reviewed because OCR is not guaranteed exact.
     - Add a visible text annotation and confirm Copy text can recognize the final composite. Cover source text with Blur or Pixelate and confirm Capturo does not bypass that privacy effect by OCRing the original frame. Leave a transparency preview pending and verify Copy text commits what is visible before recognition. Regular Copy must still place an image, never text.
     - During Copy text, confirm no screenshot appears in `%TEMP%`, the repository, or the Pictures folder, and no network request is made. Recognized text must not appear in Capturo's stderr/log output. An over-64-MiB PNG, native-helper failure, or 20-second timeout should fail closed and leave the editor available rather than hanging it.
     - For Transparent background, use an image with an enclosed area that shares the sampled background color. Confirm only the connected outside background disappears and the enclosed matching area remains.
     - Test tolerance at 0%, a useful mid value, and 100%; test feather at 0px and 10px. Hex, RGB, and native color inputs must stay synchronized, and every control must explain itself on hover.
     - Check Before, After, and the draggable Split preview. Apply, then press `Ctrl+Z` and confirm the original pixels return. In separate captures, leave the preview pending and use `Ctrl+C`, toolbar Copy, `Ctrl+S`, and toolbar Save; each must automatically apply the preview before export. Configure JPEG in Settings and Save with a `.jpg` name: the resulting path and bytes must be PNG with an alpha channel. Paste Copy into an alpha-aware editor and confirm transparency is retained.
-9. Confirm copy, save, and cancel remove overlay renderers but leave the tray process alive.
+9. Confirm copy, save, and cancel remove their owning overlay or detached-editor renderer but leave the tray process alive.
 10. With Select active, click every annotation type, drag it, resize all eight handles, change each applicable property, and press Delete.
 11. Move the crop frame after placing annotations and confirm the crop moves while annotations stay at their original desktop coordinates.
 12. Type new text, commit with `Ctrl+Enter`, edit it by double-clicking with Select, and verify text in the exported PNG. Repeat the commit by clicking away instead of `Ctrl+Enter` and confirm the exported PNG is identical.
@@ -83,7 +92,7 @@ Verify on at least 100% and one scaled DPI setting:
     - Use **Pick again**, cancel the overlay with `Esc`, and confirm the window still holds the previous color.
 15. Confirm the supplied Capturo logo is consistent across the installed executable, installer UI, Settings title/taskbar window, Windows notification area, and notifications, and that its corners are transparent rather than showing the delivered backdrop as a coloured tile.
 16. Confirm the contextual color/type/stroke controls appear below the primary tool row for every applicable tool and selected object.
-    - Confirm the toolbar's four right-hand actions stay distinguishable: Copy blue, Copy text violet, Save green, and Cancel a red tint that deepens rather than turning grey on hover. Check each mark still identifies its button with colour ignored.
+    - Confirm the toolbar's five right-hand actions stay distinguishable: Copy blue, Copy text violet, Open in full tab cyan, Save green, and Cancel a red tint that deepens rather than turning grey on hover. Check each mark still identifies its button with colour ignored.
 17. Drag the stroke slider from one end to the other and confirm the `px` readout tracks it, that the drawn size changes while dragging rather than only on release, and that the extremes are usable. Repeat for the numbered-step slider, placing markers at the smallest and largest sizes. Then select each existing object with the Select tool and confirm the slider moves to that object's size instead of resetting to the default, and that dragging it restyles the selected object.
 18. Record capture invocation at 60 fps from both the tray and hotkey. No unpainted black/background frame may appear before the frozen desktop overlay, and the overlay must arrive as a single hard cut with no zoom or cross-fade.
 

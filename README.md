@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.22.1-blue)
+![version](https://img.shields.io/badge/version-0.22.2-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -32,11 +32,11 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 
 Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
 
-Source is at **0.22.1**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
+Source is at **0.22.2**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.22.1 fixes washed-out or falsely saturated HDR screenshots by preserving RGB channel ratios when bright FP16 pixels are mapped into an SDR image. Version 0.22.0 adds local macOS Copy text, moves the default capture shortcuts away from macOS system bindings, and includes the Highlighter and screen color picker introduced in 0.21.0.
+Version 0.22.2 adds a normal full editor window that frees the desktop after region selection, and includes the 0.22.1 HDR correction that preserves RGB channel ratios when bright FP16 pixels are mapped into an SDR image. Version 0.22.0 adds local macOS Copy text, moves the default capture shortcuts away from macOS system bindings, and includes the Highlighter and screen color picker introduced in 0.21.0.
 
 ## 🍎 macOS
 
@@ -93,11 +93,18 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 1. Click the Capturo tray or menu-bar icon, or press `Ctrl/Cmd + Shift + 7`.
 2. Drag a region. Move it from inside, or resize it from an edge or corner.
 3. Annotate or apply privacy and transparency tools.
-4. Copy the image, copy its visible text, or save it.
+4. Copy the image, copy its visible text, save it, or choose **Open in full tab** to move it into a
+   normal editor window and return the rest of the screen to your work.
 
 ![Annotating a capture](./docs/annotate.png)
 
 The primary toolbar stays close to the selection. A second row appears only when the active tool needs options such as color, stroke width, text style, or effect intensity.
+
+**Open in full tab** is the cyan action between **Copy text** and **Save**. It checkpoints the
+current visible selection, including annotations and transparency, closes the full-screen overlay,
+and opens a resizable, minimizable window with the same editing and export tools. That window stays
+available if you start another capture. Capturo keeps one full editor at a time and focuses it
+rather than replacing unsaved work.
 
 Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
 

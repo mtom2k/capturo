@@ -152,6 +152,17 @@ button {
   background: #6d28d9;
 }
 
+/* Detaching is a transition rather than an export: the capture stays editable, but the
+   full-screen overlay gives the desktop back. Cyan separates it from the blue/violet copy
+   actions and the green file action while the window-with-arrow mark carries the meaning. */
+.toolbar button.primary.accent-detached {
+  background: #0891b2;
+}
+.toolbar button.primary.accent-detached:hover,
+.toolbar button.primary.accent-detached:focus-visible {
+  background: #0e7490;
+}
+
 /* Save is the third primary action, so it is filled like the two copies rather than reading as a
    secondary control. Green is the remaining unambiguous hue next to Copy's blue and Copy text's
    violet, and it carries the same "this completes the capture" meaning. The floppy mark still
@@ -191,6 +202,17 @@ button {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+body.detached-editor {
+  background:
+    radial-gradient(circle at 50% 35%, rgba(30, 41, 59, 0.9), rgba(5, 9, 16, 0.96) 62%),
+    #050910;
+}
+
+body.detached-editor #capture-canvas {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.46);
 }
 
 .separator {

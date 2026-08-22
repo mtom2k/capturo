@@ -2,6 +2,7 @@ import './styles.css'
 import { applySafeArea } from './safe-area'
 import {
   clampPoint,
+  detachedEditorCanvasRect,
   getResizeHandle,
   MIN_SELECTION_SIZE,
   moveRect,
@@ -58,6 +59,7 @@ const italicButton = document.querySelector<HTMLButtonElement>('#font-italic')!
 const undoButton = document.querySelector<HTMLButtonElement>('#undo')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
 const copyTextButton = document.querySelector<HTMLButtonElement>('#copy-text')!
+const openDetachedButton = document.querySelector<HTMLButtonElement>('#open-detached')!
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
 const textEditor = document.querySelector<HTMLTextAreaElement>('#text-editor')!
@@ -94,6 +96,7 @@ type Interaction =
 
 let payload: CapturePayload | null = null
 let role: OverlayRole = 'editor'
+let canvasViewport: Rect = { x: 0, y: 0, width: 1, height: 1 }
 let sourceImage: HTMLCanvasElement | null = null
 let selection: Rect | null = null
 let annotations: Annotation[] = []
@@ -135,6 +138,7 @@ let transparencyPreview: 'before' | 'split' | 'after' = 'split'
 let transparencySplit = 50
 let beforeCanvas: HTMLCanvasElement | null = null
 let splitPreviewPointerId: number | null = null
+let inheritedTransparency = false
 
 function id(): string {
   return crypto.randomUUID()
@@ -146,15 +150,17 @@ function id(): string {
 function imageScale(): { x: number; y: number } {
   if (!payload) return { x: 1, y: 1 }
   return {
-    x: payload.imageWidth / payload.captureSize.width,
-    y: payload.imageHeight / payload.captureSize.height
+    x: payload.imageWidth / Math.max(1, canvasViewport.width),
+    y: payload.imageHeight / Math.max(1, canvasViewport.height)
   }
 }
 
 function pointFromEvent(event: Pick<PointerEvent, 'clientX' | 'clientY'>): Point {
   const scale = imageScale()
-  const origin = payload?.imageOrigin ?? { x: 0, y: 0 }
-  return { x: (event.clientX + origin.x) * scale.x, y: (event.clientY + origin.y) * scale.y }
+  return {
+    x: (event.clientX - canvasViewport.x) * scale.x,
+    y: (event.clientY - canvasViewport.y) * scale.y
+  }
 }
 
 function imageBounds(): Rect {
@@ -186,7 +192,9 @@ function replaceAnnotation(id: string, replacement: Annotation): void {
 }
 
 function hasTransparency(): boolean {
-  return annotations.some((annotation) => annotation.type === 'transparent') || draft?.type === 'transparent'
+  return inheritedTransparency ||
+    annotations.some((annotation) => annotation.type === 'transparent') ||
+    draft?.type === 'transparent'
 }
 
 function drawTransparencySeed(): void {
@@ -279,13 +287,31 @@ function publishScene(): void {
 // Source-image pixels back to this window's own CSS coordinates.
 function toCssRect(rect: Rect): Rect {
   const scale = imageScale()
-  const origin = payload?.imageOrigin ?? { x: 0, y: 0 }
   return {
-    x: rect.x / scale.x - origin.x,
-    y: rect.y / scale.y - origin.y,
+    x: rect.x / scale.x + canvasViewport.x,
+    y: rect.y / scale.y + canvasViewport.y,
     width: rect.width / scale.x,
     height: rect.height / scale.y
   }
+}
+
+function layoutCanvas(): void {
+  if (!payload) return
+  canvasViewport = role === 'detached'
+    ? detachedEditorCanvasRect(
+        { width: payload.imageWidth, height: payload.imageHeight },
+        { width: window.innerWidth, height: window.innerHeight }
+      )
+    : {
+        x: -payload.imageOrigin.x,
+        y: -payload.imageOrigin.y,
+        width: payload.captureSize.width,
+        height: payload.captureSize.height
+      }
+  canvas.style.left = `${canvasViewport.x}px`
+  canvas.style.top = `${canvasViewport.y}px`
+  canvas.style.width = `${canvasViewport.width}px`
+  canvas.style.height = `${canvasViewport.height}px`
 }
 
 function updateUiPosition(): void {
@@ -326,6 +352,7 @@ function setExportBusy(value: boolean): void {
   busy = value
   copyButton.disabled = value
   copyTextButton.disabled = value
+  openDetachedButton.disabled = value
   saveButton.disabled = value
 }
 
@@ -902,6 +929,25 @@ async function copyText(): Promise<void> {
   }
 }
 
+async function openDetachedEditor(): Promise<void> {
+  if (busy || !payload || role === 'detached') return
+  commitTransparencyDraft()
+  const dataUrl = exportedImage()
+  if (!dataUrl) return
+  setExportBusy(true)
+  setStatus('Opening full editor…', 0)
+  try {
+    const result = await window.capturo.openDetachedEditor(payload.sessionId, dataUrl, hasTransparency())
+    if (!result.opened) {
+      setExportBusy(false)
+      setStatus(result.error, 3400)
+    }
+  } catch {
+    setExportBusy(false)
+    setStatus('Capturo could not open the full editor.', 3400)
+  }
+}
+
 async function saveImage(): Promise<void> {
   if (busy || !payload) return
   commitTransparencyDraft()
@@ -1021,15 +1067,14 @@ async function decodeFrozenDesktop(source: CapturePayload): Promise<HTMLCanvasEl
 function initialize(nextPayload: CapturePayload): void {
   payload = nextPayload
   role = nextPayload.role
+  inheritedTransparency = nextPayload.forcePng === true
   canvas.width = nextPayload.imageWidth
   canvas.height = nextPayload.imageHeight
 
-  // Lay the whole frozen desktop over the display and let the window clip it, so every
-  // overlay shares one coordinate space no matter which slice it covers.
-  canvas.style.left = `${-nextPayload.imageOrigin.x}px`
-  canvas.style.top = `${-nextPayload.imageOrigin.y}px`
-  canvas.style.width = `${nextPayload.captureSize.width}px`
-  canvas.style.height = `${nextPayload.captureSize.height}px`
+  // Overlays lay the whole frozen desktop over their display slice. The detached editor fits
+  // just the selected image into a normal resizable window; both paths share the same source-
+  // pixel coordinate space through canvasViewport.
+  layoutCanvas()
 
   applySafeArea(nextPayload.safeArea)
 
@@ -1037,6 +1082,15 @@ function initialize(nextPayload: CapturePayload): void {
     hint.hidden = true
     editorUi.hidden = true
     canvas.style.cursor = 'default'
+  }
+  if (role === 'detached') {
+    document.body.classList.add('detached-editor')
+    document.title = 'Capturo — Full editor'
+    hint.hidden = true
+    openDetachedButton.hidden = true
+    cancelButton.title = 'Close full editor (Esc)'
+    cancelButton.setAttribute('aria-label', 'Close full editor')
+    claimed = true
   }
 
   void (async () => {
@@ -1048,6 +1102,10 @@ function initialize(nextPayload: CapturePayload): void {
       canvas.width = frame.width
       canvas.height = frame.height
       sourceImage = frame
+      layoutCanvas()
+      if (role === 'detached') {
+        selection = { x: 0, y: 0, width: frame.width, height: frame.height }
+      }
     } catch (error) {
       console.error('Capturo could not read the display', error)
       void window.capturo.captureFailed(nextPayload.sessionId)
@@ -1076,7 +1134,10 @@ canvas.addEventListener('dblclick', (event) => {
   openTextEditor(annotation.origin, annotation)
 })
 window.addEventListener('keydown', handleShortcut)
-window.addEventListener('resize', redraw)
+window.addEventListener('resize', () => {
+  layoutCanvas()
+  redraw()
+})
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
   button.addEventListener('click', () => setTool(button.dataset.tool as Tool))
@@ -1137,6 +1198,7 @@ undoButton.addEventListener('click', () => {
 })
 copyButton.addEventListener('click', () => void copyImage())
 copyTextButton.addEventListener('click', () => void copyText())
+openDetachedButton.addEventListener('click', () => void openDetachedEditor())
 saveButton.addEventListener('click', () => void saveImage())
 cancelButton.addEventListener('click', () => void cancelCapture())
 

@@ -4,7 +4,7 @@ Last updated: 2026-08-22
 
 ## Phase
 
-`0.22.1` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
+`0.22.2` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -17,6 +17,12 @@ Version 0.21.0 adds two features.
 Version 0.22.0 brings **Copy text to macOS** through Apple's Vision framework (D-036) and moves the capture shortcuts to `Ctrl/Cmd+Shift+7/8/9`, because `+3` and `+4` were macOS's own screenshot keys (D-037). Every Settings tab now leads with its shortcut.
 
 Version 0.22.1 corrects the Windows HDR-to-SDR gamut map. The native helper still divides FP16 scRGB by the display's live SDR-white scale, but pixels above SDR white now use one multiplier shared by all three channels instead of independent highlight curves. SDR pixels remain exact; HDR intensity outside an 8-bit PNG's range is clipped without changing the ratios that define hue and chroma. A native `--self-test`, run automatically by `build.cmd`, pins SDR pass-through, HDR channel ratios, neutral white, and invalid-value handling. See D-038.
+
+Version 0.22.2 adds **Open in full tab**, the cyan toolbar action between **Copy text** and **Save**.
+It checkpoints the visible selected composite, tears down the full-screen overlays, and opens one
+normal resizable/minimizable editor window with the same annotation and export tools. The detached
+editor has an owner and lifecycle independent from the next capture, retains forced PNG when its
+checkpoint has transparency, and refuses to overwrite an already open unsaved editor. See D-039.
 
 The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
@@ -34,7 +40,9 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.22.1`. `release/BUILD-INFO.txt` inventories the current v0.22.1 Setup and Portable executables. Local Windows binaries are not Authenticode-signed - `Get-AuthenticodeSignature` reports `NotSigned` for both - and may trigger an unknown-publisher warning.
+The package version is `0.22.2`. `release/BUILD-INFO.txt` inventories exactly the v0.22.2 Windows
+Setup and Portable executables. Local Windows binaries are not Authenticode-signed and may trigger
+an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -49,6 +57,7 @@ The package version is `0.22.1`. `release/BUILD-INFO.txt` inventories the curren
 - [x] Multi-display overlays and single-display claim
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
+- [x] Move a selected screenshot into one independent normal full-editor window, then continue editing, copying, OCRing, or saving while the desktop is free
 - [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
 - [x] macOS Copy text through Apple's Vision framework, local and in-memory, sharing the Windows request protocol
 - [x] Escape cancellation
@@ -312,6 +321,23 @@ The package version is `0.22.1`. `release/BUILD-INFO.txt` inventories the curren
   - only fresh v0.22.1 executables remain locally, both report 0.22.1; Setup SHA-256 is `e727c9557b16cb6abf143fcc751b8802fea46966a48b9276879241f3fac2a945` and Portable SHA-256 is `6361a447484376aea09e3e8217625ed7a902f0546db9a562e3ad988dc50edb95`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts, so the draft release must retain the unknown-publisher warning
 
+- 2026-08-22 v0.22.2 detached-editor release gate:
+  - the screenshot toolbar exposes the new cyan action exactly between Copy text and Save; a live
+    Windows smoke selected a region and confirmed that it closed the full-screen overlays and
+    opened the selected 1051x750 composite in one independent normal editor window
+  - the full editor presented every editing/export action except the detach action itself, and its
+    Close control owned only that window; the paused foreground game prevented a physical pointer
+    drag from completing, so resize/edit layout remains covered by the pure geometry tests rather
+    than claimed as a hands-on drawing pass
+  - `npm run dist:win` passed strict type checking, all 176 tests, the production build, and Windows
+    x64 Setup and Portable packaging; the packaged native helper passed `--self-test`
+  - all superseded v0.22.1 local executables, blockmap, and release-notes file were removed;
+    `release/BUILD-INFO.txt` inventories exactly the two v0.22.2 executables
+  - Setup SHA-256 is `fdfab95c1a70a33d9df1533051761d717578c0a53fde5bb247bd7a538c9ee0d6`;
+    Portable SHA-256 is `400b9a61a56758439b1618cb97908961759d27150e266d98dfe14811f377ca5c`
+  - both executables report product/file version 0.22.2 and remain unsigned, so the draft release
+    retains the unknown-publisher warning
+
 ## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
 
 macOS moved from "launches but cannot capture" to a working preview during this session. Verified
@@ -363,7 +389,7 @@ Still blocked on a certificate, not on code:
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 - Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
 - Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 shipped macOS assets on that shared feed already.
-- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.1 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
+- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.2 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
 
 ### GIF optimization status
 

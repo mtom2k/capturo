@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.22.2 - 2026-08-22
+
+### Added
+
+- **A selected screenshot can move into a full editor window.** The new cyan action between
+  **Copy text** and **Save** checkpoints the visible selection, closes the full-screen capture
+  overlay, and opens the image in a normal resizable, minimizable taskbar window. The detached
+  editor keeps all annotation, transparency, Copy text, Copy, and Save tools available while the
+  rest of the desktop is free for other work. It is owned independently from the next capture, and
+  Capturo will focus an existing full editor rather than overwrite unsaved work. See D-039.
+
 ## 0.22.1 - 2026-08-22
 
 ### Fixed

@@ -33,9 +33,10 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
-6. Copy, Copy text, and save exports render the base image plus edit commands into an offscreen canvas, then crop to the selection. A pending transparency preview is committed before every export.
-7. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency.
-8. Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper, on Windows and macOS alike. The helper recognizes it with `Windows.Media.Ocr` or with Apple's Vision framework respectively; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the capture, while no-text or failure leaves the editor open.
+6. Copy, Copy text, save, and Open in full tab render the base image plus edit commands into an offscreen canvas, then crop to the selection. A pending transparency preview is committed before every export or transfer.
+7. **Open in full tab** sends that bounded composite through sender/session-validated IPC, creates one normal framed editor window, and only then closes the full-screen overlays. The detached editor owns its own id and lifecycle rather than the active capture session, so another capture cannot destroy it. Its canvas fits the checkpoint image into the resizable window while all editing coordinates remain source-image pixels. Existing edits are baked into the checkpoint; subsequent edits remain commands in the detached editor. See D-039.
+8. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency, including transparency inherited by a detached checkpoint.
+9. Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper, on Windows and macOS alike. The helper recognizes it with `Windows.Media.Ocr` or with Apple's Vision framework respectively; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the owning overlay or detached editor, while no-text or failure leaves it open.
 
 On Windows, FP16 scRGB pixels are divided by the display's live SDR-white scale before sRGB encoding. Pixels already inside the SDR gamut pass through unchanged. Pixels with HDR headroom are mapped with one multiplier shared by red, green, and blue, derived from the brightest linear component; this clips intensity that an 8-bit PNG cannot represent while retaining the component ratios that define hue and chroma. Applying a shoulder independently to each channel is forbidden because it drives bright colors toward white and produces scene-dependent washing or saturation. See D-015 and D-038.
 
@@ -63,6 +64,13 @@ The renderer caches at most two processed composites per frozen source: the curr
 Text entry is a temporary DOM textarea because it provides native keyboard, IME, multiline, and selection behavior. It does not share pointer capture with the canvas. Committing converts its content into a replayable text command; double-clicking an existing text command reopens the textarea for editing.
 
 The editor UI is a two-row stack anchored to the crop rectangle. The primary tool/action toolbar is always the first row. Tool-specific color, stroke, smoothing, step-size, and typography controls occupy a contextual second row underneath it.
+
+The screenshot editor has two window roles. An overlay role lays the frozen display across its
+assigned screen region and anchors the toolbar to a movable crop. The detached role is a normal
+taskbar window whose selection is the complete checkpoint image and whose canvas is fitted below a
+fixed toolbar reserve by `detachedEditorCanvasRect`. Both roles use the same renderer, annotation
+model, typed preload, and owner-scoped Copy/Copy text/Save/Cancel handlers; the distinction is
+window lifecycle and canvas layout, not a second editing implementation.
 
 Geometric sizes are continuous and expressed in pixels. Stroke width and numbered-step size are sliders that report their value in `px` and update while being dragged, so a size can be judged against the screenshot underneath rather than guessed from a named step. Text is the exception and keeps a list of preset sizes, because type is conventionally chosen from known values. All of these are CSS-pixel values converted to source-image pixels through the capture scale at the point they are stored, so a size means the same thing on any display.
 

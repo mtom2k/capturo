@@ -622,3 +622,31 @@ ratios that define the color.
 The native helper's `--self-test` pins four load-bearing properties: SDR values are untouched, HDR
 component ratios survive, neutral HDR white stays neutral, and invalid/negative FP16 values cannot
 reach the PNG conversion. `native/capturo-capture/build.cmd` runs that test after every native build.
+
+## D-039: A selected screenshot can detach into one normal editor window
+
+**Status:** accepted
+
+The full-screen overlay is the right place to select a region because the user must interact with
+the frozen desktop, but it is the wrong place for a longer editing pass: it occupies the working
+screen and prevents the user from referring to other applications. **Open in full tab**, placed
+between **Copy text** and **Save**, checkpoints the visible selection and moves it into a normal
+resizable, minimizable taskbar window. The overlays close only after that window has loaded, so the
+desktop is returned without risking a lost capture.
+
+The normal editor reuses the screenshot renderer rather than introducing a document surface. Its
+selection is the whole transferred image, `detachedEditorCanvasRect` fits that image below the
+toolbar on every resize, and source-image coordinates remain authoritative. Annotations already
+visible when the user detaches are flattened into the checkpoint; edits made afterward use the
+normal command history. Flattening is deliberate: it transfers exactly what was visible, bounds
+the IPC to one validated image, preserves Blur/Pixelate/transparency ordering, and avoids exposing
+the full desktop frame or accepting a complex renderer-authored command graph in the main process.
+If the checkpoint contains alpha, `forcePng` crosses the typed bridge so Save cannot silently
+convert it to JPEG after the original transparency command has been baked in.
+
+The detached editor is not the active capture session. Starting another screenshot may replace
+overlays, but it cannot destroy the window or its unsaved image. Capturo permits one detached editor
+at a time and focuses it when a second detach is requested instead of overwriting it; Copy, Copy
+text, Save, Close, failure, and Escape close only the owner that sent the validated request. This is
+a temporary editing window, not a history database: closing it discards unsaved work, and Capturo
+still returns to its tray-only steady state when no capture or detached editor is open.

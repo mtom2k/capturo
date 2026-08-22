@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  detachedEditorCanvasRect,
   getResizeHandle,
   integerRect,
   moveRect,
@@ -10,6 +11,30 @@ import {
   surroundingStrips,
   uncoveredStrips
 } from '../src/shared/geometry'
+
+describe('detached editor canvas', () => {
+  it('fits and centers a wide capture below the toolbar reserve', () => {
+    expect(detachedEditorCanvasRect(
+      { width: 1600, height: 900 },
+      { width: 1200, height: 800 }
+    )).toEqual({ x: 24, y: 102, width: 1152, height: 648 })
+  })
+
+  it('fits a tall capture by height and centers it horizontally', () => {
+    expect(detachedEditorCanvasRect(
+      { width: 900, height: 1600 },
+      { width: 1200, height: 800 }
+    )).toEqual({ x: 403.125, y: 76, width: 393.75, height: 700 })
+  })
+
+  it('stays finite for a tiny window or invalid image dimensions', () => {
+    const rect = detachedEditorCanvasRect(
+      { width: 0, height: 0 },
+      { width: 20, height: 20 }
+    )
+    expect(rect).toEqual({ x: 9.5, y: 76, width: 1, height: 1 })
+  })
+})
 
 describe('integerRect', () => {
   it('rounds fractional window bounds consistently', () => {

@@ -59,13 +59,21 @@ instead. A shortcut that appears dead under `SendKeys` is a test artifact, not a
 
 ## Product invariant
 
-Capturo opens directly into capture and disappears after copy, save, or cancel. Do not introduce a dashboard, account flow, cloud dependency, or persistent editor without an explicit product decision recorded in `DECISIONS.md`.
+Capturo opens directly into capture and normally disappears after copy, save, or cancel. D-039 is
+the explicit exception: one selected screenshot may outlive its overlay in a temporary normal
+editor window, but it is not a dashboard, history database, or multi-document manager. Do not
+broaden that lifecycle without another product decision recorded in `DECISIONS.md`.
 
 ## Implementation map
 
 - Native lifecycle and OS integrations: `src/main/index.ts`
 - Renderer API boundary: `src/preload/index.ts`
 - Capture/editor controller: `src/renderer/editor.ts`
+- Detached full editor: owner lifecycle and validated transfer in `src/main/index.ts`; the
+  `detached` capture role and fitted canvas layout in `src/renderer/editor.ts`; pure
+  `detachedEditorCanvasRect` geometry in `src/shared/geometry.ts`. It owns a separate id from the
+  active overlay session, permits only one unsaved window, checkpoints existing edits, preserves
+  forced PNG for inherited alpha, and must not be destroyed by starting another capture. See D-039.
 - Canvas replay/export: `src/renderer/render.ts`
 - Color picker: tray entry and `picker` capture mode in `src/main/index.ts`; overlay in `src/renderer/picker.*`; result window in `src/renderer/color.*`; pure pointer model in `src/shared/picker.ts` and pure colour maths in `src/shared/color.ts`, covered by `tests/picker.test.ts` and `tests/color.test.ts`. Two invariants are load-bearing and neither is visible from the code that depends on them. The overlay samples a point it owns rather than the OS cursor, which is the only way Shift can slow sampling; the displacement that creates must bleed off over coarse movement, or the physical cursor pinning against a screen edge strands a band of the screen (D-032). And the colour window must not derive RGB from HSL: the round trip through integer degrees and percents turns `#9CAA33` into `#9BA932`, which is the one thing a colour picker may not do (D-033). Two more, both multi-display and both invisible on a single-monitor machine: `CapturePayload.cursor` is what the overlay starts from, so it must stay non-null on exactly the display holding the pointer (`cursorForDisplay`, tested), and fine movement must read `shiftKey` off the pointer event rather than a window key listener, because only one overlay of a multi-display capture has keyboard focus. Pick again hides the colour window by dropping its opacity to zero *before* hiding it, because Windows animates a plain hide and the frozen desktop catches the window mid-fade; a plain `hide()` there is a silent regression that only shows up in the captured frame (D-034). Any new page needs an entry in `electron.vite.config.ts` or it silently will not be packaged.
 - Text placement: `openTextEditor`/`closeTextEditor` and the `#text-editor` / `#text-editor-resize` listeners in `src/renderer/editor.ts`. Two orderings are load-bearing and neither is caught by a type check or a unit test. `pointerDown` commits an open text box *itself* and arms `ignoreTextBlur`, because the browser moves focus after the handler returns and the blur would otherwise commit a box the same click has already emptied. The text box's Escape handler must call `stopPropagation`, because `handleShortcut` is on `window` and its `textEditor.hidden` guard is already false by the time the event bubbles, so without it one press cancels the whole capture. See D-031.

@@ -110,7 +110,7 @@ export type Annotation =
 // each strip the work area leaves uncovered, typically the taskbar. Windows classifies a
 // single window that covers a monitor as a full-screen application and switches on Do Not
 // Disturb; tiled windows cover the same pixels without triggering it. See D-013.
-export type OverlayRole = 'editor' | 'filler'
+export type OverlayRole = 'editor' | 'filler' | 'detached'
 
 export type CapturePayload = {
   sessionId: string
@@ -144,6 +144,9 @@ export type CapturePayload = {
   // (D-032): without a starting position it would open its magnifier in the middle of the screen
   // while the user's cursor sat somewhere else entirely.
   cursor: Point | null
+  // A detached editor receives a flattened selected composite. If that composite already has
+  // transparency, keep PNG mandatory even though its original transparency command is baked in.
+  forcePng?: boolean
 }
 
 // The editor owns all interaction; fillers are passive and repaint from these updates so
@@ -164,6 +167,10 @@ export type CopyTextResult =
   | { copied: true }
   | { copied: false; empty?: boolean; error: string }
 
+export type OpenDetachedEditorResult =
+  | { opened: true }
+  | { opened: false; error: string }
+
 export type CapturoApi = {
   onInitialize: (listener: (payload: CapturePayload) => void) => () => void
   onSessionClosed: (listener: () => void) => () => void
@@ -174,6 +181,7 @@ export type CapturoApi = {
   claimSession: (sessionId: string) => Promise<boolean>
   copyImage: (sessionId: string, dataUrl: string) => Promise<boolean>
   copyText: (sessionId: string, dataUrl: string) => Promise<CopyTextResult>
+  openDetachedEditor: (sessionId: string, dataUrl: string, forcePng: boolean) => Promise<OpenDetachedEditorResult>
   saveImage: (sessionId: string, dataUrl: string, forcePng?: boolean) => Promise<SaveResult>
   cancelSession: (sessionId: string) => Promise<void>
 }

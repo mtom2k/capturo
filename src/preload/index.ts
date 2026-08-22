@@ -28,6 +28,8 @@ const api: CapturoApi = {
   claimSession: (sessionId) => ipcRenderer.invoke('capture:claim', sessionId),
   copyImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy', sessionId, dataUrl),
   copyText: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy-text', sessionId, dataUrl),
+  openDetachedEditor: (sessionId, dataUrl, forcePng) =>
+    ipcRenderer.invoke('capture:open-detached', sessionId, dataUrl, forcePng),
   saveImage: (sessionId, dataUrl, forcePng) => ipcRenderer.invoke('capture:save', sessionId, dataUrl, forcePng),
   cancelSession: (sessionId) => ipcRenderer.invoke('capture:cancel', sessionId)
 }
