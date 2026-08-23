@@ -85,7 +85,8 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
 - Capture HDR displays through a native Windows helper without washed-out SDR content or discolored HDR highlights (Windows only).
-- Save PNG or JPEG files, copy a lossless image, and rebind the screenshot, GIF, and color picker shortcuts.
+- Save PNG or JPEG files, copy a lossless image, and bind screenshot, GIF, and color picker to any
+  Electron-supported non-modifier key or key combination—including bare **Print Screen**.
 - Start at login on Windows or macOS, and check GitHub Releases for updates when you choose.
 
 ## 🖼️ Screenshot workflow
@@ -188,6 +189,13 @@ Right-click the tray icon and choose **Settings**.
 - **Capture:** PNG or JPEG, JPEG quality, copy/save notifications, and capture shortcut.
 - **GIF:** 10 to 30 fps, quality, 0 to 10 second pre-timer, frame-count visibility, and GIF shortcut.
 - **Color picker:** the picker shortcut, whether picking copies to the clipboard on its own, and which format it copies.
+
+All three shortcut recorders accept a key by itself as well as a modified chord. Letters, digits,
+punctuation, arrows, lock/media/numpad keys, Escape, function keys, and **Print Screen** are valid
+choices. A bare key is global and can therefore replace that key's normal behavior while Capturo is
+running. Capturo attempts the exact binding; if the operating system exclusively owns it or another
+application already registered it, the OS can still refuse it and Capturo keeps the previous
+working shortcut instead of displaying a binding that does nothing.
 
 Preferences live in `settings.json` under Capturo's user-data folder. The file contains options and the last update-check time, never captured pixels.
 

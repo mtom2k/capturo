@@ -14,9 +14,9 @@ export type KeyChord = {
 
 const FUNCTION_KEY = /^F([1-9]|1[0-9]|2[0-4])$/
 
-// Physical key codes we are willing to bind, mapped to their Electron accelerator token.
-// Anything not here returns null so the recorder rejects it rather than producing an
-// accelerator the OS will refuse.
+// Physical key codes Electron exposes as accelerator tokens. Keeping this mapping here lets the
+// recorder accept the full supported keyboard surface without trusting arbitrary renderer text.
+// The OS remains the final arbiter at globalShortcut.register time.
 function keyToken(code: string): string | null {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3)
   if (/^Digit[0-9]$/.test(code)) return code.slice(5)
@@ -51,25 +51,78 @@ function keyToken(code: string): string | null {
       return 'PageUp'
     case 'PageDown':
       return 'PageDown'
+    case 'Escape':
+      return 'Escape'
+    case 'CapsLock':
+      return 'Capslock'
+    case 'NumLock':
+      return 'Numlock'
+    case 'ScrollLock':
+      return 'Scrolllock'
     case 'PrintScreen':
       return 'PrintScreen'
+    case 'Backquote':
+      return '`'
+    case 'Minus':
+      return '-'
+    case 'Equal':
+    case 'NumpadEqual':
+      return '='
+    case 'BracketLeft':
+      return '['
+    case 'BracketRight':
+      return ']'
+    case 'Backslash':
+    case 'IntlBackslash':
+      return '\\'
+    case 'Semicolon':
+      return ';'
+    case 'Quote':
+      return '"'
+    case 'Comma':
+      return ','
+    case 'Period':
+      return '.'
+    case 'Slash':
+      return '/'
+    case 'NumpadDecimal':
+    case 'NumpadComma':
+      return 'numdec'
+    case 'NumpadAdd':
+      return 'numadd'
+    case 'NumpadSubtract':
+      return 'numsub'
+    case 'NumpadMultiply':
+      return 'nummult'
+    case 'NumpadDivide':
+      return 'numdiv'
+    case 'AudioVolumeUp':
+      return 'VolumeUp'
+    case 'AudioVolumeDown':
+      return 'VolumeDown'
+    case 'AudioVolumeMute':
+      return 'VolumeMute'
+    case 'MediaTrackNext':
+      return 'MediaNextTrack'
+    case 'MediaTrackPrevious':
+      return 'MediaPreviousTrack'
+    case 'MediaStop':
+      return 'MediaStop'
+    case 'MediaPlayPause':
+      return 'MediaPlayPause'
     default:
       return null
   }
 }
 
 // Builds a canonical accelerator, or null when the chord is not a usable shortcut.
-//
-// A "real" modifier (Ctrl/Cmd or Alt) is required so a plain letter cannot shadow ordinary
-// typing; the sole exception is a bare function key, which is a conventional standalone
-// global shortcut. Shift on its own does not count as a real modifier.
+// Every Electron-supported non-modifier key is intentionally valid on its own. A bare letter can
+// therefore shadow ordinary typing system-wide, but that is an explicit user choice rather than a
+// policy Capturo imposes. Modifier-only events still return null because an Electron accelerator
+// requires one key code.
 export function acceleratorFromKeyEvent(chord: KeyChord): string | null {
   const token = keyToken(chord.code)
   if (!token) return null
-
-  const hasRealModifier = chord.ctrlKey || chord.metaKey || chord.altKey
-  const isFunctionKey = FUNCTION_KEY.test(token)
-  if (!hasRealModifier && !isFunctionKey) return null
 
   const parts: string[] = []
   if (chord.ctrlKey || chord.metaKey) parts.push('CommandOrControl')
@@ -89,6 +142,10 @@ export function formatAccelerator(accelerator: string, isMac = false): string {
       if (part === 'Alt') return isMac ? '⌥' : 'Alt'
       if (part === 'Shift') return isMac ? '⇧' : 'Shift'
       if (part === 'Super') return isMac ? '⌘' : 'Win'
+      if (part === 'PrintScreen') return 'Print Screen'
+      if (part === 'Capslock') return 'Caps Lock'
+      if (part === 'Numlock') return 'Num Lock'
+      if (part === 'Scrolllock') return 'Scroll Lock'
       if (part.startsWith('num')) return `Num ${part.slice(3)}`
       return part
     })

@@ -84,7 +84,11 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
 - Annotation bounds, hit-testing, movement, and resizing: `src/shared/annotations.ts`
 - Connected-color flood fill, tolerance metric, and feather mask: `src/shared/transparency.ts`; command replay/cache and export ordering: `src/renderer/render.ts`; popup workflow and Before/After/Split preview: `src/renderer/editor.ts` / `index.html` / `styles.css`
 - Settings window UI: `src/renderer/settings.ts` / `settings.html` / `settings.css`
-- Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`, `src/shared/shortcut.ts`
+- Settings validation and shortcut parsing (pure, tested): `src/shared/settings.ts`,
+  `src/shared/shortcut.ts`. The recorder intentionally accepts every Electron-supported
+  non-modifier key bare or in a chord—including Print Screen and Escape. Do not restore the former
+  Ctrl/Alt requirement. Modifier-only/unsupported keys remain invalid, and a genuine OS
+  registration refusal still restores the previous working shortcut. See D-040.
 - Settings persistence and application: `src/main/settings.ts`, plus login-item, tray, shortcut, and save wiring in `src/main/index.ts`. `GlobalSettings.openAtStartup` defaults off; only packaged Windows/macOS builds may call Electron's login-item API, and failed changes must roll the persisted toggle back. See D-016.
 - macOS GIF clipboard: `gif:preview-copy` in `src/main/index.ts`. macOS and Windows both copy the GIF as a *file* so the animation survives; only the mechanism differs (`public.file-url` versus the native helper's `CF_HDROP`). Do not go back to writing raw bytes: the old `public.gif` type is not a real UTI, so macOS stored nothing while Copy still reported success. The pasteboard read-back after the write is what stops that failing silently again. See D-023.
 - Overlay safe areas: `CapturePayload.safeArea`, applied through `src/renderer/safe-area.ts`. The macOS overlay spans the whole display, so Capturo's hint and status toast must be inset past the menu bar area (which holds the notch) and the Dock. Never inset the canvas itself — those edges must stay capturable. The screenshot and GIF overlays are separate entry points with separate `initialize()` functions that share `styles.css`; the helper exists because fixing one and forgetting the other is precisely what happened. See D-029.

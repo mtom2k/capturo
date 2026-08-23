@@ -17,9 +17,11 @@ describe('acceleratorFromKeyEvent', () => {
     expect(acceleratorFromKeyEvent(chord({ metaKey: true, code: 'KeyS' }))).toBe('CommandOrControl+S')
   })
 
-  it('rejects a chord with no real modifier', () => {
-    expect(acceleratorFromKeyEvent(chord({ code: 'KeyA' }))).toBeNull()
-    expect(acceleratorFromKeyEvent(chord({ shiftKey: true, code: 'KeyA' }))).toBeNull()
+  it('allows any mapped key without requiring a modifier', () => {
+    expect(acceleratorFromKeyEvent(chord({ code: 'KeyA' }))).toBe('A')
+    expect(acceleratorFromKeyEvent(chord({ shiftKey: true, code: 'KeyA' }))).toBe('Shift+A')
+    expect(acceleratorFromKeyEvent(chord({ code: 'PrintScreen' }))).toBe('PrintScreen')
+    expect(acceleratorFromKeyEvent(chord({ code: 'Escape' }))).toBe('Escape')
   })
 
   it('allows a bare function key', () => {
@@ -27,20 +29,26 @@ describe('acceleratorFromKeyEvent', () => {
     expect(acceleratorFromKeyEvent(chord({ ctrlKey: true, code: 'F12' }))).toBe('CommandOrControl+F12')
   })
 
-  it('rejects modifier-only and unmapped keys', () => {
+  it('rejects modifier-only and keys Electron cannot register', () => {
     expect(acceleratorFromKeyEvent(chord({ ctrlKey: true, code: 'ControlLeft' }))).toBeNull()
-    expect(acceleratorFromKeyEvent(chord({ ctrlKey: true, code: 'Backquote' }))).toBeNull()
+    expect(acceleratorFromKeyEvent(chord({ code: 'Pause' }))).toBeNull()
   })
 
-  it('maps arrows and numpad digits', () => {
+  it('maps arrows, punctuation, lock, media, and numpad keys', () => {
     expect(acceleratorFromKeyEvent(chord({ ctrlKey: true, code: 'ArrowUp' }))).toBe('CommandOrControl+Up')
     expect(acceleratorFromKeyEvent(chord({ altKey: true, code: 'Numpad5' }))).toBe('Alt+num5')
+    expect(acceleratorFromKeyEvent(chord({ code: 'Backquote' }))).toBe('`')
+    expect(acceleratorFromKeyEvent(chord({ code: 'NumpadAdd' }))).toBe('numadd')
+    expect(acceleratorFromKeyEvent(chord({ code: 'CapsLock' }))).toBe('Capslock')
+    expect(acceleratorFromKeyEvent(chord({ code: 'AudioVolumeMute' }))).toBe('VolumeMute')
+    expect(acceleratorFromKeyEvent(chord({ code: 'MediaTrackNext' }))).toBe('MediaNextTrack')
   })
 })
 
 describe('formatAccelerator', () => {
   it('renders Windows labels by default', () => {
     expect(formatAccelerator('CommandOrControl+Shift+2')).toBe('Ctrl+Shift+2')
+    expect(formatAccelerator('PrintScreen')).toBe('Print Screen')
   })
 
   it('renders mac glyphs when asked', () => {

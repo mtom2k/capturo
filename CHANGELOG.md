@@ -13,6 +13,16 @@
   rest of the desktop is free for other work. It is owned independently from the next capture, and
   Capturo will focus an existing full editor rather than overwrite unsaved work. See D-039.
 
+### Changed
+
+- **Custom capture shortcuts can use any Electron-supported non-modifier key, with or without a
+  modifier.** Capture, GIF, and Color picker may now be bound to a bare letter, number, punctuation,
+  arrow, lock, media, numpad, function, Escape, or **Print Screen** key. The recorder no longer
+  imposes Capturo's former Ctrl/Alt-or-function-key policy; it submits the exact choice to the OS.
+  A direct Windows registration probe confirmed bare Print Screen works. An accelerator the OS
+  exclusively owns can still be refused at registration, in which case Capturo truthfully retains
+  the last working binding. See D-040.
+
 ## 0.22.1 - 2026-08-22
 
 ### Fixed

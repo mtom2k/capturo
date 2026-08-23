@@ -650,3 +650,30 @@ at a time and focuses it when a second detach is requested instead of overwritin
 text, Save, Close, failure, and Escape close only the owner that sent the validated request. This is
 a temporary editing window, not a history database: closing it discards unsaved work, and Capturo
 still returns to its tray-only steady state when no capture or detached editor is open.
+
+## D-040: Shortcut recording accepts every Electron-supported non-modifier key
+
+**Status:** accepted
+
+The shortcut recorder used to require Ctrl/Cmd or Alt, except for bare function keys. That was a
+Capturo policy rather than a platform requirement and rejected useful system-style bindings before
+the operating system ever saw them; `PrintScreen` was already mapped to Electron's correct token
+but a bare press was discarded. Capture, GIF, and Color picker now accept every non-modifier key in
+Electron's accelerator vocabulary, alone or with modifiers. This includes letters, digits,
+punctuation, arrows, navigation and lock keys, numpad operations, volume/media controls, Escape,
+F1-F24, and Print Screen. Modifier-only events remain invalid because Electron accelerators require
+one key code. Clicking the active recorder again is the cancel gesture, which leaves Escape free to
+be a real binding.
+
+This deliberately permits disruptive choices. Binding bare `A`, Space, or Print Screen makes it a
+global shortcut while Capturo is running and can replace ordinary behavior; the user asked for
+that authority, so the recorder does not second-guess it. The renderer still constructs the token
+from a fixed physical-key map rather than accepting arbitrary accelerator text across IPC.
+
+OS ownership remains a hard boundary, not an application preference. Electron documents that
+`globalShortcut.register` fails when another application or the operating system already owns an
+accelerator, because platforms do not let applications fight for global shortcuts. Capturo cannot
+truthfully promise Ctrl-Alt-Delete or another exclusive system sequence, so a failed registration
+still restores the previous working binding and reports the refusal. This is distinct from the old
+UI restriction: Capturo now always attempts the user's supported key. A direct probe on the Windows
+release host confirmed that bare `PrintScreen` registers successfully.

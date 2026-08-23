@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ## Phase
 
@@ -23,6 +23,13 @@ It checkpoints the visible selected composite, tears down the full-screen overla
 normal resizable/minimizable editor window with the same annotation and export tools. The detached
 editor has an owner and lifecycle independent from the next capture, retains forced PNG when its
 checkpoint has transparency, and refuses to overwrite an already open unsaved editor. See D-039.
+
+The same 0.22.2 draft removes Capturo's artificial modifier requirement from all three shortcut
+recorders. Every Electron-supported non-modifier key can be used bare or in a combination,
+including Print Screen, Escape, letters, punctuation, lock/media keys, and numpad operations. A
+direct Windows probe confirmed bare `PrintScreen` registers successfully. The OS remains able to
+refuse an accelerator it exclusively owns, and that genuine failure still preserves the previous
+working binding. See D-040.
 
 The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
@@ -82,7 +89,7 @@ an unknown-publisher warning.
 - [x] Tray-opened settings window with Capture and GIF tabs
 - [x] Save as PNG or JPEG with a JPEG quality control (save-only; clipboard stays lossless)
 - [x] Post-capture notification toggle
-- [x] Rebindable capture shortcut with conflict fallback
+- [x] Permissive Capture/GIF/Color picker shortcuts, including bare Print Screen and other supported keys, with truthful OS-conflict fallback
 - [x] Settings persisted to `userData/settings.json` (no captured pixels)
 - [x] Global Open on startup preference defaults off, is isolated from development login items, and registers/removes the packaged Windows login item
 - [x] Manual and opt-in daily stable-release checks with inline status, notification, and tray action; no download/install
@@ -321,7 +328,7 @@ an unknown-publisher warning.
   - only fresh v0.22.1 executables remain locally, both report 0.22.1; Setup SHA-256 is `e727c9557b16cb6abf143fcc751b8802fea46966a48b9276879241f3fac2a945` and Portable SHA-256 is `6361a447484376aea09e3e8217625ed7a902f0546db9a562e3ad988dc50edb95`
   - `Get-AuthenticodeSignature` reports `NotSigned` for both artifacts, so the draft release must retain the unknown-publisher warning
 
-- 2026-08-22 v0.22.2 detached-editor release gate:
+- 2026-08-23 v0.22.2 detached-editor and permissive-shortcut release gate:
   - the screenshot toolbar exposes the new cyan action exactly between Copy text and Save; a live
     Windows smoke selected a region and confirmed that it closed the full-screen overlays and
     opened the selected 1051x750 composite in one independent normal editor window
@@ -331,10 +338,13 @@ an unknown-publisher warning.
     than claimed as a hands-on drawing pass
   - `npm run dist:win` passed strict type checking, all 176 tests, the production build, and Windows
     x64 Setup and Portable packaging; the packaged native helper passed `--self-test`
+  - shortcut unit coverage now pins bare letters, Shift-only chords, Print Screen, Escape,
+    punctuation, lock/media keys, and numpad operations; a direct no-window Electron probe on the
+    release host registered and released bare `PrintScreen` successfully
   - all superseded v0.22.1 local executables, blockmap, and release-notes file were removed;
     `release/BUILD-INFO.txt` inventories exactly the two v0.22.2 executables
-  - Setup SHA-256 is `fdfab95c1a70a33d9df1533051761d717578c0a53fde5bb247bd7a538c9ee0d6`;
-    Portable SHA-256 is `400b9a61a56758439b1618cb97908961759d27150e266d98dfe14811f377ca5c`
+  - Setup SHA-256 is `7bc25c73c3c83e90b1eba8e39e9ff9909234051ac46d9aa346b47a5c2358414f`;
+    Portable SHA-256 is `e3b07423fac951021a009f3129ae3246489bd2f15a397d27e9ac33f9a0b9b4be`
   - both executables report product/file version 0.22.2 and remain unsigned, so the draft release
     retains the unknown-publisher warning
 

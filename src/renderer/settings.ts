@@ -224,7 +224,7 @@ function startRecording(field: ShortcutField): void {
   recordingField = field
   field.recorder.classList.add('recording')
   field.recorder.textContent = 'Press keys…'
-  setHint(field, 'Use Ctrl or Alt with a key, or a function key. Esc to cancel.')
+  setHint(field, 'Press any non-modifier key, alone or in a combination. Click again to cancel.')
 }
 
 async function cancelRecording(): Promise<void> {
@@ -240,10 +240,6 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
   if (!field) return
   event.preventDefault()
   event.stopPropagation()
-  if (event.key === 'Escape') {
-    await cancelRecording()
-    return
-  }
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return
   const accelerator = acceleratorFromKeyEvent({
     ctrlKey: event.ctrlKey,
@@ -253,7 +249,7 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
     code: event.code
   })
   if (!accelerator) {
-    setHint(field, 'Add Ctrl or Alt, or use a function key.', true)
+    setHint(field, 'That key is not available as an Electron global shortcut.', true)
     return
   }
   recordingField = null
