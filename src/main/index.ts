@@ -42,8 +42,21 @@ import {
   type UpdateCheckResult
 } from '../shared/updates'
 import { normalizeScreenAccessStatus, type ScreenAccessState } from '../shared/permissions'
-import { formatColor, normalizeRgb, rgbToHex, type PickedColor, type Rgb } from '../shared/color'
-import { cursorForDisplay } from '../shared/picker'
+import {
+  formatColor,
+  normalizeRgb,
+  rgbToHex,
+  type ColorPickerPayload,
+  type ColorSample,
+  type PickedColor,
+  type Rgb
+} from '../shared/color'
+import {
+  FLOATING_PICKER_MAX_SIZE,
+  PICKER_ZOOM_LEVELS,
+  cursorForDisplay,
+  floatingPickerRect
+} from '../shared/picker'
 import {
   hasGifSignature,
   isExpiredGifClipboardFile,
@@ -59,6 +72,8 @@ import {
   copyFileToClipboard,
   MAX_OCR_PNG_BYTES,
   recognizeTextFromPng,
+  sampleDisplayColor,
+  setSystemCursorHidden,
   startCaptureHelper,
   stopCaptureHelper,
   suppressWindowBorder,
@@ -72,12 +87,18 @@ type OverlayEntry = {
   revealed: boolean
 }
 
+type PickerOverlayEntry = {
+  window: BrowserWindow
+  payload: ColorPickerPayload
+  revealed: boolean
+}
+
 // The frozen desktop for one display, ready to hand to its overlays.
 type DisplayImage = { bytes: Uint8Array; width: number; height: number }
 
 // A screenshot capture and a GIF capture share the same region-selection overlays; the mode
 // decides which renderer they load and what happens once a region is chosen.
-type CaptureMode = 'screenshot' | 'gif' | 'picker'
+type CaptureMode = 'screenshot' | 'gif'
 
 // The two global shortcuts Capturo registers.
 type ShortcutKind = 'capture' | 'gif' | 'colorPicker'
@@ -88,11 +109,20 @@ type CaptureSession = {
   overlays: Map<number, OverlayEntry>
 }
 
+type ColorPickerSession = {
+  id: string
+  overlays: Map<number, PickerOverlayEntry>
+}
+
 type DetachedEditorState = {
   id: string
   window: BrowserWindow
   payload: CapturePayload
   revealed: boolean
+  readyPromise: Promise<boolean>
+  resolveReady: (opened: boolean) => void
+  readySettled: boolean
+  readyTimer: ReturnType<typeof setTimeout> | null
 }
 
 let tray: Tray | null = null
@@ -100,6 +130,10 @@ let tray: Tray | null = null
 // because an assigned menu would also open on the primary click. See D-030.
 let trayMenu: Menu | null = null
 let session: CaptureSession | null = null
+// The picker is deliberately not a CaptureSession: it never freezes or paints the desktop. Its
+// transparent windows only own pointer input while main samples a tiny live grid underneath.
+let pickerSession: ColorPickerSession | null = null
+let systemCursorHiddenForPicker = false
 // A selected screenshot can leave the full-screen overlay and live in one ordinary editor
 // window. It is intentionally independent from `session`, so starting another capture does not
 // destroy work that the user moved aside. A second detach focuses this editor instead of replacing
@@ -129,9 +163,6 @@ let pickedColor: PickedColor | null = null
 // Set while the colour window is hidden for a Pick again, so it comes back whether the next pick
 // succeeds or the user cancels out of the overlay.
 let colorWindowHiddenForPick = false
-// How long to let the desktop recomposite after the colour window goes invisible, before freezing
-// it for a Pick again. See the comment at its use.
-const COLOR_WINDOW_HIDE_SETTLE_MS = 90
 let automaticUpdateTimer: ReturnType<typeof setTimeout> | null = null
 let updateCheckInFlight: Promise<UpdateCheckResult> | null = null
 let availableUpdateVersion: string | null = null
@@ -169,10 +200,10 @@ const isGifRecordSmoke = process.env.CAPTURO_GIF_RECORD_SMOKE === '1'
 const timingEnabled = process.env.CAPTURO_TIMING === '1'
 const MAX_OCR_DATA_URL_CHARS = 'data:image/png;base64,'.length + Math.ceil(MAX_OCR_PNG_BYTES * 4 / 3) + 4
 const MAX_DETACHED_IMAGE_DATA_URL_CHARS = 128 * 1024 * 1024
+const DETACHED_EDITOR_READY_TIMEOUT_MS = 10_000
 const AUTOMATIC_UPDATE_INITIAL_DELAY_MS = 15_000
 const AUTOMATIC_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 const AUTOMATIC_UPDATE_BUSY_RETRY_MS = 5 * 60 * 1000
-
 // Documentation screenshots must also work on headless/virtualized Windows hosts where
 // Chromium cannot start a GPU process. This affects screenshot smoke runs only.
 if (isSettingsScreenshot || isGifPreviewScreenshot) app.disableHardwareAcceleration()
@@ -248,10 +279,54 @@ function closeSession(): void {
   }
 }
 
+function closePickerSession(): void {
+  const active = pickerSession
+  pickerSession = null
+  if (active) {
+    for (const entry of active.overlays.values()) {
+      if (!entry.window.isDestroyed()) entry.window.destroy()
+    }
+  }
+  if (systemCursorHiddenForPicker) {
+    systemCursorHiddenForPicker = false
+    void setSystemCursorHidden(false)
+  }
+}
+
+function settleDetachedEditorReady(state: DetachedEditorState, opened: boolean): void {
+  if (state.readySettled) return
+  state.readySettled = true
+  if (state.readyTimer !== null) clearTimeout(state.readyTimer)
+  state.readyTimer = null
+  state.resolveReady(opened)
+}
+
 function closeDetachedEditor(expected: DetachedEditorState | null = detachedEditor): void {
   if (!expected || detachedEditor !== expected) return
   detachedEditor = null
+  settleDetachedEditorReady(expected, false)
   if (!expected.window.isDestroyed()) expected.window.destroy()
+}
+
+// A hidden editor is not useful work and must not block the next detach attempt. This is the
+// recovery path for a renderer that failed before capture:ready; a genuinely opened editor is
+// restored and focused instead.
+function focusExistingDetachedEditor(): boolean {
+  const existing = detachedEditor
+  if (!existing) return false
+  if (existing.window.isDestroyed()) {
+    detachedEditor = null
+    settleDetachedEditorReady(existing, false)
+    return false
+  }
+  if (!existing.revealed) {
+    closeDetachedEditor(existing)
+    return false
+  }
+  if (existing.window.isMinimized()) existing.window.restore()
+  existing.window.show()
+  existing.window.focus()
+  return true
 }
 
 type CaptureOwner =
@@ -277,9 +352,7 @@ function closeCaptureOwner(owner: CaptureOwner): void {
   }
 }
 
-// Brings the colour window back after a Pick again that did not end in a pick. Deliberately not
-// called from closeSession: openSelectionOverlays tears down the previous session as it starts the
-// new one, so restoring there would un-hide the window the moment it was hidden.
+// Brings the colour window back after a Pick again that did not end in a pick.
 function restoreColorWindow(): void {
   if (!colorWindowHiddenForPick) return
   colorWindowHiddenForPick = false
@@ -307,8 +380,8 @@ function revealOverlay(entry: OverlayEntry): void {
 
   // With more than one display there is an editor per display, and each was focused as it
   // finished painting, so whichever happened to be revealed last held the keyboard. Keyboard
-  // input then landed on a screen the user was not pointing at: the colour picker's Shift did
-  // nothing on the other monitor, and Escape was equally arbitrary. Focus the editor the pointer
+  // input then landed on a screen the user was not pointing at, and Escape was equally arbitrary.
+  // Focus the editor the pointer
   // is actually over, and leave the others alone.
   if (!entry.payload.cursor) return
   // macOS will not make a window key while its application is inactive, and Capturo is a
@@ -322,13 +395,26 @@ function revealOverlay(entry: OverlayEntry): void {
   entry.window.focus()
 }
 
+function revealPickerOverlay(entry: PickerOverlayEntry): void {
+  if (entry.revealed || entry.window.isDestroyed()) return
+  entry.revealed = true
+  entry.window.setIgnoreMouseEvents(false)
+  entry.window.setOpacity(1)
+  // Every tile is interactive for the live picker, including taskbar/menu-bar strips. Only the
+  // tile under the invocation pointer takes focus so Escape works immediately without whichever
+  // window happened to load last stealing it.
+  if (!entry.payload.cursor) return
+  if (isMac) app.focus({ steal: true })
+  entry.window.focus()
+}
+
 function notify(title: string, body: string): void {
   if (!getSettings().capture.showNotification) return
   if (Notification.isSupported()) new Notification({ title, body, silent: true, icon: taskbarIcon() }).show()
 }
 
 function updateCheckBlockedByCapture(): boolean {
-  return session !== null || recordingWindow !== null
+  return session !== null || pickerSession !== null || recordingWindow !== null
 }
 
 async function openCapturoReleases(): Promise<boolean> {
@@ -729,17 +815,113 @@ function createOverlayWindow(area: Rect): BrowserWindow {
   return overlay
 }
 
+function buildPickerPayload(
+  sessionId: string,
+  display: Electron.Display,
+  region: OverlayRegion,
+  cursor: Point,
+  floating = false
+): ColorPickerPayload {
+  const bounds = display.bounds
+  const area = region.rect
+  const physical = screen.dipToScreenRect(null, bounds)
+  const displayCursor = cursorForDisplay(cursor, bounds)
+  const regionOrigin = { x: area.x - bounds.x, y: area.y - bounds.y }
+  const cursorInRegion = displayCursor &&
+    displayCursor.x >= regionOrigin.x && displayCursor.x < regionOrigin.x + area.width &&
+    displayCursor.y >= regionOrigin.y && displayCursor.y < regionOrigin.y + area.height
+      ? displayCursor
+      : null
+  return {
+    sessionId,
+    displayId: String(display.id),
+    role: region.role === 'filler' ? 'filler' : 'editor',
+    floating,
+    displayOrigin: { x: bounds.x, y: bounds.y },
+    regionOrigin,
+    displaySize: { width: bounds.width, height: bounds.height },
+    imageSize: { width: physical.width, height: physical.height },
+    safeArea: {
+      top: Math.max(0, display.workArea.y - area.y),
+      bottom: Math.max(0, area.y + area.height - (display.workArea.y + display.workArea.height))
+    },
+    cursor: cursorInRegion
+  }
+}
+
+function createPickerOverlayWindow(area: Rect): BrowserWindow {
+  const overlay = new BrowserWindow({
+    x: area.x,
+    y: area.y,
+    width: area.width,
+    height: area.height,
+    frame: false,
+    thickFrame: false,
+    enableLargerThanScreen: isMac,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  })
+  overlay.setAlwaysOnTop(true, 'screen-saver')
+  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // The magnifier is real UI above the desktop, but must never become one of the pixels it is
+  // sampling. Windows maps this to WDA_EXCLUDEFROMCAPTURE for Desktop Duplication.
+  // Development-only visual smoke mode lets Windows.Graphics.Capture inspect the selector itself.
+  // Packaged builds remain protected even if an inherited environment variable has this name.
+  overlay.setContentProtection(app.isPackaged || process.env.CAPTURO_PICKER_VISUAL_SMOKE !== '1')
+  overlay.setOpacity(0)
+  overlay.setIgnoreMouseEvents(true)
+  overlay.showInactive()
+  overlay.setBounds(area)
+  return overlay
+}
+
+async function spawnPickerOverlay(
+  owner: ColorPickerSession,
+  display: Electron.Display,
+  region: OverlayRegion,
+  cursor: Point,
+  floating = false
+): Promise<void> {
+  const payload = buildPickerPayload(owner.id, display, region, cursor, floating)
+  const overlay = createPickerOverlayWindow(region.rect)
+  const webContentsId = overlay.webContents.id
+  overlay.on('closed', () => {
+    owner.overlays.delete(webContentsId)
+    if (pickerSession === owner && owner.overlays.size === 0) pickerSession = null
+  })
+  overlay.webContents.on('did-finish-load', () => {
+    if (!overlay.isDestroyed() && pickerSession === owner) {
+      overlay.webContents.send('color:picker-initialize', payload)
+    }
+  })
+  owner.overlays.set(webContentsId, { window: overlay, payload, revealed: false })
+
+  const devUrl = rendererUrl()
+  if (devUrl) await overlay.loadURL(`${devUrl}/picker.html`)
+  else await overlay.loadFile(path.join(__dirname, '../renderer/picker.html'))
+}
+
 async function openDetachedEditorWindow(
   image: Electron.NativeImage,
   displayId: string,
   forcePng: boolean
 ): Promise<boolean> {
-  if (detachedEditor && !detachedEditor.window.isDestroyed()) {
-    if (detachedEditor.window.isMinimized()) detachedEditor.window.restore()
-    detachedEditor.window.show()
-    detachedEditor.window.focus()
-    return false
-  }
+  if (focusExistingDetachedEditor()) return false
 
   const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === displayId)
     ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
@@ -766,10 +948,16 @@ async function openDetachedEditorWindow(
     }
   })
   const size = image.getSize()
+  let resolveReady!: (opened: boolean) => void
+  const readyPromise = new Promise<boolean>((resolve) => { resolveReady = resolve })
   const state: DetachedEditorState = {
     id: randomUUID(),
     window,
     revealed: false,
+    readyPromise,
+    resolveReady,
+    readySettled: false,
+    readyTimer: null,
     payload: {
       sessionId: '',
       displayId,
@@ -786,21 +974,28 @@ async function openDetachedEditorWindow(
   }
   state.payload.sessionId = state.id
   detachedEditor = state
+  state.readyTimer = setTimeout(() => {
+    if (detachedEditor !== state || state.revealed) return
+    console.error('Detached screenshot editor did not become ready in time')
+    closeDetachedEditor(state)
+  }, DETACHED_EDITOR_READY_TIMEOUT_MS)
 
   window.on('closed', () => {
+    settleDetachedEditorReady(state, false)
     if (detachedEditor === state) detachedEditor = null
   })
-  window.webContents.on('did-finish-load', () => {
-    if (!window.isDestroyed() && detachedEditor === state) {
-      window.webContents.send('capture:initialize', state.payload)
-    }
+  window.webContents.on('render-process-gone', () => {
+    if (detachedEditor === state) closeDetachedEditor(state)
+  })
+  window.on('unresponsive', () => {
+    if (detachedEditor === state && !state.revealed) closeDetachedEditor(state)
   })
 
   try {
     const devUrl = rendererUrl()
     if (devUrl) await window.loadURL(devUrl)
     else await window.loadFile(path.join(__dirname, '../renderer/index.html'))
-    return true
+    return await state.readyPromise
   } catch (error) {
     console.error('Could not open detached screenshot editor', error)
     closeDetachedEditor(state)
@@ -812,7 +1007,6 @@ async function openDetachedEditorWindow(
 // renderer has loaded; the caller awaits all overlays together so they load concurrently.
 function overlayHtml(mode: CaptureMode): string {
   if (mode === 'gif') return 'gif.html'
-  if (mode === 'picker') return 'picker.html'
   return 'index.html'
 }
 
@@ -831,11 +1025,6 @@ async function spawnOverlay(
     owner.overlays.delete(webContentsId)
     if (session === owner && owner.overlays.size === 0) session = null
   })
-  overlay.webContents.on('did-finish-load', () => {
-    if (!overlay.isDestroyed() && session === owner) {
-      overlay.webContents.send('capture:initialize', payload)
-    }
-  })
   owner.overlays.set(webContentsId, { window: overlay, payload, revealed: false })
 
   const devUrl = rendererUrl()
@@ -849,6 +1038,7 @@ async function spawnOverlay(
 // happens after a region is chosen (screenshot exports; GIF starts recording).
 async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
   if (!(await ensureScreenPermission())) return
+  closePickerSession()
   closeSession()
 
   const displays = screen.getAllDisplays()
@@ -904,14 +1094,55 @@ function startCapture(): Promise<void> {
   return openSelectionOverlays('screenshot')
 }
 
-// The colour picker reuses the same frozen desktop as a screenshot, so the colour reported is
-// the tone-mapped pixel Capturo would capture rather than an untreated read-back (D-014). It
-// also means the desktop is frozen: a colour cannot be picked out of a running animation.
 async function startColorPicker(): Promise<void> {
-  await openSelectionOverlays('picker')
-  // No overlay came up - screen permission refused, or no display returned an image - so a colour
-  // window hidden for this pick would otherwise stay hidden with the colour still inside it.
-  if (!session) restoreColorWindow()
+  if (!(await ensureScreenPermission())) {
+    restoreColorWindow()
+    return
+  }
+  closeSession()
+  closePickerSession()
+
+  const displays = screen.getAllDisplays()
+  if (displays.length === 0) {
+    restoreColorWindow()
+    return
+  }
+
+  // The Windows picker intentionally uses one compact window so video hardware planes stay live.
+  // A sufficiently fast cursor can cross that surface between recenter operations, so CSS alone
+  // cannot guarantee that the arrow stays hidden. Balance the native cursor for the lifetime of
+  // this picker session; closePickerSession restores it on pick, cancel, replacement, and quit.
+  if (!isMac) systemCursorHiddenForPicker = await setSystemCursorHidden(true)
+
+  const owner: ColorPickerSession = { id: randomUUID(), overlays: new Map() }
+  pickerSession = owner
+  const cursor = screen.getCursorScreenPoint()
+  const loads: Promise<void>[] = []
+  if (isMac) {
+    for (const display of displays) {
+      for (const region of displayOverlayRegions(display)) {
+        loads.push(spawnPickerOverlay(owner, display, region, cursor))
+      }
+    }
+  } else {
+    // One compact window follows the pointer across displays. Unlike a monitor-sized transparent
+    // BrowserWindow, it does not disturb Chromium/DirectComposition video surfaces.
+    const display = screen.getDisplayNearestPoint(cursor)
+    loads.push(spawnPickerOverlay(
+      owner,
+      display,
+      { rect: floatingPickerRect(cursor, display.bounds, FLOATING_PICKER_MAX_SIZE), role: 'editor' },
+      cursor,
+      true
+    ))
+  }
+  try {
+    await Promise.all(loads)
+  } catch (error) {
+    console.error('Could not open live colour picker', error)
+    if (pickerSession === owner) closePickerSession()
+  }
+  if (!pickerSession || pickerSession.overlays.size === 0) restoreColorWindow()
 }
 
 function startGifCapture(): Promise<void> {
@@ -927,6 +1158,67 @@ function startGifCapture(): Promise<void> {
 function validSession(event: Electron.IpcMainInvokeEvent, sessionId: string): CaptureSession | null {
   if (!session || session.id !== sessionId || !session.overlays.has(event.sender.id)) return null
   return session
+}
+
+function validPicker(event: Electron.IpcMainInvokeEvent, sessionId: string): ColorPickerSession | null {
+  if (!pickerSession || pickerSession.id !== sessionId || !pickerSession.overlays.has(event.sender.id)) return null
+  return pickerSession
+}
+
+async function fallbackColorSample(
+  display: Electron.Display,
+  point: Point,
+  size: number
+): Promise<ColorSample> {
+  try {
+    const displays = screen.getAllDisplays()
+    const displayIndex = displays.findIndex((candidate) => candidate.id === display.id)
+    const sources = await captureSources(displays, [display])
+    const source = sourceForDisplay(sources, display, Math.max(0, displayIndex))
+    if (!source || source.thumbnail.isEmpty()) return { ok: false }
+    const image = source.thumbnail
+    const actual = image.getSize()
+    const expected = screen.dipToScreenRect(null, display.bounds)
+    const centerX = Math.round(point.x * actual.width / Math.max(1, expected.width))
+    const centerY = Math.round(point.y * actual.height / Math.max(1, expected.height))
+    const half = Math.floor(size / 2)
+    const left = centerX - half
+    const top = centerY - half
+    const x = Math.max(0, left)
+    const y = Math.max(0, top)
+    const width = Math.min(size - (x - left), actual.width - x)
+    const height = Math.min(size - (y - top), actual.height - y)
+    if (width <= 0 || height <= 0) return { ok: false }
+    return {
+      ok: true,
+      width: size,
+      height: size,
+      png: image.crop({ x, y, width, height }).toPNG(),
+      offsetX: x - left,
+      offsetY: y - top
+    }
+  } catch {
+    return { ok: false }
+  }
+}
+
+async function liveColorSample(display: Electron.Display, point: Point, size: number): Promise<ColorSample> {
+  if (captureHelperAvailable()) {
+    const physical = screen.dipToScreenRect(null, display.bounds)
+    const result = await sampleDisplayColor({
+      originX: physical.x,
+      originY: physical.y,
+      centerX: point.x,
+      centerY: point.y,
+      size
+    })
+    const pixels = result.pixels
+    if (result.ok && typeof pixels === 'string' &&
+        pixels.length === size * size * 6 && /^[0-9a-f]+$/i.test(pixels)) {
+      return { ok: true, width: size, height: size, pixels }
+    }
+  }
+  return fallbackColorSample(display, point, size)
 }
 
 function imageFromDataUrl(dataUrl: string): Electron.NativeImage | null {
@@ -1015,6 +1307,19 @@ function fromSettingsWindow(event: Electron.IpcMainInvokeEvent): boolean {
 
 function registerIpc(): void {
   ipcMain.handle('settings:get', () => getSettings())
+
+  // Renderer-owned initialization handshake. Returning the payload from an invoke means the
+  // listener and module are already installed, unlike a did-finish-load push that can race the
+  // renderer's onInitialize subscription and strand a hidden full editor.
+  ipcMain.handle('capture:request-initialization', (event): CapturePayload | null => {
+    const overlay = session?.overlays.get(event.sender.id)
+    if (overlay && !overlay.window.isDestroyed()) return overlay.payload
+    const editor = detachedEditor
+    if (editor && !editor.window.isDestroyed() && editor.window.webContents.id === event.sender.id) {
+      return editor.payload
+    }
+    return null
+  })
 
   ipcMain.handle('updates:check', (event): Promise<UpdateCheckResult> => {
     if (!fromSettingsWindow(event)) {
@@ -1117,6 +1422,7 @@ function registerIpc(): void {
       editor.window.show()
       editor.window.focus()
     }
+    settleDetachedEditorReady(editor, true)
     return true
   })
 
@@ -1161,18 +1467,94 @@ function registerIpc(): void {
     restoreColorWindow()
   })
 
-  // A colour was picked off the frozen desktop. Only an overlay of the live picker session may
-  // report one, and the value is clamped here rather than trusted: it crosses a process boundary
-  // and ends up in the clipboard.
+  ipcMain.handle('color:picker-ready', (event, sessionId: string) => {
+    const active = validPicker(event, sessionId)
+    const entry = active?.overlays.get(event.sender.id)
+    if (!entry || entry.window.isDestroyed()) return false
+    revealPickerOverlay(entry)
+    return true
+  })
+
+  ipcMain.handle('color:picker-recenter', (event, sessionId: string, request: unknown) => {
+    const active = validPicker(event, sessionId)
+    const entry = active?.overlays.get(event.sender.id)
+    if (!active || !entry || entry.window.isDestroyed() || !entry.payload.floating) return false
+    if (!request || typeof request !== 'object') return false
+    const { cursor: rawCursor, center: rawCenter } = request as { cursor?: Partial<Point>; center?: Partial<Point> }
+    if (!rawCursor || !rawCenter ||
+        !Number.isFinite(rawCursor.x) || !Number.isFinite(rawCursor.y) ||
+        !Number.isFinite(rawCenter.x) || !Number.isFinite(rawCenter.y)) return false
+    const cursor = { x: Math.round(rawCursor.x as number), y: Math.round(rawCursor.y as number) }
+    const center = { x: Math.round(rawCenter.x as number), y: Math.round(rawCenter.y as number) }
+    const display = screen.getAllDisplays().find((candidate) => cursorForDisplay(cursor, candidate.bounds) !== null)
+    if (!display) return false
+
+    // Balance the compact surface between the physical pointer and Capturo's slowed owned point.
+    // Centring only on the physical cursor gives zoom-scaled movement half as much usable separation and
+    // forces an abrupt one-to-one catch-up when a fast sweep reaches that limit.
+    const rect = floatingPickerRect(center, display.bounds, FLOATING_PICKER_MAX_SIZE)
+    const currentBounds = entry.window.getBounds()
+    if (currentBounds.x !== rect.x || currentBounds.y !== rect.y ||
+        currentBounds.width !== rect.width || currentBounds.height !== rect.height) {
+      entry.window.setBounds(rect)
+    }
+    if (String(display.id) !== entry.payload.displayId) {
+      // Crossing a display changes both the DIP-to-device-pixel scale and the native output the
+      // sample request must address. Reinitialize the same small window in the new coordinate
+      // space instead of creating monitor-sized surfaces ahead of time.
+      entry.payload = buildPickerPayload(
+        active.id,
+        display,
+        { rect, role: 'editor' },
+        cursor,
+        true
+      )
+      entry.window.webContents.send('color:picker-initialize', entry.payload)
+    } else {
+      // Keep main's payload consistent with the renderer's predicted origin without forcing a
+      // reinitialization that would reset zoom-scaled displacement on every window move.
+      entry.payload = {
+        ...entry.payload,
+        regionOrigin: { x: rect.x - display.bounds.x, y: rect.y - display.bounds.y }
+      }
+    }
+    return true
+  })
+
+  ipcMain.handle('color:sample', async (event, sessionId: string, point: unknown, size: unknown) => {
+    const active = validPicker(event, sessionId)
+    const entry = active?.overlays.get(event.sender.id)
+    const validSize = typeof size === 'number' && PICKER_ZOOM_LEVELS.some((level) => level.cells === size)
+    if (!active || !entry || !point || typeof point !== 'object' || !validSize) return { ok: false }
+    const { x, y } = point as Partial<Point>
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false }
+    const px = Math.round(x as number)
+    const py = Math.round(y as number)
+    if (px < 0 || py < 0 || px >= entry.payload.imageSize.width || py >= entry.payload.imageSize.height) {
+      return { ok: false }
+    }
+    const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === entry.payload.displayId)
+    if (!display) return { ok: false }
+    return liveColorSample(display, { x: px, y: py }, size)
+  })
+
+  ipcMain.handle('color:picker-cancel', (event, sessionId: string) => {
+    if (!validPicker(event, sessionId)) return
+    closePickerSession()
+    restoreColorWindow()
+  })
+
+  // Only an overlay of the live picker session may report a colour, and the value is clamped here
+  // rather than trusted: it crosses a process boundary and ends up in the clipboard.
   ipcMain.handle('color:pick', (event, sessionId: string, color: unknown) => {
-    const active = validSession(event, sessionId)
-    if (!active || active.mode !== 'picker') return false
+    const active = validPicker(event, sessionId)
+    if (!active) return false
     if (!color || typeof color !== 'object') return false
     const { r, g, b } = color as Partial<Rgb>
     if (typeof r !== 'number' || typeof g !== 'number' || typeof b !== 'number') return false
 
     const value = normalizeRgb({ r, g, b })
-    closeSession()
+    closePickerSession()
 
     // Copying is the point of picking a colour, so it happens without a second action unless the
     // user has turned that off in Settings. The window still opens on top of it for adjusting,
@@ -1213,23 +1595,12 @@ function registerIpc(): void {
     if (!colorWindow || colorWindow.isDestroyed()) return
     if (event.sender.id !== colorWindow.webContents.id) return
 
-    // Hide the window for the duration of the pick. It would otherwise sit over the very pixels
-    // the user is trying to sample - the desktop is frozen with it in shot, so whatever it covers
-    // is unpickable - and, being the foreground window, it would keep the keyboard and leave
-    // Escape doing nothing on the overlay. It keeps its colour while hidden and comes back on
-    // either outcome; see restoreColorWindow.
+    // Hide the result window for the duration of the pick so the user can reach the pixels behind
+    // it. The live picker does not take a frozen frame, so there is no compositor-settle delay.
     colorWindowHiddenForPick = true
-
-    // The picker freezes the desktop the moment it starts, so the colour window has to be off the
-    // screen before that happens or everything it covers is unpickable: gone from the screen but
-    // still in the picture. hide() alone is not enough, because Windows animates it out and the
-    // frozen frame catches it mid-fade, semi-transparent over the content behind it. Dropping the
-    // opacity first is immediate and unanimated - the same reason the overlays themselves are
-    // shown at zero opacity (D-010, D-011) - so hide() then animates something already invisible.
-    // The short settle covers the compositor's own frame of lag.
     colorWindow.setOpacity(0)
     colorWindow.hide()
-    setTimeout(() => void startColorPicker(), COLOR_WINDOW_HIDE_SETTLE_MS)
+    void startColorPicker()
   })
 
   // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
@@ -1416,10 +1787,7 @@ function registerIpc(): void {
       if (!active || active.mode !== 'screenshot' || !entry || entry.payload.role !== 'editor') {
         return { opened: false, error: 'This capture is no longer available.' }
       }
-      if (detachedEditor && !detachedEditor.window.isDestroyed()) {
-        if (detachedEditor.window.isMinimized()) detachedEditor.window.restore()
-        detachedEditor.window.show()
-        detachedEditor.window.focus()
+      if (focusExistingDetachedEditor()) {
         return { opened: false, error: 'A full editor is already open. Finish or close it before opening another.' }
       }
       if (typeof dataUrl !== 'string' || dataUrl.length > MAX_DETACHED_IMAGE_DATA_URL_CHARS) {
@@ -2066,6 +2434,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     isQuitting = true
     closeSession()
+    closePickerSession()
     closeRecording()
     closeGifPreview()
     cancelAutomaticUpdateCheck()

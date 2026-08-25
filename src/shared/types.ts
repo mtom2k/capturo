@@ -173,6 +173,7 @@ export type OpenDetachedEditorResult =
 
 export type CapturoApi = {
   onInitialize: (listener: (payload: CapturePayload) => void) => () => void
+  requestInitialization: () => Promise<CapturePayload | null>
   onSessionClosed: (listener: () => void) => () => void
   onScene: (listener: (scene: SceneUpdate) => void) => () => void
   publishScene: (sessionId: string, scene: SceneUpdate) => void

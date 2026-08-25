@@ -9,18 +9,8 @@
   <body class="picker-body">
     <canvas id="capture-canvas" aria-label="Screen color picker"></canvas>
 
-    <div id="hint" class="hint">Click to pick a color · Hold Shift for pixel-by-pixel · Esc to cancel</div>
-
-    <div id="magnifier" class="magnifier" hidden>
-      <canvas id="magnifier-canvas" class="magnifier-canvas" width="200" height="200"></canvas>
-      <div class="magnifier-caption">
-        <span id="magnifier-hex" class="magnifier-hex">#000000</span>
-        <span id="magnifier-fine" class="magnifier-fine" hidden>Fine</span>
-      </div>
-    </div>
-
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./picker.ts"></script>
+    <script type="module" src="./picker-live.ts"></script>
   </body>
 </html>

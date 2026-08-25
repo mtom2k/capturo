@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.22.2-blue)
+![version](https://img.shields.io/badge/version-0.22.3-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -32,11 +32,17 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 
 Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
 
-Source is at **0.22.2**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
+Source is at **0.22.3**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.22.2 adds a normal full editor window that frees the desktop after region selection, and includes the 0.22.1 HDR correction that preserves RGB channel ratios when bright FP16 pixels are mapped into an SDR image. Version 0.22.0 adds local macOS Copy text, moves the default capture shortcuts away from macOS system bindings, and includes the Highlighter and screen color picker introduced in 0.21.0.
+Version 0.22.3 makes Color Picker a live, transparent tool: invoking it no longer freezes,
+tints, blurs, or blacks out the screen—including paused and playing browser video—and its Windows
+samples retain Capturo's HDR-aware color conversion. Version
+0.22.2 adds a normal full editor window that frees the desktop after region selection, and includes
+the 0.22.1 HDR correction that preserves RGB channel ratios when bright FP16 pixels are mapped into
+an SDR image. Version 0.22.0 adds local macOS Copy text and the screen color picker introduced in
+0.21.0.
 
 ## 🍎 macOS
 
@@ -76,12 +82,14 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 
 - Select, move, and resize a precise screen region on scaled or multi-display desktops.
 - Draw with Pen, Highlighter, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
-- Highlight without covering: the stroke multiplies into the image, so text underneath stays
-  readable. Hold **Shift** or **Ctrl** to run it straight along a line of text.
+- Highlight with a vivid translucent marker stroke that remains visible on both light and dark
+  captures while the marked content stays readable. Hold **Shift** or **Ctrl** to run it straight
+  along a line of text.
 - Add Blur and Pixelate regions with independent 1 to 100 percent intensity.
 - Remove a connected background color with tolerance, feathering, live Before/After/Split preview, and Undo.
 - Extract visible text with local OCR and copy it as plain text — Windows OCR on Windows, Apple's Vision framework on macOS.
-- Pick a color from anywhere on screen with a magnifier that replaces the cursor, copied to the clipboard on the spot, then adjust it as HEX, RGB, or HSL.
+- Pick a live color from anywhere on screen without freezing or tinting the desktop; the magnifier
+  replaces the cursor, copies on the spot, and opens HEX, RGB, and HSL controls.
 - Record a GIF with a configurable pre-timer, frame rate, quality, pause/resume, and protected recording controls.
 - Review GIFs before export, then Copy, Save, Open folder, Retake, or Discard.
 - Capture HDR displays through a native Windows helper without washed-out SDR content or discolored HDR highlights (Windows only).
@@ -105,7 +113,8 @@ The primary toolbar stays close to the selection. A second row appears only when
 current visible selection, including annotations and transparency, closes the full-screen overlay,
 and opens a resizable, minimizable window with the same editing and export tools. That window stays
 available if you start another capture. Capturo keeps one full editor at a time and focuses it
-rather than replacing unsaved work.
+rather than replacing unsaved work. The overlay closes only after the full editor has decoded and
+become visible; a failed hidden startup is discarded instead of blocking the next attempt.
 
 Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
 
@@ -133,25 +142,33 @@ The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places th
 
 ## 🖍️ Highlighter
 
-The Highlighter sits directly right of the Pen (`H`) and **marks without covering**. Its stroke
-multiplies into the image, so text underneath keeps its contrast and stays readable — unlike the
-Pen, which paints over what it crosses.
+The Highlighter sits directly right of the Pen (`H`) and lays a bright translucent marker colour
+over the image. It is deliberately much stronger than the former dark-only blend, so red, amber,
+green, blue, violet, white, and black remain visibly distinct on dark interfaces as well as light
+pages while the content underneath remains readable.
 
 Every annotation color works, **Shift** or **Ctrl** locks the stroke straight for running along a
 line of text, and it carries its own Size range separate from the Pen's, wide enough to cover a
-line of text. A stroke that crosses itself stays one even tone rather than darkening at the
+line of text. A stroke that crosses itself stays one even tone rather than building up at the
 crossing.
-
-Because it can only darken, the effect is deliberately subtle on very dark backgrounds — there it
-tints the text rather than the background behind it.
 
 ## 🎨 Color picker
 
-**Color picker** in the tray menu, or `Ctrl/Cmd+Shift+9`, freezes the desktop and replaces your mouse cursor with a
-magnifier, centred on the pixel it is reading: the surrounding pixels at 17x, the sampled one
-outlined in the middle of the aperture, and its hex value below. Hold **Shift** to slow sampling to an eighth speed, which is what makes a one-pixel
-border or an anti-aliased edge pickable; the arrow keys nudge exactly one pixel. Click, `Enter`,
-or `Space` picks; `Esc` cancels.
+**Color picker** in the tray menu, or `Ctrl/Cmd+Shift+9`, opens immediately without freezing or
+tinting the desktop and replaces your mouse cursor with a magnifier centred on the live pixel it is
+reading: a wide surrounding-pixel view by default, the sampled one
+outlined in the middle of the aperture, and its hex value below. The arrow keys nudge exactly one
+pixel. Click, `Enter`,
+or `Space` picks; `Esc` cancels. No instruction popup covers the screen when the picker opens, and
+the magnifier remains visible through long precision sweeps.
+
+Use the **mouse wheel** over the picker for five-step magnification. It starts at the widest view;
+scroll up to magnify and down to zoom out. Tighter views automatically slow the owned selector, so
+precise picking is controlled entirely by the selected zoom level. Shift does not change picker
+movement. The tightest level is also velocity-limited, so a fast physical sweep cannot make the
+sample race across the screen; on Windows the system cursor remains hidden even if it briefly
+outruns the compact picker surface. Capturo keeps zoom state out of the readout so only the hex is
+shown.
 
 **Picking copies the color straight to your clipboard**, in whichever format you choose under
 Settings → Color picker, where the shortcut is rebindable and automatic copying can be turned off
@@ -161,8 +178,9 @@ directly, copy again in another format with `Ctrl/Cmd+C`, or use **Pick again** 
 screen without losing the color you already have. The window gets out of the way while you pick, so
 you can sample the pixels it was covering.
 
-Because the desktop is frozen when the picker opens, a color cannot be picked out of a playing
-video or animation; reopen the picker to sample the current frame.
+The screen stays live while the picker is open, so video, animation, and changing application UI
+can be sampled directly. On Windows the same HDR-aware conversion used for screenshots supplies the
+magnifier without painting a screenshot over the desktop.
 
 ## ⌨️ Shortcuts
 
@@ -219,10 +237,6 @@ Preferences live in `settings.json` under Capturo's user-data folder. The file c
   builds are ad-hoc signed rather than notarized, so Gatekeeper refuses them after download and the
   Screen Recording grant lapses on every upgrade. Support needs an Apple Developer ID certificate,
   not more code. See [RELEASING.md](./RELEASING.md).
-- The highlighter is deliberately subtle on very dark backgrounds. It multiplies into the image so
-  it can never hide what it marks, and multiplying a near-black pixel by any color leaves it
-  near-black. Rectangle and Blur are the tools for emphasis that does not depend on the background.
-
 ## 🛠️ Build from source
 
 Capturo needs Node.js 20 or newer.

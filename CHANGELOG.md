@@ -2,6 +2,89 @@
 
 ## Unreleased
 
+## 0.22.3 - 2026-08-24
+
+### Added
+
+- **Color Picker now supports stepped wheel magnification.** Scroll up through 8×, 12×, 15×,
+  22×, and 40× aperture levels; scroll down to zoom back out. The tighter three levels
+  automatically slow the owned selector to 1/2, 1/4, and 1/8 speed, making precision selection
+  part of zoom itself. It opens at the widest level and displays no zoom badge, leaving only the
+  useful color value below the aperture.
+
+### Fixed
+
+- **Color Picker no longer jumps past the pointer when its compact window recentres.** The renderer
+  predicts the same next window origin as the main process, paints the selector in that coordinate
+  space before moving the native window, and derives the owned selector's screen position directly
+  from display/image coordinates. Windows can no longer carry an old local bitmap one frame beyond
+  the cursor and then snap it back.
+- **The Color Picker hex readout is now sharp on scaled displays.** Both the visible canvas and its
+  offscreen aperture use device-pixel-sized backing stores with logical-coordinate transforms. The
+  caption is device-pixel aligned and uses a clearer 14px semibold Segoe UI face instead of a
+  browser-upscaled 1× bitmap.
+- **A delayed Color Picker sample can no longer cross monitor ownership.** Live grids carry their
+  display id, monitor reinitialization clears the prior preview, and both preview acceptance and
+  clicking require the current display as well as the current point and zoom size.
+- **Open in full tab no longer leaves an invisible editor blocking future attempts.** Screenshot
+  and GIF renderers now request their initialization payload only after their listeners are
+  installed. A detach is reported as opened—and the overlay closes—only after the full editor has
+  decoded its checkpoint and visibly acknowledged readiness. Failed or timed-out hidden windows
+  are cleared so the next detach can retry normally.
+- **Fast Color Picker movement can no longer expose the Windows arrow cursor.** The native helper
+  balances the system cursor for the lifetime of a live picker session and restores it on pick,
+  cancel, replacement, and helper shutdown, covering the instant when a physical pointer outruns
+  the compact transparent window.
+- **Maximum Color Picker zoom stays precise during very fast mouse movement.** The tightest
+  five-pixel view now has an 80 source-pixel-per-second movement ceiling in addition to its 1/8
+  movement factor; intermediate precision levels have progressively higher ceilings.
+
+- **Abrupt Color Picker direction changes no longer leave brief magnifier trails.** The aperture
+  and hex caption now render as one frame-synchronized canvas, with the complete previous surface
+  replaced through a transparent copy-composite before the newest selector position is drawn. Raw
+  pointer events are coalesced to one visual update per display frame, eliminating retained
+  transparent child layers, partial dirty rectangles, and stale moves.
+- **Fast precision-zoom movement is now stable while the Windows picker follows the cursor.** Pointer
+  travel is derived from absolute screen positions rather than BrowserWindow-relative movement
+  values that spike or reverse when the compact surface recentres. Recenter requests retain the
+  newest physical position instead of discarding events while a previous window move is in flight,
+  and balance the surface between the physical and owned points to preserve more precision travel.
+- **Zoom-scaled Color Picker movement no longer lets the selector disappear.** The compact Windows
+  picker now bounds the owned sample point by the live room around the physical pointer and
+  recentres when either one approaches the floating surface edge. The full magnifier therefore
+  stays visible during long precision-zoom sweeps instead of being clipped outside its window.
+
+- **Color Picker no longer blurs or blacks out browser video on Windows.** A monitor-sized
+  transparent Electron surface forced Chromium video out of its hardware plane even when the
+  video was paused. Windows now uses one compact 640×640 content-protected picker window that
+  follows the pointer and changes display coordinate space at monitor seams. The desktop stays
+  live, video remains sharp and pickable, and the magnifier still cannot sample itself.
+- **The live Color Picker remains visually transparent in packaged builds.** The picker body was
+  transparent, but the shared root `html` surface still carried Capturo's dark navy application
+  background. Windows could therefore composite an opaque navy monitor-sized layer even while
+  live sampling correctly read the colors underneath. The picker-only stylesheet now clears both
+  root layers explicitly.
+- **The magnifier no longer disappears while the pointer is moving.** It now follows the cursor
+  continuously using the last valid live grid while the newest coalesced sample is in flight. A
+  click still obtains an exact sample for the current pixel before reporting the color.
+
+### Changed
+
+- **Shift no longer changes Color Picker movement.** Precision is selected only with the five wheel
+  zoom levels or exact arrow-key nudges. The renderer no longer reads modifier state, maintains a
+  temporary fine mode, or installs Shift-specific keyup/blur handlers.
+- **Highlighter colours are substantially brighter.** Highlight strokes now use a 52% translucent
+  marker blend instead of dark-only multiply, making every palette colour clearly visible on dark
+  application captures as well as light pages while preserving one-tone self-crossings and flat
+  marker ends.
+- **Color Picker no longer shows an invocation instruction popup.** It opens directly with only
+  the live magnifier and its color readout.
+- **Color Picker is now live and no longer freezes or tints the desktop.** Invoking it creates only
+  a transparent interaction surface; the magnifier requests a tiny current pixel grid as the
+  pointer moves. On Windows those pixels come through the existing HDR-aware FP16 helper, and the
+  picker windows are excluded from Desktop Duplication so the magnifier cannot sample itself.
+  Screenshot and GIF selection keep their frozen-desktop behavior. See D-041.
+
 ## 0.22.2 - 2026-08-22
 
 ### Added

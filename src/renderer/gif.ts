@@ -320,3 +320,7 @@ window.capturo.onScene((scene) => {
   selection = scene.selection
   redraw()
 })
+
+void window.capturo.requestInitialization().then((initialPayload) => {
+  if (initialPayload) initialize(initialPayload)
+})

@@ -1,19 +1,43 @@
 // Pointer model and sampling geometry for the colour picker's magnifier. Kept pure and separate
-// from the overlay so the fine-movement behaviour, which is fiddly and easy to regress, is
+// from the overlay so zoom-scaled movement, which is fiddly and easy to regress, is
 // covered by tests rather than only by dragging a mouse across a screen.
 
 import type { Rgb } from './color'
 
 export type Point = { x: number; y: number }
 export type Bounds = { width: number; height: number }
+export type OffsetLimits = { minX: number; maxX: number; minY: number; maxY: number }
 
-// How far the sampled point moves per unit of physical mouse movement while Shift is held. One
-// eighth means a full mouse-width sweep still lands inside a small icon, which is the point:
-// picking a one-pixel border is otherwise a matter of luck.
-export const FINE_FACTOR = 1 / 8
+// The tightest zoom level moves the sampled point by one eighth of physical pointer travel.
+// Precision is selected only by wheel zoom; keyboard modifiers do not alter pointer movement.
+export const MAXIMUM_ZOOM_MOVEMENT_FACTOR = 1 / 8
+
+// A monitor-sized transparent Electron surface can disrupt Chromium hardware-video planes on
+// Windows. Keep the floating picker comfortably below a display-sized surface while leaving room
+// for the selector and zoom-scaled displacement.
+export const FLOATING_PICKER_MAX_SIZE = 640
+
+// Wheel zoom changes both how many source pixels fit into the fixed 200px aperture and, at the
+// tighter levels, how quickly Capturo's owned sample point moves. Start with the widest view and
+// let the user scroll up into precision. Every grid is odd so one source pixel is always centred.
+export const PICKER_ZOOM_LEVELS = [
+  { cells: 25, movementFactor: 1, maxSpeed: Number.POSITIVE_INFINITY },
+  { cells: 17, movementFactor: 1, maxSpeed: Number.POSITIVE_INFINITY },
+  { cells: 13, movementFactor: 1 / 2, maxSpeed: 720 },
+  { cells: 9, movementFactor: 1 / 4, maxSpeed: 240 },
+  { cells: 5, movementFactor: MAXIMUM_ZOOM_MOVEMENT_FACTOR, maxSpeed: 80 }
+] as const
+export const DEFAULT_PICKER_ZOOM_INDEX = 0
+
+export function stepPickerZoomIndex(index: number, wheelDeltaY: number): number {
+  const current = Math.min(Math.max(Math.round(Number.isFinite(index) ? index : DEFAULT_PICKER_ZOOM_INDEX), 0), PICKER_ZOOM_LEVELS.length - 1)
+  if (!Number.isFinite(wheelDeltaY) || wheelDeltaY === 0) return current
+  const direction = wheelDeltaY < 0 ? 1 : -1
+  return Math.min(Math.max(current + direction, 0), PICKER_ZOOM_LEVELS.length - 1)
+}
 
 // How much of a coarse movement is spent pulling the sample back onto the physical cursor.
-// Fine movement necessarily displaces the two, and the physical cursor stops at the edge of the
+// Precision zoom necessarily displaces the two, and the physical cursor stops at the edge of the
 // screen: with a displacement of 300px still standing, the cursor pinned against the left edge
 // leaves everything left of x=300 unreachable. Bleeding the displacement off over ordinary
 // coarse movement restores the whole screen without the visible jump a hard resync would cause.
@@ -22,9 +46,9 @@ export const OFFSET_DECAY = 0.5
 export type PointerState = {
   // Sampled position in source-image pixels.
   point: Point
-  // How far the sampled point has been displaced from the physical cursor by fine movement.
+  // How far the sampled point has been displaced from the physical cursor by zoom-scaled movement.
   // The real cursor is hidden under the overlay, so this displacement is invisible; it exists
-  // only so leaving fine mode does not snap the magnifier somewhere else.
+  // only so zooming back out does not snap the magnifier somewhere else.
   offset: Point
 }
 
@@ -41,6 +65,14 @@ function finite(value: number): number {
   return Number.isFinite(value) ? value : 0
 }
 
+/** Stable movement between absolute points; unaffected by a floating window changing position. */
+export function pointDelta(previous: Point, current: Point): Point {
+  return {
+    x: finite(current.x) - finite(previous.x),
+    y: finite(current.y) - finite(previous.y)
+  }
+}
+
 // Pulls a displacement towards zero by a share of how far the cursor just travelled, never
 // overshooting past zero and never reversing the direction of travel.
 function decayOffset(offset: number, delta: number): number {
@@ -53,8 +85,8 @@ function decayOffset(offset: number, delta: number): number {
 /**
  * Advances the sampled point for one pointer movement.
  *
- * Fine movement advances the sample by a fraction of the cursor's delta, which necessarily
- * displaces it from the cursor. That displacement is carried in `offset` so releasing Shift does
+ * Precision zoom advances the sample by a fraction of the cursor's delta, which necessarily
+ * displaces it from the cursor. That displacement is carried in `offset` so zooming back out does
  * not teleport the magnifier to wherever the physical cursor drifted to.
  *
  * Coarse movement then bleeds the displacement off gradually, rather than tracking one-to-one.
@@ -62,27 +94,81 @@ function decayOffset(offset: number, delta: number): number {
  * the screen unreachable once the physical cursor is pinned against an edge. Clamping also
  * recomputes the offset from the clamped result, which collapses it at the edges.
  */
-export function advancePointer(
+/** Advances the owned point at a discrete zoom/precision movement factor. */
+export function advancePointerAtFactor(
   state: PointerState,
   cursor: Point,
   delta: Point,
-  fine: boolean,
-  bounds: Bounds
+  movementFactor: number,
+  bounds: Bounds,
+  maxDistance = Number.POSITIVE_INFINITY
 ): PointerState {
   const dx = finite(delta.x)
   const dy = finite(delta.y)
   const cursorX = finite(cursor.x)
   const cursorY = finite(cursor.y)
+  const factor = Number.isFinite(movementFactor)
+    ? Math.min(Math.max(movementFactor, MAXIMUM_ZOOM_MOVEMENT_FACTOR), 1)
+    : 1
 
-  const offsetX = fine ? state.offset.x + dx * (FINE_FACTOR - 1) : decayOffset(state.offset.x, dx)
-  const offsetY = fine ? state.offset.y + dy * (FINE_FACTOR - 1) : decayOffset(state.offset.y, dy)
+  if (factor < 1) {
+    // Reconstruct the previous owned point from the previous physical cursor and stored offset.
+    // This is normally identical to state.point; keeping the relationship authoritative also
+    // collapses a stale displacement safely when an image edge has clamped one side.
+    const startX = cursorX - dx + state.offset.x
+    const startY = cursorY - dy + state.offset.y
+    let stepX = dx * factor
+    let stepY = dy * factor
+    const requestedDistance = Math.hypot(stepX, stepY)
+    const allowedDistance = Number.isFinite(maxDistance) ? Math.max(0, maxDistance) : Number.POSITIVE_INFINITY
+    if (requestedDistance > allowedDistance && requestedDistance > 0) {
+      const scale = allowedDistance / requestedDistance
+      stepX *= scale
+      stepY *= scale
+    }
+    const x = clampAxis(startX + stepX, bounds.width)
+    const y = clampAxis(startY + stepY, bounds.height)
+    return { point: { x, y }, offset: { x: x - cursorX, y: y - cursorY } }
+  }
+
+  const offsetX = decayOffset(state.offset.x, dx)
+  const offsetY = decayOffset(state.offset.y, dy)
 
   const x = clampAxis(cursorX + offsetX, bounds.width)
   const y = clampAxis(cursorY + offsetY, bounds.height)
   return { point: { x, y }, offset: { x: x - cursorX, y: y - cursorY } }
 }
 
-/** Arrow-key nudge, which is always pixel-exact regardless of Shift. */
+/**
+ * Keeps an owned sample point within the space available around the physical cursor.
+ *
+ * Windows uses a compact floating picker surface so it does not interfere with hardware video
+ * planes. Precision zoom deliberately lets the sample trail the cursor, so an unbounded offset can
+ * eventually put the magnifier outside that surface. The renderer supplies the live, asymmetric
+ * room on each side of the cursor; this clamps only when the selector would otherwise be clipped.
+ */
+export function constrainPointerOffset(
+  state: PointerState,
+  cursor: Point,
+  limits: OffsetLimits,
+  bounds: Bounds
+): PointerState {
+  const cursorX = finite(cursor.x)
+  const cursorY = finite(cursor.y)
+  const minX = Math.min(finite(limits.minX), finite(limits.maxX))
+  const maxX = Math.max(finite(limits.minX), finite(limits.maxX))
+  const minY = Math.min(finite(limits.minY), finite(limits.maxY))
+  const maxY = Math.max(finite(limits.minY), finite(limits.maxY))
+  const desiredX = finite(state.point.x) - cursorX
+  const desiredY = finite(state.point.y) - cursorY
+  const offsetX = Math.min(Math.max(desiredX, minX), maxX)
+  const offsetY = Math.min(Math.max(desiredY, minY), maxY)
+  const x = clampAxis(cursorX + offsetX, bounds.width)
+  const y = clampAxis(cursorY + offsetY, bounds.height)
+  return { point: { x, y }, offset: { x: x - cursorX, y: y - cursorY } }
+}
+
+/** Arrow-key nudge, which is always pixel-exact regardless of zoom level. */
 export function nudgePointer(state: PointerState, delta: Point, bounds: Bounds): PointerState {
   const x = clampAxis(Math.round(state.point.x) + delta.x, bounds.width)
   const y = clampAxis(Math.round(state.point.y) + delta.y, bounds.height)
@@ -123,6 +209,47 @@ export function cursorForDisplay(
   return inside ? { x: cursor.x - bounds.x, y: cursor.y - bounds.y } : null
 }
 
+/**
+ * A compact picker window centred on a screen-space point.
+ *
+ * The 16px reserve is load-bearing on Windows: a transparent window that equals a display
+ * dimension can be classified/composed as a monitor surface and disrupt hardware video planes.
+ * The rectangle may hang outside the display so the real pointer remains inside it while crossing
+ * a monitor seam or reaching an outer edge.
+ */
+export function floatingPickerRect(
+  point: Point,
+  bounds: Point & Bounds,
+  maxSize = FLOATING_PICKER_MAX_SIZE
+): { x: number; y: number; width: number; height: number } {
+  const limit = Math.max(1, Math.floor(maxSize))
+  const width = Math.max(1, Math.min(limit, bounds.width - 16))
+  const height = Math.max(1, Math.min(limit, bounds.height - 16))
+  return {
+    x: Math.round(point.x - width / 2),
+    y: Math.round(point.y - height / 2),
+    width,
+    height
+  }
+}
+
+/**
+ * Predicts the floating window's next display-relative origin from the same geometry main uses.
+ *
+ * This is needed before a recenter IPC is sent. Moving a transparent native window carries its
+ * existing bitmap with it; if the renderer waits for `window.screenX/Y` to update, the selector is
+ * carried past the cursor for one frame and then snaps back. Painting against this predicted origin
+ * makes the local selector position and the native window move land on the same screen point.
+ */
+export function floatingPickerRegionOrigin(
+  center: Point,
+  displayBounds: Point & Bounds,
+  maxSize = FLOATING_PICKER_MAX_SIZE
+): Point {
+  const rect = floatingPickerRect(center, displayBounds, maxSize)
+  return { x: rect.x - displayBounds.x, y: rect.y - displayBounds.y }
+}
+
 /** Reads one pixel out of RGBA image data, or null when the point lies outside it. */
 export function pixelAt(
   data: Uint8ClampedArray | Uint8Array,
@@ -139,14 +266,30 @@ export function pixelAt(
   return { r: data[index], g: data[index + 1], b: data[index + 2] }
 }
 
+/** Decodes the native helper's compact row-major RRGGBB grid into canvas-ready RGBA bytes. */
+export function parseRgbHexGrid(value: string, width: number, height: number): Uint8ClampedArray | null {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) return null
+  if (value.length !== width * height * 6 || !/^[0-9a-f]+$/i.test(value)) return null
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    const source = pixel * 6
+    const target = pixel * 4
+    data[target] = parseInt(value.slice(source, source + 2), 16)
+    data[target + 1] = parseInt(value.slice(source + 2, source + 4), 16)
+    data[target + 2] = parseInt(value.slice(source + 4, source + 6), 16)
+    data[target + 3] = 255
+  }
+  return data
+}
+
 /**
  * Top-left of the magnifier, which is centred on the sampled point: the magnifier *is* the
  * cursor, and its centre cell is the pixel being picked.
  *
- * Deliberately not clamped into the viewport. Nudging it back from an edge would slide its centre
- * off the sampled pixel, and the centre is the whole readout - a magnifier that lies about which
- * pixel it is showing is worse than one that is clipped. Near an edge it simply hangs off, and
- * the overlay clips it.
+ * Deliberately not clamped here. Nudging it back from an edge would slide its centre off the
+ * sampled pixel, and the centre is the whole readout - a magnifier that lies about which pixel it
+ * is showing is worse than one that is clipped. Full-display overlays may clip it at a true screen
+ * edge; the compact Windows renderer instead constrains the owned sample point before placement.
  */
 export function magnifierPlacement(point: Point, size: number): Point {
   return { x: point.x - size / 2, y: point.y - size / 2 }

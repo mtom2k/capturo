@@ -4,7 +4,7 @@ import type { CapturoSettingsApi, SettingsUpdate } from '../shared/settings'
 import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shared/gif'
 import type { CapturoUpdatesApi } from '../shared/updates'
 import type { CapturoPermissionsApi } from '../shared/permissions'
-import type { CapturoColorApi, PickedColor, Rgb } from '../shared/color'
+import type { CapturoColorApi, ColorPickerPayload, PickedColor, Rgb } from '../shared/color'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -12,6 +12,7 @@ const api: CapturoApi = {
     ipcRenderer.on('capture:initialize', handler)
     return () => ipcRenderer.removeListener('capture:initialize', handler)
   },
+  requestInitialization: () => ipcRenderer.invoke('capture:request-initialization'),
   onScene(listener) {
     const handler = (_event: Electron.IpcRendererEvent, scene: SceneUpdate): void => listener(scene)
     ipcRenderer.on('capture:scene', handler)
@@ -88,6 +89,15 @@ const colorApi: CapturoColorApi = {
     ipcRenderer.on('color:initialize', handler)
     return () => ipcRenderer.removeListener('color:initialize', handler)
   },
+  onPickerInitialize(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ColorPickerPayload): void => listener(payload)
+    ipcRenderer.on('color:picker-initialize', handler)
+    return () => ipcRenderer.removeListener('color:picker-initialize', handler)
+  },
+  sample: (sessionId, point, size) => ipcRenderer.invoke('color:sample', sessionId, point, size),
+  pickerReady: (sessionId) => ipcRenderer.invoke('color:picker-ready', sessionId),
+  recenterPicker: (sessionId, point) => ipcRenderer.invoke('color:picker-recenter', sessionId, point),
+  cancelPicker: (sessionId) => ipcRenderer.invoke('color:picker-cancel', sessionId),
   pick: (sessionId: string, color: Rgb) => ipcRenderer.invoke('color:pick', sessionId, color),
   copy: (text: string) => ipcRenderer.invoke('color:copy', text),
   pickAgain: () => ipcRenderer.invoke('color:pick-again')

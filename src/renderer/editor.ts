@@ -1326,3 +1326,12 @@ window.capturo.onScene((scene) => {
   selection = scene.selection
   redraw()
 })
+
+// Pull initialization only after this module has installed every listener. Main used to push the
+// payload from did-finish-load; on an unlucky load ordering that event arrived before the module's
+// onInitialize listener existed, leaving a hidden detached editor registered as already open.
+// This renderer-owned handshake cannot miss its listener because the request itself proves the
+// renderer is ready to receive the response.
+void window.capturo.requestInitialization().then((initialPayload) => {
+  if (initialPayload) initialize(initialPayload)
+})

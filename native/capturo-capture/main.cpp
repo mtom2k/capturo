@@ -13,6 +13,8 @@
 //     capturo-capture.exe --output <file.png> [--origin-x X --origin-y Y] [--sdr-white-nits N]
 //   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin:
 //     "<originX>\t<originY>\t<outputPath>" captures a display and
+//     "sample-display\t<originX>\t<originY>\t<centerX>\t<centerY>\t<size>" reads a live grid and
+//     "cursor-hidden\t<0|1>" balances the system cursor around a live picker session and
 //     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome and
 //     "clipboard-file\t<absolutePath>" places that file on the clipboard as CF_HDROP.
 //     "ocr-png\t<base64Png>" recognizes text locally with Windows.Media.Ocr.
@@ -75,10 +77,31 @@ constexpr float kFallbackSdrWhiteNits = 200.0f;
 // Budget for waiting on a genuinely presented frame before falling back to the current
 // surface. Bounds latency on a static desktop that never presents. See D-015.
 constexpr double kAcquireBudgetMs = 100.0;
+// Pointer movement cannot wait a screenshot-sized budget. A static desktop reuses the cached
+// frame after this short check; an active desktop normally returns a new frame immediately.
+constexpr double kPickerAcquireBudgetMs = 8.0;
 
 LARGE_INTEGER g_qpcFreq{};
+int g_cursorHideAdjustments = 0;
 long long NowQpc() { LARGE_INTEGER t; QueryPerformanceCounter(&t); return t.QuadPart; }
 double MsBetween(long long a, long long b) { return (b - a) * 1000.0 / g_qpcFreq.QuadPart; }
+
+void SetCursorHidden(bool hidden) {
+    if (hidden && g_cursorHideAdjustments == 0) {
+        int count;
+        do {
+            count = ShowCursor(FALSE);
+            ++g_cursorHideAdjustments;
+        } while (count >= 0);
+    } else if (!hidden) {
+        while (g_cursorHideAdjustments > 0) {
+            ShowCursor(TRUE);
+            --g_cursorHideAdjustments;
+        }
+    }
+    std::fputs("{\"ok\":true}\n", stdout);
+    std::fflush(stdout);
+}
 
 struct Options {
     std::wstring output;
@@ -510,19 +533,20 @@ Attempt BuildOutput(Capturer& cap, long ox, long oy, OutputCapture& oc, CaptureR
 // Acquires the current desktop into oc.readback. On an active desktop this pulls the newest
 // frame; on a static one where AcquireNextFrame times out, it reuses the last frame already in
 // oc.readback (nothing changed). Recoverable losses return Rebuild.
-Attempt AcquireLatest(OutputCapture& oc, ID3D11Device* device, ID3D11DeviceContext* context, CaptureResult& r) {
+Attempt AcquireLatest(OutputCapture& oc, ID3D11Device* device, ID3D11DeviceContext* context,
+                      CaptureResult& r, double budgetMs = kAcquireBudgetMs) {
     const long long start = NowQpc();
     bool gotNew = false;
     for (;;) {
         const double elapsed = MsBetween(start, NowQpc());
-        const UINT wait = elapsed >= kAcquireBudgetMs ? 1 : static_cast<UINT>(kAcquireBudgetMs - elapsed);
+        const UINT wait = elapsed >= budgetMs ? 1 : static_cast<UINT>(budgetMs - elapsed);
 
         ComPtr<IDXGIResource> resource;
         DXGI_OUTDUPL_FRAME_INFO info{};
         HRESULT hr = oc.dup->AcquireNextFrame(wait, &info, &resource);
         if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
             if (gotNew || oc.hasFrame) break;
-            if (MsBetween(start, NowQpc()) >= kAcquireBudgetMs) break;
+            if (MsBetween(start, NowQpc()) >= budgetMs) break;
             continue;
         }
         if (hr == DXGI_ERROR_ACCESS_LOST) return Attempt::Rebuild;
@@ -554,7 +578,7 @@ Attempt AcquireLatest(OutputCapture& oc, ID3D11Device* device, ID3D11DeviceConte
         const bool presented = info.LastPresentTime.QuadPart != 0 || info.AccumulatedFrames > 0;
         oc.dup->ReleaseFrame();
         if (presented) break;
-        if (MsBetween(start, NowQpc()) >= kAcquireBudgetMs) break;
+        if (MsBetween(start, NowQpc()) >= budgetMs) break;
     }
     if (!gotNew && !oc.hasFrame) { r.stage = "AcquireNextFrame"; r.hr = E_FAIL; return Attempt::Fatal; }
     return Attempt::Ok;
@@ -679,6 +703,115 @@ void CaptureOne(Capturer& cap, long ox, long oy, const std::wstring& output, flo
     const std::string json = SerializeResult(r);
     std::fputs(json.c_str(), stdout);
     std::fputc('\n', stdout);
+    std::fflush(stdout);
+}
+
+Attempt SampleAttempt(Capturer& cap, long ox, long oy, long centerX, long centerY, UINT size,
+                      CaptureResult& r, std::string& pixels) {
+    OutputCapture& oc = cap.outputs[std::make_pair(ox, oy)];
+    if (!oc.dup) {
+        const Attempt a = BuildOutput(cap, ox, oy, oc, r);
+        if (a != Attempt::Ok) return a;
+    }
+    auto it = cap.devices.find(oc.luid);
+    if (it == cap.devices.end() || !it->second.device) { r.deviceLost = true; return Attempt::Rebuild; }
+    ID3D11Device* device = it->second.device.Get();
+    ID3D11DeviceContext* context = it->second.context.Get();
+
+    r.hdrActive = OutputHdrActive(oc.output5.Get());
+    float nits = QuerySdrWhiteNits(oc.desc.DeviceName);
+    r.whiteLevelQueried = nits > 0.0f;
+    if (!r.whiteLevelQueried) nits = kFallbackSdrWhiteNits;
+    r.sdrWhiteNits = nits;
+
+    const long long ta0 = NowQpc();
+    Attempt a = AcquireLatest(oc, device, context, r, kPickerAcquireBudgetMs);
+    if (a != Attempt::Ok) return a;
+    r.tAcquire = MsBetween(ta0, NowQpc());
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    HRESULT hr = context->Map(oc.readback.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) { r.stage = "Map"; r.hr = hr; return Attempt::Fatal; }
+
+    const UINT sw = oc.frameDesc.Width;
+    const UINT sh = oc.frameDesc.Height;
+    const bool isFloat = oc.frameDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
+    const float whiteScale = nits / kScRgbWhiteNits;
+    const DXGI_MODE_ROTATION rotation = oc.desc.Rotation;
+    const bool swapAxes = rotation == DXGI_MODE_ROTATION_ROTATE90 || rotation == DXGI_MODE_ROTATION_ROTATE270;
+    const long width = static_cast<long>(swapAxes ? sh : sw);
+    const long height = static_cast<long>(swapAxes ? sw : sh);
+    const BYTE* baseRow = static_cast<const BYTE*>(mapped.pData);
+    const long half = static_cast<long>(size / 2);
+    static constexpr char hex[] = "0123456789ABCDEF";
+    pixels.clear();
+    pixels.reserve(static_cast<size_t>(size) * size * 6);
+
+    auto appendChannel = [&](BYTE value) {
+        pixels.push_back(hex[value >> 4]);
+        pixels.push_back(hex[value & 0x0F]);
+    };
+    for (UINT row = 0; row < size; ++row) {
+        for (UINT column = 0; column < size; ++column) {
+            const long outX = centerX - half + static_cast<long>(column);
+            const long outY = centerY - half + static_cast<long>(row);
+            if (outX < 0 || outY < 0 || outX >= width || outY >= height) {
+                pixels += "000000";
+                continue;
+            }
+            UINT sx, sy;
+            switch (rotation) {
+                case DXGI_MODE_ROTATION_ROTATE90:
+                    sx = static_cast<UINT>(outY); sy = sh - 1 - static_cast<UINT>(outX); break;
+                case DXGI_MODE_ROTATION_ROTATE270:
+                    sx = sw - 1 - static_cast<UINT>(outY); sy = static_cast<UINT>(outX); break;
+                case DXGI_MODE_ROTATION_ROTATE180:
+                    sx = sw - 1 - static_cast<UINT>(outX); sy = sh - 1 - static_cast<UINT>(outY); break;
+                default:
+                    sx = static_cast<UINT>(outX); sy = static_cast<UINT>(outY); break;
+            }
+            float rr, gg, bb;
+            const BYTE* srcRow = baseRow + static_cast<size_t>(sy) * mapped.RowPitch;
+            if (isFloat) {
+                const auto* px = reinterpret_cast<const DirectX::PackedVector::HALF*>(srcRow) + static_cast<size_t>(sx) * 4;
+                rr = DirectX::PackedVector::XMConvertHalfToFloat(px[0]) / whiteScale;
+                gg = DirectX::PackedVector::XMConvertHalfToFloat(px[1]) / whiteScale;
+                bb = DirectX::PackedVector::XMConvertHalfToFloat(px[2]) / whiteScale;
+                ToneMapToSdr(rr, gg, bb);
+                rr = LinearToSrgb(rr); gg = LinearToSrgb(gg); bb = LinearToSrgb(bb);
+            } else {
+                const BYTE* px = srcRow + static_cast<size_t>(sx) * 4;
+                bb = px[0] / 255.0f; gg = px[1] / 255.0f; rr = px[2] / 255.0f;
+            }
+            appendChannel(static_cast<BYTE>(rr * 255.0f + 0.5f));
+            appendChannel(static_cast<BYTE>(gg * 255.0f + 0.5f));
+            appendChannel(static_cast<BYTE>(bb * 255.0f + 0.5f));
+        }
+    }
+    context->Unmap(oc.readback.Get(), 0);
+    r.width = size;
+    r.height = size;
+    r.isFloat = isFloat;
+    return Attempt::Ok;
+}
+
+void SampleOne(Capturer& cap, long ox, long oy, long centerX, long centerY, UINT size) {
+    CaptureResult r;
+    std::string pixels;
+    Attempt a = SampleAttempt(cap, ox, oy, centerX, centerY, size, r, pixels);
+    if (a == Attempt::Rebuild) {
+        if (r.deviceLost) { cap.devices.clear(); cap.outputs.clear(); }
+        else cap.outputs.erase(std::make_pair(ox, oy));
+        r = CaptureResult{};
+        a = SampleAttempt(cap, ox, oy, centerX, centerY, size, r, pixels);
+    }
+    if (a == Attempt::Ok) {
+        std::printf("{\"ok\":true,\"width\":%u,\"height\":%u,\"pixels\":\"%s\"}\n",
+                    size, size, pixels.c_str());
+    } else {
+        std::printf("{\"ok\":false,\"stage\":\"%s\",\"hr\":\"0x%08lX\"}\n",
+                    r.stage ? r.stage : "sample", static_cast<unsigned long>(r.hr));
+    }
     std::fflush(stdout);
 }
 
@@ -848,9 +981,40 @@ int wmain(int argc, wchar_t** argv) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
         const size_t t1 = line.find('\t');
+        if (t1 != std::string::npos && line.substr(0, t1) == "sample-display") {
+            std::vector<std::string> fields;
+            size_t start = t1 + 1;
+            while (start <= line.size()) {
+                const size_t tab = line.find('\t', start);
+                fields.push_back(line.substr(start, tab == std::string::npos ? tab : tab - start));
+                if (tab == std::string::npos) break;
+                start = tab + 1;
+            }
+            if (fields.size() != 5) {
+                std::fputs("{\"ok\":false,\"stage\":\"request\"}\n", stdout);
+                std::fflush(stdout);
+                continue;
+            }
+            const long ox = std::strtol(fields[0].c_str(), nullptr, 10);
+            const long oy = std::strtol(fields[1].c_str(), nullptr, 10);
+            const long centerX = std::strtol(fields[2].c_str(), nullptr, 10);
+            const long centerY = std::strtol(fields[3].c_str(), nullptr, 10);
+            const unsigned long requestedSize = std::strtoul(fields[4].c_str(), nullptr, 10);
+            if (requestedSize == 0 || requestedSize > 31 || requestedSize % 2 == 0) {
+                std::fputs("{\"ok\":false,\"stage\":\"size\"}\n", stdout);
+                std::fflush(stdout);
+                continue;
+            }
+            SampleOne(cap, ox, oy, centerX, centerY, static_cast<UINT>(requestedSize));
+            continue;
+        }
         if (t1 != std::string::npos && line.substr(0, t1) == "window-border") {
             const unsigned long long handle = std::strtoull(line.substr(t1 + 1).c_str(), nullptr, 10);
             SuppressWindowBorder(handle);
+            continue;
+        }
+        if (t1 != std::string::npos && line.substr(0, t1) == "cursor-hidden") {
+            SetCursorHidden(line.substr(t1 + 1) == "1");
             continue;
         }
         if (t1 != std::string::npos && line.substr(0, t1) == "clipboard-file") {
@@ -877,5 +1041,6 @@ int wmain(int argc, wchar_t** argv) {
         const std::wstring output = Utf8ToWide(line.substr(t2 + 1));
         CaptureOne(cap, ox, oy, output, 0.0f);
     }
+    if (g_cursorHideAdjustments > 0) SetCursorHidden(false);
     return 0;
 }

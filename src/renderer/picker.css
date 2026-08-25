@@ -1,64 +1,16 @@
 /* The picker overlay hides the system cursor and puts the magnifier in its place, centred on the
    sampled pixel. The magnifier is the cursor, so there is never a question of which pixel is
    being read: it is the one in the middle of the aperture. */
+/* styles.css gives both html and body Capturo's navy application background. A transparent body
+   still exposes the root html canvas, which made the packaged picker cover the desktop in navy.
+   This stylesheet is picker-only, so clear both layers explicitly. */
+html,
+.picker-body,
 .picker-body #capture-canvas {
+  background: transparent !important;
+}
+
+.picker-body #capture-canvas {
+  inset: 0;
   cursor: none;
-}
-
-/* The magnifier is the cursor: it is centred on the sampled pixel rather than offset beside it,
-   and its middle cell is the pixel being read. Nothing else marks the point, because nothing
-   else needs to - the thing under the pointer is the thing showing the colour. */
-.magnifier {
-  position: fixed;
-  z-index: 6;
-  width: 200px;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* A white rim over a dark hairline, so the aperture stays legible against both a pale desktop
-   and a dark one. */
-.magnifier-canvas {
-  display: block;
-  width: 200px;
-  height: 200px;
-  border: 3px solid #ffffff;
-  border-radius: 26px;
-  background: #050910;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.45);
-}
-
-/* Sits under the aperture and is centred on it, so it never covers the pixel being picked. The
-   magnifier's own box is not clamped into the viewport (the centre must stay true), so the
-   caption travels with it and can clip at a screen edge along with everything else. */
-.magnifier-caption {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.magnifier-hex {
-  padding: 5px 11px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(17, 24, 39, 0.94);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
-  color: #f8fafc;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.03em;
-}
-
-.magnifier-fine {
-  padding: 4px 8px;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  border-radius: 999px;
-  background: rgba(14, 116, 144, 0.55);
-  color: #7dd3fc;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }

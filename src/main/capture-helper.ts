@@ -10,7 +10,8 @@
 // (warm-up) run rather than every capture. See D-017.
 //
 // Protocol: one request per line on stdin. Capture requests are
-// "<originX>\t<originY>\t<outputPath>"; window-border requests are
+// "<originX>\t<originY>\t<outputPath>"; live colour samples are
+// "sample-display\t<originX>\t<originY>\t<centerX>\t<centerY>\t<size>"; window-border requests are
 // "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>";
 // OCR requests are "ocr-png\t<base64Png>" and keep captured pixels in memory. That request is
 // the one both helpers implement, which is what lets this module drive either unchanged.
@@ -35,6 +36,7 @@ export type HelperResult = {
   stage?: string
   hr?: string
   text?: string
+  pixels?: string
   timings?: Record<string, number>
 }
 
@@ -174,7 +176,20 @@ export function startCaptureHelper(): void {
 }
 
 export function stopCaptureHelper(): void {
-  killChild()
+  const active = child
+  if (!active) return
+  // Closing stdin lets the helper leave its serve loop and restore any balanced cursor-hide
+  // request before it exits. Keep a short kill fallback for a genuinely stuck helper.
+  try {
+    active.stdin.end()
+  } catch {
+    killChild()
+    return
+  }
+  const fallback = setTimeout(() => {
+    if (child === active) killChild()
+  }, 500)
+  fallback.unref()
 }
 
 // Sends one serialized protocol batch through the persistent helper. A timeout or broken pipe
@@ -220,11 +235,53 @@ export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult
   )
 }
 
+export type DisplayColorSampleRequest = {
+  originX: number
+  originY: number
+  centerX: number
+  centerY: number
+  size: number
+}
+
+// Reads only the small live grid used by the colour-picker magnifier. The short native acquire
+// budget keeps pointer movement responsive on a static desktop; the duplication cache supplies
+// the last frame when Windows has not presented a newer one.
+export async function sampleDisplayColor(request: DisplayColorSampleRequest): Promise<HelperResult> {
+  const line = [
+    'sample-display',
+    Math.round(request.originX),
+    Math.round(request.originY),
+    Math.round(request.centerX),
+    Math.round(request.centerY),
+    Math.round(request.size)
+  ].join('\t')
+  try {
+    const [result] = await sendRequests([line], 1000)
+    return result ?? { ok: false, stage: 'sample' }
+  } catch {
+    return { ok: false, stage: 'helper' }
+  }
+}
+
 // Prevents Windows 11's DWM from drawing its own frame border around a frameless recording
 // window. Best-effort: callers should still show the window if the helper is unavailable.
 export async function suppressWindowBorder(nativeHandle: bigint): Promise<boolean> {
   try {
     const [result] = await sendRequests([`window-border\t${nativeHandle.toString()}`], 1000)
+    return result?.ok === true
+  } catch {
+    return false
+  }
+}
+
+// Hides the Windows system cursor for the live picker even if a very fast physical movement
+// briefly outruns its compact transparent hit window. The native helper balances ShowCursor's
+// display counter and restores it on normal helper shutdown; CSS cursor:none remains the fallback
+// on platforms without this request.
+export async function setSystemCursorHidden(hidden: boolean): Promise<boolean> {
+  if (process.platform !== 'win32') return false
+  try {
+    const [result] = await sendRequests([`cursor-hidden\t${hidden ? '1' : '0'}`], 1000)
     return result?.ok === true
   } catch {
     return false

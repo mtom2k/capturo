@@ -220,16 +220,50 @@ export function relatedColors(rgb: Rgb, count = 5): Rgb[] {
   return colors
 }
 
-// Bridge for the picker overlay and the colour window. The overlay reports the pixel it picked;
-// the window reads the result, copies it, and can send the user back for another pick.
+// Bridge for the live picker overlay and the colour window. Unlike screenshot selection, the
+// picker never receives a frozen desktop. It asks main for a tiny, current pixel grid around the
+// point it owns, then reports the centre pixel when the user picks.
 // Picking copies straight to the clipboard, so the window is told exactly what landed there
 // rather than re-deriving it: the copy format is a setting, and a window that assumed hex would
 // report something the user never copied. `copied` is null when nothing was written, either
 // because the user turned that off or because the write failed.
 export type PickedColor = { color: Rgb; copied: string | null; format: ColorFormat }
 
+export type ColorPickerPayload = {
+  sessionId: string
+  displayId: string
+  role: 'editor' | 'filler'
+  // Windows uses one compact floating picker surface rather than a monitor-sized transparent
+  // window, because the latter corrupts Chromium hardware-video planes. `displayOrigin` lets the
+  // renderer translate global PointerEvent.screenX/screenY coordinates after that window moves.
+  floating: boolean
+  displayOrigin: { x: number; y: number }
+  // This overlay's origin inside the display, in CSS pixels. Windows tiles a display into a work
+  // area plus system-edge strips, so every tile translates through the same display coordinate
+  // space before asking for a physical pixel.
+  regionOrigin: { x: number; y: number }
+  displaySize: { width: number; height: number }
+  imageSize: { width: number; height: number }
+  safeArea: { top: number; bottom: number }
+  // CSS pixels relative to the display, and non-null only for the tile containing the cursor.
+  cursor: { x: number; y: number } | null
+}
+
+export type ColorSample =
+  | { ok: true; width: number; height: number; pixels: string }
+  | { ok: true; width: number; height: number; png: Uint8Array; offsetX: number; offsetY: number }
+  | { ok: false }
+
 export type CapturoColorApi = {
   onInitialize: (listener: (picked: PickedColor) => void) => () => void
+  onPickerInitialize: (listener: (payload: ColorPickerPayload) => void) => () => void
+  sample: (sessionId: string, point: { x: number; y: number }, size: number) => Promise<ColorSample>
+  pickerReady: (sessionId: string) => Promise<boolean>
+  recenterPicker: (
+    sessionId: string,
+    request: { cursor: { x: number; y: number }; center: { x: number; y: number } }
+  ) => Promise<boolean>
+  cancelPicker: (sessionId: string) => Promise<void>
   pick: (sessionId: string, color: Rgb) => Promise<boolean>
   copy: (text: string) => Promise<boolean>
   pickAgain: () => Promise<void>

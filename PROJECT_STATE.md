@@ -1,18 +1,24 @@
 # Project State
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Phase
 
-`0.22.2` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
+`0.22.3` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
 Version 0.21.0 adds two features.
 
-**The screen colour picker.** **Color picker** in the tray menu, directly below **New GIF**, or `Ctrl/Cmd+Shift+9`. It freezes the desktop the way a screenshot does and *replaces the mouse cursor* with a 17x magnifier centred on the pixel it reads; Shift slows sampling to an eighth speed and the arrow keys nudge one pixel. Picking copies the colour to the clipboard on its own and opens a colour window with HEX/RGB/HSL output, live hue/saturation/lightness/alpha sliders, a related-colour row, and the nearest colour name. A Color picker tab in Settings carries the rebindable shortcut, a copy-on-pick switch, and the clipboard format. See D-032 through D-034.
+**The screen colour picker.** **Color picker** in the tray menu, directly below **New GIF**, or
+`Ctrl/Cmd+Shift+9`. It opens a transparent live pointer surface without freezing, duplicating, or
+tinting the desktop, and *replaces the mouse cursor* with a wide-view magnifier centred on the pixel it
+reads. Windows asks the HDR-aware native helper only for that small live grid and excludes the
+picker windows from capture. Wheel zoom provides five precision levels and the arrow keys nudge one
+pixel. Picking copies the colour to the clipboard and opens a colour window with HEX/RGB/HSL
+controls. See D-032 through D-034 and D-041.
 
-**The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; what makes it a highlighter is compositing with `multiply` at 45% alpha, so text under the stroke keeps its contrast and stays readable rather than being covered. Shift or Ctrl locks it straight, every annotation colour applies, and it keeps its own width and slider range separate from the Pen's. See D-035.
+**The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; it now uses a vivid 52% translucent `source-over` marker blend so every palette colour remains clear over both dark and light captures while the content beneath stays readable. Shift or Ctrl locks it straight, and it keeps its own width and slider range separate from the Pen's. See D-035.
 
 Version 0.22.0 brings **Copy text to macOS** through Apple's Vision framework (D-036) and moves the capture shortcuts to `Ctrl/Cmd+Shift+7/8/9`, because `+3` and `+4` were macOS's own screenshot keys (D-037). Every Settings tab now leads with its shortcut.
 
@@ -22,7 +28,9 @@ Version 0.22.2 adds **Open in full tab**, the cyan toolbar action between **Copy
 It checkpoints the visible selected composite, tears down the full-screen overlays, and opens one
 normal resizable/minimizable editor window with the same annotation and export tools. The detached
 editor has an owner and lifecycle independent from the next capture, retains forced PNG when its
-checkpoint has transparency, and refuses to overwrite an already open unsaved editor. See D-039.
+checkpoint has transparency, and refuses to overwrite an actually visible unsaved editor. A
+renderer-pull readiness handshake prevents a missed initialization event from reserving an
+invisible editor slot. See D-039.
 
 The same 0.22.2 draft removes Capturo's artificial modifier requirement from all three shortcut
 recorders. Every Electron-supported non-modifier key can be used bare or in a combination,
@@ -30,6 +38,38 @@ including Print Screen, Escape, letters, punctuation, lock/media keys, and numpa
 direct Windows probe confirmed bare `PrintScreen` registers successfully. The OS remains able to
 refuse an accelerator it exclusively owns, and that genuine failure still preserves the previous
 working binding. See D-040.
+
+The current 0.22.3 patch also makes Color Picker motion compositor-safe: every selector frame fully
+replaces the transparent canvas, the Windows native helper keeps the system cursor hidden for the
+entire session, and the three tight zoom levels cap movement at 720/240/80 source pixels per second.
+
+Version 0.22.3 separates Color Picker from screenshot capture. Invoking it now opens a transparent,
+content-protected live sampling surface rather than freezing and tinting the desktop. Windows uses
+one compact 640×640 surface that follows the pointer; a monitor-sized transparent Electron window
+was proven to blur/black Chromium hardware-video planes even when paused. The magnifier receives
+coalesced odd-sized samples from the HDR-aware native helper, while screenshot and GIF selection retain
+their frozen-desktop workflow. See D-041.
+
+The current 0.22.3 patch work removes the picker's invocation instruction entirely. It also keeps
+the zoom-displaced owned point inside the live room around the physical pointer and recentres the
+compact Windows surface for either point, so a long precision sweep cannot clip the magnifier
+out of view. See the D-041 amendment.
+
+The same patch adds five wheel-controlled magnification steps, opening at the widest one. Tighter
+levels automatically move the owned point at 1/2, 1/4, and 1/8 speed; Shift no longer changes
+picker movement. Fast movement now uses absolute screen-coordinate deltas, immune to the
+compact BrowserWindow moving underneath the cursor, queues the latest recenter position during an
+in-flight window move, and balances that window around the physical/owned midpoint before either
+reaches its guard. This removes the former jump/reversal behavior and delays precision limiting
+under quick motion.
+
+The visible aperture and hex caption are painted together on the hit canvas once per display
+frame. Each render clears the complete previous bitmap first, eliminating the brief transparent-
+layer trails that appeared after abrupt cursor direction changes. Recentring now predicts and
+paints against the destination window origin before moving the native surface, eliminating the
+one-frame overshoot-and-return caused by DWM carrying the old bitmap. Canvas backing stores follow
+the display device-pixel ratio, and the hex caption is device-aligned 14px semibold text rather than
+a 1× canvas enlarged by Windows scaling.
 
 The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
@@ -47,7 +87,7 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.22.2`. `release/BUILD-INFO.txt` inventories exactly the v0.22.2 Windows
+The package version is `0.22.3`. `release/BUILD-INFO.txt` inventories exactly the v0.22.3 Windows
 Setup and Portable executables. Local Windows binaries are not Authenticode-signed and may trigger
 an unknown-publisher warning.
 
@@ -119,7 +159,7 @@ an unknown-publisher warning.
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 83/83 passed
+- `npm test`: 207/207 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -389,8 +429,7 @@ Still blocked on a certificate, not on code:
 ## Open follow-up
 
 - Hands-on text smoke on Windows for the placement rules: click-away commit from inside the selection, outside it, and onto the toolbar; the two-step Escape; and the enlarged resize grip. Exercised through a stubbed-preload harness only; not driven by hand or over CDP in the packaged app.
-- Hands-on highlighter smoke by mouse: the CDP pass drove synthetic pointer events, so freehand feel, cursor behaviour, and dragging the Size slider by hand are unproven. Also unverified: highlighting on a **light** background, where multiply is at its strongest and the effect should look most like a marker. Every packaged screenshot so far is of a dark-mode UI.
-- Decide whether the highlighter should keep `multiply` (D-035). On a dark background it tints the text rather than the background, which reads clearly but not like a marker on paper; plain alpha is a one-line change with the opposite trade-off. There is now a real screenshot to judge it against.
+- Highlighter was driven by real mouse input on a dark capture after the 52% source-over change and was visibly bright while text stayed readable. A light-background packaged-build pass and manual Size-slider feel remain to be checked before release.
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
@@ -399,7 +438,7 @@ Still blocked on a certificate, not on code:
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 - Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
 - Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 shipped macOS assets on that shared feed already.
-- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.2 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
+- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.3 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
 
 ### GIF optimization status
 

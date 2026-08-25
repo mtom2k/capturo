@@ -36,7 +36,12 @@ function roundedRectPath(context: CanvasRenderingContext2D, rect: Rect, radius: 
 }
 
 // Strong enough to read as a marker on a light background without hiding what is underneath.
-const HIGHLIGHT_ALPHA = 0.45
+// A real marker lays translucent pigment over the page. Multiply was attractive because it could
+// never wash out text, but it could only darken: on Capturo's common dark-mode captures every
+// colour collapsed towards black and looked barely present. A stronger source-over layer keeps
+// the selected hue vivid on both light and dark pixels while remaining transparent enough for
+// the marked content to read through it.
+export const HIGHLIGHT_ALPHA = 0.52
 
 function smoothingStride(smoothing: Smoothing): number {
   if (smoothing === 'low') return 1
@@ -265,10 +270,7 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
       strokePath(context, annotation)
       break
     case 'highlight':
-      // Multiply rather than a plain translucent stroke, because a highlighter must leave what it
-      // marks readable: multiplying can only darken, so text under the stroke keeps its contrast
-      // instead of being washed towards the highlight colour. See D-035.
-      context.globalCompositeOperation = 'multiply'
+      context.globalCompositeOperation = 'source-over'
       context.globalAlpha = HIGHLIGHT_ALPHA
       // Flat ends, like a chisel tip, so a stroke across a line of text stops where the drag
       // stopped rather than overhanging it by half the (considerable) stroke width.

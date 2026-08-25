@@ -73,11 +73,42 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   `detached` capture role and fitted canvas layout in `src/renderer/editor.ts`; pure
   `detachedEditorCanvasRect` geometry in `src/shared/geometry.ts`. It owns a separate id from the
   active overlay session, permits only one unsaved window, checkpoints existing edits, preserves
-  forced PNG for inherited alpha, and must not be destroyed by starting another capture. See D-039.
+  forced PNG for inherited alpha, and must not be destroyed by starting another capture. Renderer
+  initialization is a pull handshake installed after listeners; the overlay closes only after the
+  detached renderer decodes the checkpoint and acknowledges readiness. A timeout or renderer death
+  must clear an unrevealed state so it can never trigger a false "already open" response. See D-039.
 - Canvas replay/export: `src/renderer/render.ts`
-- Color picker: tray entry and `picker` capture mode in `src/main/index.ts`; overlay in `src/renderer/picker.*`; result window in `src/renderer/color.*`; pure pointer model in `src/shared/picker.ts` and pure colour maths in `src/shared/color.ts`, covered by `tests/picker.test.ts` and `tests/color.test.ts`. Two invariants are load-bearing and neither is visible from the code that depends on them. The overlay samples a point it owns rather than the OS cursor, which is the only way Shift can slow sampling; the displacement that creates must bleed off over coarse movement, or the physical cursor pinning against a screen edge strands a band of the screen (D-032). And the colour window must not derive RGB from HSL: the round trip through integer degrees and percents turns `#9CAA33` into `#9BA932`, which is the one thing a colour picker may not do (D-033). Two more, both multi-display and both invisible on a single-monitor machine: `CapturePayload.cursor` is what the overlay starts from, so it must stay non-null on exactly the display holding the pointer (`cursorForDisplay`, tested), and fine movement must read `shiftKey` off the pointer event rather than a window key listener, because only one overlay of a multi-display capture has keyboard focus. Pick again hides the colour window by dropping its opacity to zero *before* hiding it, because Windows animates a plain hide and the frozen desktop catches the window mid-fade; a plain `hide()` there is a silent regression that only shows up in the captured frame (D-034). Any new page needs an entry in `electron.vite.config.ts` or it silently will not be packaged.
+- Color picker: a separate live `ColorPickerSession` in `src/main/index.ts`; transparent overlay in
+  `src/renderer/picker-live.ts`; result window in `src/renderer/color.*`; tiny HDR-aware
+  `sample-display` request in the Windows helper; pure pointer/grid helpers in
+  `src/shared/picker.ts`; colour maths in `src/shared/color.ts`. Never route it back through
+  `openSelectionOverlays`: the picker must not capture, paint, freeze, or shade a desktop image.
+  The Windows picker must remain one compact floating surface rather than a monitor-sized
+  transparent BrowserWindow: the latter corrupts paused and playing Chromium video planes. It
+  must remain content-protected or the magnifier can enter its own Desktop Duplication sample.
+  Pointer requests stay coalesced to one in flight plus the newest point, and a
+  click rechecks the exact current point. The owned-point displacement must bleed off during coarse
+  movement so an edge is never stranded (D-032), and RGB must never round-trip through integer HSL
+  (D-033). The floating surface constrains excess zoom displacement to the actual room around the
+  physical pointer, recentres on the physical/owned screen-space midpoint before either reaches its guard, and reinitializes its display
+  id, origin, scale, and HDR output when crossing a monitor seam. Picker movement must never read
+  `shiftKey` or maintain a modifier-driven fine mode. Never restore raw
+  `movementX/Y`: stable movement comes from consecutive absolute `screenX/Y` points because the
+  floating BrowserWindow changes the relative coordinate frame. Wheel zoom uses the allow-listed
+  25/17/13/9/5 grids, defaults to the widest grid, and automatically selects
+  1×/1×/1/2×/1/4×/1/8× movement; the three tight views also cap source-space speed at
+  720/240/80 pixels per second. An in-flight sample is valid only for its requested grid size.
+  The UI deliberately shows no zoom badge. The aperture and hex are drawn onto the hit
+  canvas in one `requestAnimationFrame` after replacing the complete prior bitmap with transparent
+  pixels via `copy`. Both canvases require device-pixel backing stores and logical transforms or
+  the hex caption becomes blurred on scaled DPI. Recenter ordering is also load-bearing: predict
+  the shared floating-region origin, paint the corrected local selector, then call main to move the
+  BrowserWindow. Reading `window.screenX/Y` after `setBounds` recreates the one-frame overshoot. Do
+  not restore a
+  separately positioned transparent DOM magnifier, which caused short DWM trails. See D-041. Any new page
+  still needs a Vite entry or it will not be packaged.
 - Text placement: `openTextEditor`/`closeTextEditor` and the `#text-editor` / `#text-editor-resize` listeners in `src/renderer/editor.ts`. Two orderings are load-bearing and neither is caught by a type check or a unit test. `pointerDown` commits an open text box *itself* and arms `ignoreTextBlur`, because the browser moves focus after the handler returns and the blur would otherwise commit a box the same click has already emptied. The text box's Escape handler must call `stopPropagation`, because `handleShortcut` is on `window` and its `textEditor.hidden` guard is already false by the time the event bubbles, so without it one press cancels the whole capture. See D-031.
-- Highlighter: a pen stroke that composites differently. Geometry is shared with the pen throughout `src/shared/annotations.ts` (the switches are exhaustive, so adding an annotation type makes the compiler name every place that must handle it), and only `renderAnnotation` in `src/renderer/render.ts` diverges. Two details there are load-bearing: the path must be drawn in a single `stroke()` call or self-crossings composite twice and darken, and caps are `butt` because a round cap at highlighter widths overhangs the end of the drag. It also keeps its own width and slider range separate from the pen's. See D-035.
+- Highlighter: a pen stroke that composites differently. Geometry is shared with the pen throughout `src/shared/annotations.ts` (the switches are exhaustive, so adding an annotation type makes the compiler name every place that must handle it), and only `renderAnnotation` in `src/renderer/render.ts` diverges. It uses `source-over` at 52% so saturated colours remain visible on dark captures. Two details there are load-bearing: the path must be drawn in a single `stroke()` call or self-crossings composite twice and darken, and caps are `butt` because a round cap at highlighter widths overhangs the end of the drag. It also keeps its own width and slider range separate from the pen's. See D-035.
 - Blur/Pixelate intensity: the 1-100% UI state lives in `src/renderer/editor.ts`; monotonic percentage-to-radius/block mappings live in `src/renderer/render.ts` and are covered by `tests/effects.test.ts`. Do not reconnect these effects to `lineWidth`.
 - Visual system: `src/renderer/styles.css`
 - Shared types and geometry: `src/shared/`

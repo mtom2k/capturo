@@ -412,21 +412,21 @@ The picker overlay hides the system cursor and draws a magnifier at a position t
 maintains. Sampling follows that position rather than the cursor's, and the whole feature depends
 on the difference.
 
-Slowing the pointer down is the reason. Shift moves the sample an eighth as far as the mouse
-travels, which is what makes a one-pixel border or an anti-aliased edge pickable at all. Nothing
-in Electron can slow the operating system's cursor, and warping it is not exposed either, so a
-picker that samples wherever the OS cursor happens to be cannot offer fine movement. Owning the
-sampled point is the only way to have it.
+Slowing the pointer down at tighter wheel-zoom levels is the reason. Maximum zoom moves the sample
+an eighth as far as the mouse travels, which makes a one-pixel border or an anti-aliased edge
+pickable. Nothing in Electron can slow the operating system's cursor, and warping it is not exposed
+either, so a picker that samples wherever the OS cursor happens to be cannot offer zoom-scaled
+movement. Owning the sampled point is the only way to have it.
 
-The cost is that the sampled point and the physical cursor drift apart during fine movement. Three
+The cost is that the sampled point and the physical cursor drift apart during precision zoom. Three
 options existed and two are wrong:
 
-- **Snap the sample back to the cursor when Shift is released.** The magnifier jumps away from the
+- **Snap the sample back to the cursor when zooming out.** The magnifier jumps away from the
   pixel the user just spent effort aiming at, which defeats the point of aiming.
 - **Leave the displacement standing forever.** The physical cursor stops at the edge of the screen
   while the sample sits hundreds of pixels away from it, so a band along one edge becomes
   permanently unpickable.
-- **Bleed the displacement off over ordinary coarse movement**, which is what Capturo does. Coarse
+- **Bleed the displacement off over wider-zoom movement**, which is what Capturo does. Wide
   movement is deliberately not one-to-one: it spends half of each movement pulling the sample back
   onto the cursor. Nothing jumps, and the whole screen stays reachable within one ordinary sweep.
   Clamping also recomputes the displacement from the clamped result, which collapses it at an edge.
@@ -451,21 +451,20 @@ deliberately clear of the target leaves nothing at the sampled point itself, so 
 magnifier reads as floating at random. Both are positioned from the same point, so they cannot
 disagree.
 
-**Amended 2026-08-19: modifier state comes from the pointer event.** Fine movement was driven by
-a window `keydown` listener, and keyboard events only reach the focused window. A multi-display
-capture has one overlay per display and only one of them is focused, so Shift worked on a single
-monitor and silently did nothing on the others. Pointer events carry the modifier state and arrive
-at whichever overlay the pointer is over, so `movePointer` reads `shiftKey` from the event. The key
-listeners remain only to keep the Fine badge honest while the pointer is still.
+**Superseded 2026-08-24: modifier-driven precision is removed.** Shift no longer changes Color
+Picker movement at any zoom level. Precision is selected only by wheel zoom, with arrow keys as the
+exact one-pixel fallback. The renderer does not read `shiftKey`, keep temporary fine-mode state, or
+install modifier keyup/blur listeners. This makes movement a stable function of the visible zoom
+level rather than a hidden transient keyboard state.
 
 The reveal also focused every editor overlay as each finished painting, so whichever was revealed
 last held the keyboard regardless of where the user was pointing. It now focuses the editor the
 pointer is actually over, which puts Escape on the same screen as the user for every capture mode.
 
-The picked colour is the pixel of the frozen desktop, so it inherits D-014: on Windows it is the
-native helper's tone-mapped capture rather than a raw read-back, and it matches what a screenshot
-of the same pixel would contain. It also inherits the freeze, so a colour cannot be picked out of
-a playing video; re-invoking the picker is the answer, which is what **Pick again** does.
+**Amended 2026-08-24: the owned point is sampled live.** The picker no longer shares the frozen
+screenshot session. On Windows the native helper reads the active odd-sized grid around the point and applies
+the same tone mapping as D-014; D-041 describes the separate transparent session. Owning the point
+still governs zoom-scaled movement, placement, display transitions, and which exact sample a click uses.
 
 **Amended 2026-08-19: the magnifier is the cursor.** It was placed beside the sampled point so as
 not to cover it, with a crosshair marking the point itself. That is backwards: the magnifier shows
@@ -498,14 +497,10 @@ other statuses do: it is the window describing its own state rather than acknowl
 and it needs to still be there when the user looks up from whatever they were doing. If the
 clipboard write fails the window says that instead, rather than quietly implying success.
 
-**Pick again hides the window first.** The picker freezes the desktop as it starts, so a window
-left on screen is baked into the frozen frame and everything it covers becomes unpickable - gone
-from the screen but still in the picture. Hiding it is not enough on its own: Windows animates the
-hide, and the frozen frame catches the window mid-fade, semi-transparent over the content behind
-it. The opacity is dropped to zero first, which is immediate and unanimated - the same reason the
-overlays themselves are shown at zero opacity (D-010, D-011) - and a short settle covers the
-compositor's remaining frame of lag. The window keeps its colour throughout and comes back whether
-the next pick succeeds or the user cancels out of the overlay.
+**Pick again hides the window first.** It clears the pixels the user is trying to reach and removes
+the foreground window before the transparent picker takes focus. The live picker has no frozen
+frame and therefore needs no compositor-settle delay. The window keeps its colour while hidden and
+comes back whether the next pick succeeds or the user cancels.
 
 ## D-033: The picked colour is never round-tripped through HSL
 
@@ -527,25 +522,18 @@ for that edit and recomputes RGB from it; a colour arriving whole - picked, type
 from the related row - is stored exactly and the sliders are repositioned from it. Neither
 representation is continuously derived from the other.
 
-## D-035: The highlighter multiplies rather than covering
+## D-035: The highlighter uses a vivid translucent marker blend
 
 **Status:** accepted
 
 The highlighter is geometrically a pen stroke - same points, same smoothing, same axis lock, same
 bounds and hit testing - and shares that code. What makes it a highlighter is how it composites.
 
-It is drawn with `multiply` at 45% alpha rather than as a translucent stroke over the top.
-Multiplying can only darken, so text under the stroke keeps its contrast and stays readable, which
-is the entire distinction between highlighting something and covering it. A plain translucent
-stroke at the same strength washes dark text towards the highlight colour and costs exactly the
-legibility the user was trying to draw attention to.
-
-The cost is that the effect is subtle on a dark background: multiplying a near-black pixel by any
-colour leaves it near-black. That is accepted rather than worked around. Switching to `screen` on
-dark backgrounds would mean deciding per stroke - or per pixel - which mode applies, and a
-highlighter whose behaviour flips depending on what is underneath is worse than one that is
-consistently weak in one situation. Rectangle and Blur remain for emphasis that does not depend on
-the background.
+It is drawn with `source-over` at 52% alpha. The earlier `multiply` blend at 45% could only darken;
+on a dark capture it reduced even saturated palette colours to a nearly invisible tint. A marker
+tool must remain obvious on both dark and light content, so the colour now sits visibly over the
+capture while the 52% translucency keeps text and image detail readable beneath it. The blend is
+consistent across the whole stroke rather than switching per pixel based on the background.
 
 Two rendering details are load-bearing and neither is obvious from the result:
 
@@ -651,6 +639,15 @@ text, Save, Close, failure, and Escape close only the owner that sent the valida
 a temporary editing window, not a history database: closing it discards unsaved work, and Capturo
 still returns to its tray-only steady state when no capture or detached editor is open.
 
+**Amended 2026-08-24: visibility is the success boundary.** A main-process `did-finish-load` push
+could fire before the renderer installed its initialization listener. That left a hidden window in
+the detached-editor slot: no editor was visible, but later attempts were refused as though one were
+already open. The renderer now pulls its payload after its listeners are installed and acknowledges
+`capture:ready` only after decoding it. The main process keeps the original overlay until that
+acknowledgement, with a ten-second timeout plus renderer-death and pre-reveal-unresponsive cleanup.
+An unrevealed or destroyed state is discarded rather than focused. Opening the editor is successful
+only when the user can actually see it.
+
 ## D-040: Shortcut recording accepts every Electron-supported non-modifier key
 
 **Status:** accepted
@@ -677,3 +674,119 @@ truthfully promise Ctrl-Alt-Delete or another exclusive system sequence, so a fa
 still restores the previous working binding and reports the refusal. This is distinct from the old
 UI restriction: Capturo now always attempts the user's supported key. A direct probe on the Windows
 release host confirmed that bare `PrintScreen` registers successfully.
+
+## D-041: Color Picker samples a live desktop through its own transparent session
+
+**Status:** accepted
+
+Color Picker must not look or behave like screenshot capture. Reusing `CaptureSession` froze the
+whole desktop into an opaque canvas and inherited its shade, so invoking a sampling tool visibly
+stopped animation and changed the screen the user was trying to inspect. The picker now owns a
+separate `ColorPickerSession`; its windows are transparent pointer surfaces and no full-display
+image is captured, encoded, transferred, or painted at invocation.
+
+**Amended 2026-08-24: transparency includes the root document.** The shared visual system paints
+both `html` and `body` navy. Clearing only `.picker-body` leaves the root canvas opaque, which a
+packaged Windows build can composite across the monitor even though sampling still sees the live
+desktop underneath. The picker-only stylesheet clears `html`, body, and its hit canvas with an
+explicit transparent background; removing any one of those layers can restore the navy screen.
+
+The magnifier still needs exact, HDR-correct pixels. On Windows it sends one coalesced request at a
+time to the persistent native helper for a 17×17 grid around the owned point. Desktop Duplication
+uses an 8 ms acquire budget and reuses its last staging surface when a static desktop has not
+presented a new frame. Pixel rotation, live SDR-white normalization, shared-channel HDR gamut
+mapping, and sRGB conversion match the PNG path. Compact row-major RRGGBB avoids a PNG encode and a
+full-screen IPC transfer for every pointer movement. Other platforms read a fresh screen source
+and return only the cropped grid as a small PNG fallback.
+
+The overlay windows are content-protected before they are shown. This excludes the magnifier and
+Capturo chrome from Windows Desktop Duplication, so sampling sees the underlying application rather
+than recursively reading itself.
+
+**Amended 2026-08-24: Windows uses one compact floating surface.** A work-area-sized transparent
+Electron window corrupts Chromium's hardware-video plane: the page remains sharp while the entire
+video rectangle becomes grey, blurred, or black, paused or playing. Removing content protection
+does not help. Real-hardware comparison proved that both 320×320 and 640×640 protected surfaces
+leave the same YouTube frame sharp and pickable. Windows therefore creates one protected window up
+to 640×640, recentres it before the pointer reaches an edge, and reinitializes its display origin,
+scale, and native-output id at a monitor seam. The rectangle may extend off an outer screen edge so
+the physical pointer stays inside it. macOS retains its established display overlay. A
+monitor-sized transparent Windows picker is now forbidden independently of D-013's notification
+classification.
+
+Pointer movement is coalesced to a single in-flight request plus the newest desired point. A click
+uses an exact sample for the current owned point instead of trusting an older magnifier frame. This
+bounds helper work, prevents a fast mouse from building an unbounded queue, and preserves the
+picker's primary invariant: the reported colour is the centre pixel the user aimed at.
+
+**Amended 2026-08-24: sampling latency must not become visibility latency.** A moving pointer is
+almost always ahead of its latest asynchronous grid. Hiding the magnifier whenever those two
+coordinates differed made continuous movement keep it hidden indefinitely; stopping was the only
+way for the sample to catch up. The overlay now moves the last valid grid with the owned point and
+repaints only when fresh pixels arrive. This can make the preview a few milliseconds old during
+motion, but clicking still reuses a sample only when its coordinates match exactly and otherwise
+fetches the current point before reporting it.
+
+**Amended 2026-08-24: the owned point must fit inside the compact surface.** Precision zoom
+intentionally makes the sampled point trail the physical cursor. Following only the cursor lets
+that displacement grow until the 200px magnifier is outside the 640px window and therefore appears
+to vanish. The renderer now constrains only the excess displacement, using the actual asymmetric
+space available on each side of the live pointer, and recentres when either the pointer or selector
+approaches an edge. Maximum zoom remains one-eighth speed throughout its useful precision range;
+at the surface limit it follows rather than becoming invisible. The invocation instruction is also
+removed entirely, leaving only the selector and color readout over the live desktop.
+
+**Amended 2026-08-24: precision uses screen-space motion and zoom steps.** DOM relative movement
+is defined against the current BrowserWindow. Moving the compact window underneath a fast cursor
+can therefore make a later event report a jump or reversal even though the physical pointer never
+changed direction. The picker now converts each absolute screen point into display-image space and
+subtracts consecutive points there. Recenter IPC is latest-wins: an event arriving during a window
+move replaces the queued destination rather than being discarded. The requested window centre is
+the midpoint between the physical and owned points; a 48px selector guard starts the move before
+visibility constraints need to collapse precision displacement.
+
+Wheel magnification is discrete rather than continuous: 25/17/13/9/5 source-pixel grids fill the
+same 200px aperture. The widest 25-pixel view is the default; upward wheel steps progressively
+magnify. At the tighter three levels the owned point slows in matching steps (1/2, 1/4, 1/8),
+with no modifier override. Zoom is the sole pointer-precision control; Shift has no picker behavior.
+Zoom labels are intentionally omitted: the aperture itself communicates magnification and the
+hex value is the only persistent readout the task requires. Every grid is odd, every IPC size is
+allow-listed, and a click requires the current point and current grid size.
+
+**Amended 2026-08-24: compose the selector as one replaced frame.** Moving the aperture, caption,
+and badges as a transparent DOM layer could leave a short-lived DWM trail when the cursor reversed
+direction quickly. The hit canvas is now the only visible picker surface. Pointer events schedule
+at most one animation-frame render; that render replaces the complete canvas with transparency
+using the `copy` composite operation, then draws the newest
+aperture and hex caption together. The sampled grid remains cached offscreen so this does not redo
+pixel-grid work for every raw event. A single replacement bitmap gives the compositor no child-layer
+history to display at an obsolete position.
+
+**Amended 2026-08-24: physical mouse speed cannot defeat precision.** Multiplying a very large raw
+delta by one-eighth still produces a very large movement. The three precision zoom levels therefore
+add source-space velocity ceilings of 720, 240, and 80 pixels per second; the fully magnified
+five-pixel view is capped at 80 regardless of physical input speed. Wide views remain uncapped.
+Windows also asks the persistent native helper to hide the system cursor with balanced `ShowCursor`
+calls for the complete picker session and restores the same number on every exit path. CSS
+`cursor:none` remains a fallback, but no longer has to win a compositor race during fast movement.
+
+**Amended 2026-08-24: recenter paint must lead the native window move.** The selector is drawn
+inside the same compact BrowserWindow that receives pointer input. Calling `setBounds` moves that
+window with its existing bitmap; waiting for the renderer's later `window.screenX/Y` update then
+places the old local selector roughly one guard-width past the physical cursor for one frame before
+it snaps back. The renderer now predicts the new region origin using the exact shared floating-rect
+geometry, paints against it in the animation-frame phase, and requests the native move afterward.
+Absolute selector placement is derived from display/image coordinates, so a stale window origin
+cannot feed another bad centre into the recenter queue. Main skips no-op bounds changes.
+
+**Amended 2026-08-24: picker chrome is device-pixel backed.** A canvas whose intrinsic dimensions
+equal `innerWidth/innerHeight` has only one backing pixel per CSS pixel. Windows then scales that
+bitmap on a 125%, 150%, or 200% display, visibly softening the small hex caption. The hit canvas and
+offscreen aperture now allocate `CSS size × devicePixelRatio`, draw through a matching transform,
+and align the caption geometry to device pixels. The logical 200px aperture and input coordinates
+are unchanged; only raster definition increases.
+
+The display id is part of live-grid validity. A helper response can arrive after the floating
+window has crossed to another monitor, and two monitors can have the same display-relative numeric
+point. Reinitialization clears the old preview, while both the asynchronous acceptance guard and
+the exact-click fast path require the current display id in addition to point and grid size.

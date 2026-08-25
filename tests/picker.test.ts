@@ -1,68 +1,94 @@
 import { describe, expect, it } from 'vitest'
 import {
-  FINE_FACTOR,
-  advancePointer,
+  DEFAULT_PICKER_ZOOM_INDEX,
+  MAXIMUM_ZOOM_MOVEMENT_FACTOR,
+  PICKER_ZOOM_LEVELS,
+  advancePointerAtFactor,
+  constrainPointerOffset,
   cursorForDisplay,
+  floatingPickerRect,
+  floatingPickerRegionOrigin,
   initialPointerState,
   magnifierPlacement,
   magnifierRegion,
   nudgePointer,
-  pixelAt
+  parseRgbHexGrid,
+  pixelAt,
+  pointDelta,
+  stepPickerZoomIndex
 } from '../src/shared/picker'
 
 const bounds = { width: 1920, height: 1080 }
 
-describe('advancePointer', () => {
-  it('tracks the cursor one-to-one in coarse mode', () => {
+describe('advancePointerAtFactor', () => {
+  it('tracks the cursor one-to-one at wide zoom', () => {
     const state = initialPointerState({ x: 100, y: 100 })
-    const next = advancePointer(state, { x: 140, y: 130 }, { x: 40, y: 30 }, false, bounds)
+    const next = advancePointerAtFactor(state, { x: 140, y: 130 }, { x: 40, y: 30 }, 1, bounds)
     expect(next.point).toEqual({ x: 140, y: 130 })
     expect(next.offset).toEqual({ x: 0, y: 0 })
   })
 
-  it('moves a fraction of the cursor delta while shift is held', () => {
+  it('moves a fraction of the cursor delta at maximum zoom', () => {
     const state = initialPointerState({ x: 500, y: 500 })
-    const next = advancePointer(state, { x: 580, y: 500 }, { x: 80, y: 0 }, true, bounds)
+    const next = advancePointerAtFactor(
+      state,
+      { x: 580, y: 500 },
+      { x: 80, y: 0 },
+      MAXIMUM_ZOOM_MOVEMENT_FACTOR,
+      bounds
+    )
     // 80 physical pixels become 10 sampled pixels at one eighth.
-    expect(next.point.x).toBeCloseTo(500 + 80 * FINE_FACTOR)
+    expect(next.point.x).toBeCloseTo(500 + 80 * MAXIMUM_ZOOM_MOVEMENT_FACTOR)
     expect(next.point.y).toBe(500)
   })
 
-  it('lets a whole mouse sweep resolve single pixels', () => {
+  it('lets maximum zoom resolve single pixels', () => {
     let state = initialPointerState({ x: 500, y: 500 })
     for (let step = 0; step < 8; step++) {
-      state = advancePointer(state, { x: 500 + step + 1, y: 500 }, { x: 1, y: 0 }, true, bounds)
+      state = advancePointerAtFactor(
+        state,
+        { x: 500 + step + 1, y: 500 },
+        { x: 1, y: 0 },
+        MAXIMUM_ZOOM_MOVEMENT_FACTOR,
+        bounds
+      )
     }
     // Eight physical pixels of travel land exactly one pixel across.
     expect(state.point.x).toBeCloseTo(501)
   })
 
-  it('does not snap back when shift is released', () => {
-    // The whole reason the offset exists: leaving fine mode must not teleport the magnifier to
+  it('does not snap back when returning to wide zoom', () => {
+    // The whole reason the offset exists: leaving precision zoom must not teleport the magnifier to
     // wherever the physical cursor drifted to.
     let state = initialPointerState({ x: 500, y: 500 })
-    state = advancePointer(state, { x: 580, y: 500 }, { x: 80, y: 0 }, true, bounds)
-    const fineX = state.point.x
-    expect(fineX).toBeCloseTo(510)
+    state = advancePointerAtFactor(
+      state,
+      { x: 580, y: 500 },
+      { x: 80, y: 0 },
+      MAXIMUM_ZOOM_MOVEMENT_FACTOR,
+      bounds
+    )
+    const precisionX = state.point.x
+    expect(precisionX).toBeCloseTo(510)
 
-    const afterRelease = advancePointer(state, { x: 590, y: 500 }, { x: 10, y: 0 }, false, bounds)
-    // It carries on from where fine mode left it, moving a little faster than the cursor while
+    const afterZoomOut = advancePointerAtFactor(state, { x: 590, y: 500 }, { x: 10, y: 0 }, 1, bounds)
+    // It carries on from where precision zoom left it, moving a little faster than the cursor while
     // it catches up. What it must never do is jump to the physical cursor at 590.
-    expect(afterRelease.point.x).toBeGreaterThan(fineX)
-    expect(afterRelease.point.x).toBeLessThan(fineX + 30)
+    expect(afterZoomOut.point.x).toBeGreaterThan(precisionX)
+    expect(afterZoomOut.point.x).toBeLessThan(precisionX + 30)
   })
 
-  it('bleeds the fine displacement off over coarse movement instead of jumping', () => {
-    // Coarse movement after a fine excursion is deliberately not one-to-one: it spends part of
+  it('bleeds precision-zoom displacement off at wide zoom instead of jumping', () => {
+    // Wide movement after a precision excursion is deliberately not one-to-one: it spends part of
     // the travel pulling the sample back onto the cursor. A hard resync would be a visible jump,
     // and leaving the displacement standing would strand part of the screen (see the edge test).
     let state = initialPointerState({ x: 400, y: 400 })
-    state = advancePointer(state, { x: 464, y: 400 }, { x: 64, y: 0 }, true, bounds)
+    state = advancePointerAtFactor(state, { x: 464, y: 400 }, { x: 64, y: 0 }, MAXIMUM_ZOOM_MOVEMENT_FACTOR, bounds)
     expect(state.offset.x).toBeLessThan(0)
     const displaced = state.offset.x
 
     const before = state.point.x
-    state = advancePointer(state, { x: 564, y: 400 }, { x: 100, y: 0 }, false, bounds)
+    state = advancePointerAtFactor(state, { x: 564, y: 400 }, { x: 100, y: 0 }, 1, bounds)
     // Still moves right, still smooth, but slightly faster than the cursor while catching up.
     expect(state.point.x).toBeGreaterThan(before)
     expect(Math.abs(state.offset.x)).toBeLessThan(Math.abs(displaced))
@@ -70,29 +96,29 @@ describe('advancePointer', () => {
 
   it('returns to one-to-one tracking once the displacement is spent', () => {
     let state = initialPointerState({ x: 400, y: 400 })
-    state = advancePointer(state, { x: 464, y: 400 }, { x: 64, y: 0 }, true, bounds)
+    state = advancePointerAtFactor(state, { x: 464, y: 400 }, { x: 64, y: 0 }, MAXIMUM_ZOOM_MOVEMENT_FACTOR, bounds)
     let cursor = 464
     for (let step = 0; step < 20; step++) {
       cursor += 40
-      state = advancePointer(state, { x: cursor, y: 400 }, { x: 40, y: 0 }, false, bounds)
+      state = advancePointerAtFactor(state, { x: cursor, y: 400 }, { x: 40, y: 0 }, 1, bounds)
     }
     expect(state.offset.x).toBe(0)
 
     const before = state.point.x
-    state = advancePointer(state, { x: cursor + 50, y: 400 }, { x: 50, y: 0 }, false, bounds)
+    state = advancePointerAtFactor(state, { x: cursor + 50, y: 400 }, { x: 50, y: 0 }, 1, bounds)
     expect(state.point.x).toBeCloseTo(before + 50)
   })
 
   it('clamps the sample inside the image', () => {
     const state = initialPointerState({ x: 10, y: 10 })
-    const low = advancePointer(state, { x: -50, y: -50 }, { x: -60, y: -60 }, false, bounds)
+    const low = advancePointerAtFactor(state, { x: -50, y: -50 }, { x: -60, y: -60 }, 1, bounds)
     expect(low.point).toEqual({ x: 0, y: 0 })
-    const high = advancePointer(state, { x: 5000, y: 5000 }, { x: 4990, y: 4990 }, false, bounds)
+    const high = advancePointerAtFactor(state, { x: 5000, y: 5000 }, { x: 4990, y: 4990 }, 1, bounds)
     expect(high.point).toEqual({ x: bounds.width - 1, y: bounds.height - 1 })
   })
 
-  it('lets the sample still reach the far edge after a long fine excursion', () => {
-    // This is the failure the decay exists to prevent. Fine movement leftwards displaces the
+  it('lets the sample still reach the far edge after a long precision-zoom excursion', () => {
+    // This is the failure the decay exists to prevent. Precision movement leftwards displaces the
     // sample to the right of the physical cursor; once the cursor is pinned against the left
     // edge of the screen it can deliver no more leftward travel, so a standing displacement
     // would leave a band of the screen permanently unpickable.
@@ -100,14 +126,14 @@ describe('advancePointer', () => {
     let state = initialPointerState({ x: cursor, y: 500 })
     for (let step = 0; step < 60; step++) {
       cursor -= 10
-      state = advancePointer(state, { x: cursor, y: 500 }, { x: -10, y: 0 }, true, bounds)
+      state = advancePointerAtFactor(state, { x: cursor, y: 500 }, { x: -10, y: 0 }, MAXIMUM_ZOOM_MOVEMENT_FACTOR, bounds)
     }
     expect(state.offset.x).toBeGreaterThan(100)
 
     // Ordinary coarse movement to the left edge, with the cursor stopping at 0 as a real one does.
     for (let step = 0; step < 40; step++) {
       cursor = Math.max(0, cursor - 40)
-      state = advancePointer(state, { x: cursor, y: 500 }, { x: -40, y: 0 }, false, bounds)
+      state = advancePointerAtFactor(state, { x: cursor, y: 500 }, { x: -40, y: 0 }, 1, bounds)
     }
     expect(cursor).toBe(0)
     expect(state.point.x).toBe(0)
@@ -116,14 +142,20 @@ describe('advancePointer', () => {
 
   it('collapses the displacement when the sample is clamped at an edge', () => {
     const state = { point: { x: 100, y: 100 }, offset: { x: -400, y: 0 } }
-    const next = advancePointer(state, { x: 10, y: 100 }, { x: 0, y: 0 }, true, bounds)
+    const next = advancePointerAtFactor(state, { x: 10, y: 100 }, { x: 0, y: 0 }, MAXIMUM_ZOOM_MOVEMENT_FACTOR, bounds)
     expect(next.point.x).toBe(0)
     expect(next.offset.x).toBe(-10)
   })
 
   it('survives a non-finite delta without corrupting the state', () => {
     const state = initialPointerState({ x: 100, y: 100 })
-    const next = advancePointer(state, { x: Number.NaN, y: 100 }, { x: Number.NaN, y: 0 }, true, bounds)
+    const next = advancePointerAtFactor(
+      state,
+      { x: Number.NaN, y: 100 },
+      { x: Number.NaN, y: 0 },
+      MAXIMUM_ZOOM_MOVEMENT_FACTOR,
+      bounds
+    )
     expect(Number.isFinite(next.point.x)).toBe(true)
     expect(Number.isFinite(next.point.y)).toBe(true)
   })
@@ -181,6 +213,169 @@ describe('pixelAt', () => {
     expect(pixelAt(data, width, height, 2, 0)).toBeNull()
     expect(pixelAt(data, width, height, 0, -1)).toBeNull()
     expect(pixelAt(data, width, height, 0, 2)).toBeNull()
+  })
+})
+
+describe('zoom-aware pointer movement', () => {
+  it('moves smoothly at each discrete precision factor', () => {
+    const state = initialPointerState({ x: 500, y: 500 })
+    const next = advancePointerAtFactor(state, { x: 580, y: 500 }, { x: 80, y: 0 }, 1 / 4, bounds)
+    expect(next.point.x).toBeCloseTo(520)
+    expect(next.offset.x).toBeCloseTo(-60)
+  })
+
+  it('caps an extreme maximum-zoom movement to the frame budget', () => {
+    const state = initialPointerState({ x: 500, y: 500 })
+    const fastest = PICKER_ZOOM_LEVELS[PICKER_ZOOM_LEVELS.length - 1]
+    const frameBudget = fastest.maxSpeed / 60
+    const next = advancePointerAtFactor(
+      state,
+      { x: 1500, y: 500 },
+      { x: 1000, y: 0 },
+      fastest.movementFactor,
+      bounds,
+      frameBudget
+    )
+    expect(next.point.x - state.point.x).toBeCloseTo(frameBudget)
+    expect(next.point.y).toBe(state.point.y)
+  })
+
+  it('does not cap normal movement at the wide zoom levels', () => {
+    const state = initialPointerState({ x: 500, y: 500 })
+    const widest = PICKER_ZOOM_LEVELS[0]
+    const next = advancePointerAtFactor(
+      state,
+      { x: 900, y: 500 },
+      { x: 400, y: 0 },
+      widest.movementFactor,
+      bounds,
+      widest.maxSpeed
+    )
+    expect(next.point.x).toBe(900)
+  })
+
+  it('derives movement from absolute screen points rather than window-relative event deltas', () => {
+    expect(pointDelta({ x: 400, y: 300 }, { x: 480, y: 260 })).toEqual({ x: 80, y: -40 })
+    // A BrowserWindow recenter can change client coordinates by hundreds of pixels while the
+    // physical screen point does not move. Absolute-point movement correctly remains zero.
+    expect(pointDelta({ x: 480, y: 260 }, { x: 480, y: 260 })).toEqual({ x: 0, y: 0 })
+  })
+
+  it('steps wheel zoom in both directions and clamps at the endpoints', () => {
+    expect(PICKER_ZOOM_LEVELS[DEFAULT_PICKER_ZOOM_INDEX]).toMatchObject({ cells: 25, movementFactor: 1 })
+    expect(stepPickerZoomIndex(DEFAULT_PICKER_ZOOM_INDEX, -100)).toBe(DEFAULT_PICKER_ZOOM_INDEX + 1)
+    expect(stepPickerZoomIndex(DEFAULT_PICKER_ZOOM_INDEX, 100)).toBe(DEFAULT_PICKER_ZOOM_INDEX)
+    expect(stepPickerZoomIndex(PICKER_ZOOM_LEVELS.length - 1, -100)).toBe(PICKER_ZOOM_LEVELS.length - 1)
+    expect(stepPickerZoomIndex(0, 100)).toBe(0)
+  })
+
+  it('uses odd grids and progressively slower movement only at tighter zoom levels', () => {
+    expect(PICKER_ZOOM_LEVELS.map((level) => level.cells)).toEqual([25, 17, 13, 9, 5])
+    expect(PICKER_ZOOM_LEVELS.every((level) => level.cells % 2 === 1)).toBe(true)
+    expect(PICKER_ZOOM_LEVELS.map((level) => level.movementFactor)).toEqual([1, 1, 1 / 2, 1 / 4, 1 / 8])
+    expect(PICKER_ZOOM_LEVELS.map((level) => level.maxSpeed)).toEqual([
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      720,
+      240,
+      80
+    ])
+    expect(PICKER_ZOOM_LEVELS.every((level) => !('label' in level))).toBe(true)
+  })
+})
+
+describe('constrainPointerOffset', () => {
+  it('preserves zoom displacement while the selector fits inside the floating surface', () => {
+    const state = { point: { x: 450, y: 480 }, offset: { x: -50, y: -20 } }
+    expect(constrainPointerOffset(
+      state,
+      { x: 500, y: 500 },
+      { minX: -200, maxX: 200, minY: -200, maxY: 200 },
+      bounds
+    )).toEqual(state)
+  })
+
+  it('clamps an owned selector before it can leave the compact picker window', () => {
+    const next = constrainPointerOffset(
+      { point: { x: 100, y: 900 }, offset: { x: -400, y: 400 } },
+      { x: 500, y: 500 },
+      { minX: -204, maxX: 204, minY: -204, maxY: 204 },
+      bounds
+    )
+    expect(next.point).toEqual({ x: 296, y: 704 })
+    expect(next.offset).toEqual({ x: -204, y: 204 })
+  })
+
+  it('recomputes displacement when the image edge is closer than the surface limit', () => {
+    const next = constrainPointerOffset(
+      { point: { x: -100, y: 50 }, offset: { x: -200, y: 0 } },
+      { x: 10, y: 50 },
+      { minX: -204, maxX: 204, minY: -204, maxY: 204 },
+      bounds
+    )
+    expect(next.point.x).toBe(0)
+    expect(next.offset.x).toBe(-10)
+  })
+})
+
+describe('floatingPickerRect', () => {
+  it('centres a compact picker surface on the screen-space pointer', () => {
+    expect(floatingPickerRect(
+      { x: 1200, y: 700 },
+      { x: 0, y: 0, width: 2560, height: 1440 }
+    )).toEqual({ x: 880, y: 380, width: 640, height: 640 })
+  })
+
+  it('never equals a small display dimension', () => {
+    const rect = floatingPickerRect(
+      { x: -640, y: 400 },
+      { x: -1280, y: 0, width: 640, height: 480 }
+    )
+    expect(rect.width).toBe(624)
+    expect(rect.height).toBe(464)
+  })
+
+  it('may hang beyond a display edge so the pointer stays inside it', () => {
+    const rect = floatingPickerRect(
+      { x: 0, y: 0 },
+      { x: 0, y: 0, width: 1920, height: 1080 }
+    )
+    expect(rect.x).toBe(-320)
+    expect(rect.y).toBe(-320)
+  })
+})
+
+describe('floatingPickerRegionOrigin', () => {
+  it('predicts the same local origin that a recentered floating window will use', () => {
+    const display = { x: 0, y: 0, width: 1920, height: 1080 }
+    expect(floatingPickerRegionOrigin({ x: 560, y: 500 }, display)).toEqual({ x: 240, y: 180 })
+  })
+
+  it('keeps the selector on its absolute point while the native window recenters', () => {
+    const display = { x: 0, y: 0, width: 1920, height: 1080 }
+    const selectorScreenX = 560
+    const previousOriginX = floatingPickerRegionOrigin({ x: 400, y: 500 }, display).x
+    const staleLocalX = selectorScreenX - previousOriginX
+    const nextOriginX = floatingPickerRegionOrigin({ x: selectorScreenX, y: 500 }, display).x
+
+    // Carrying the previous bitmap with the moved window produces the reported 160px overshoot.
+    expect(nextOriginX + staleLocalX).toBe(720)
+    // Painting against the predicted origin before the move holds the selector on the cursor.
+    expect(nextOriginX + (selectorScreenX - nextOriginX)).toBe(selectorScreenX)
+  })
+})
+
+describe('parseRgbHexGrid', () => {
+  it('decodes row-major RRGGBB pixels into opaque RGBA', () => {
+    expect(Array.from(parseRgbHexGrid('FF000000FF00', 2, 1) ?? [])).toEqual([
+      255, 0, 0, 255, 0, 255, 0, 255
+    ])
+  })
+
+  it('rejects malformed or incorrectly sized helper output', () => {
+    expect(parseRgbHexGrid('FFFFFF', 2, 1)).toBeNull()
+    expect(parseRgbHexGrid('GGGGGG', 1, 1)).toBeNull()
+    expect(parseRgbHexGrid('', 0, 1)).toBeNull()
   })
 })
 

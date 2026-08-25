@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { blurPaddingForRadius, blurRadiusForIntensity, pixelBlockForIntensity } from '../src/renderer/render'
+import {
+  HIGHLIGHT_ALPHA,
+  blurPaddingForRadius,
+  blurRadiusForIntensity,
+  pixelBlockForIntensity
+} from '../src/renderer/render'
 
 describe('blur and pixelate intensity', () => {
   it('exposes a percentage Intensity control instead of an effect Size control', () => {
@@ -53,5 +58,14 @@ describe('blur and pixelate intensity', () => {
     expect(blurPaddingForRadius(0)).toBe(0)
     expect(blurPaddingForRadius(Number.NaN)).toBe(0)
     expect(blurPaddingForRadius(-5)).toBe(0)
+  })
+})
+
+describe('highlighter visibility', () => {
+  it('uses a vivid translucent source-over marker instead of dark-only multiply', () => {
+    const renderer = readFileSync(new URL('../src/renderer/render.ts', import.meta.url), 'utf8')
+    expect(HIGHLIGHT_ALPHA).toBeGreaterThanOrEqual(0.5)
+    expect(renderer).toMatch(/case 'highlight':[\s\S]*?globalCompositeOperation = 'source-over'/)
+    expect(renderer).not.toMatch(/case 'highlight':[\s\S]*?globalCompositeOperation = 'multiply'/)
   })
 })

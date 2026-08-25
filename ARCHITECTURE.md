@@ -29,12 +29,12 @@ The preload exposes only Capturo-specific methods. Renderers have no Node.js acc
 ## Capture flow
 
 1. The main process hides any prior overlays and grabs each display's frozen desktop. On Windows this is the native FP16 helper (D-015), which runs as a persistent background process warmed at launch so a capture pays no device/duplication setup (D-017); other platforms, or a Windows machine without the helper, fall back to a `desktopCapturer` thumbnail. The helper captures the requested displays in one batch, and the fallback `desktopCapturer` sources, full-resolution grabs of every screen, are fetched only when a display actually needs them, never on the Windows happy path.
-2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently, sending each the frozen image plus the origin and size it needs. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input. How a display is divided into regions is platform-specific and lives in `overlayRegions` in `src/shared/geometry.ts`: Windows tiles an editor over the work area plus a filler per uncovered strip (D-013), while macOS uses a single window over the whole display created with `enableLargerThanScreen: true`, because AppKit otherwise clamps a window into the work area and leaves the menu bar and Dock uncovered (D-029).
+2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently. Once each renderer has installed its listeners it requests the frozen image plus the origin and size it needs through `capture:request-initialization`; this pull handshake cannot lose a page-load push before the module is ready. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input. How a display is divided into regions is platform-specific and lives in `overlayRegions` in `src/shared/geometry.ts`: Windows tiles an editor over the work area plus a filler per uncovered strip (D-013), while macOS uses a single window over the whole display created with `enableLargerThanScreen: true`, because AppKit otherwise clamps a window into the work area and leaves the menu bar and Dock uncovered (D-029).
 3. Each renderer decodes the desktop image, paints it to the canvas, waits through two animation frames, and acknowledges `capture:ready`. The main process then reveals that overlay by raising its opacity, immediately and with no delay; an unpainted or half-shown full-screen window is never visible (D-010, D-011).
 4. The first overlay receiving a pointer press claims the session. Sibling overlays close so only one display is edited.
 5. Renderer coordinates are stored in source-image pixels, not CSS pixels. This preserves sharp output on scaled/Retina displays.
 6. Copy, Copy text, save, and Open in full tab render the base image plus edit commands into an offscreen canvas, then crop to the selection. A pending transparency preview is committed before every export or transfer.
-7. **Open in full tab** sends that bounded composite through sender/session-validated IPC, creates one normal framed editor window, and only then closes the full-screen overlays. The detached editor owns its own id and lifecycle rather than the active capture session, so another capture cannot destroy it. Its canvas fits the checkpoint image into the resizable window while all editing coordinates remain source-image pixels. Existing edits are baked into the checkpoint; subsequent edits remain commands in the detached editor. See D-039.
+7. **Open in full tab** sends that bounded composite through sender/session-validated IPC and creates one normal framed editor window. The main process waits for that renderer to request its payload, decode the checkpoint, and acknowledge `capture:ready` before reporting success or closing the full-screen overlays. A ten-second timeout, renderer death, or pre-reveal unresponsiveness clears the hidden state so it cannot masquerade as an already open editor. The detached editor owns its own id and lifecycle rather than the active capture session, so another capture cannot destroy it. Its canvas fits the checkpoint image into the resizable window while all editing coordinates remain source-image pixels. Existing edits are baked into the checkpoint; subsequent edits remain commands in the detached editor. See D-039.
 8. Regular Copy asks the main process to write the lossless bitmap to the clipboard. Save opens a native dialog and forces a `.png` path and PNG bytes when the command list contains transparency, including transparency inherited by a detached checkpoint.
 9. Copy text sends that rendered PNG through sender/session-validated IPC to the persistent native helper, on Windows and macOS alike. The helper recognizes it with `Windows.Media.Ocr` or with Apple's Vision framework respectively; the main process normalizes line endings and writes only non-empty plain text to the clipboard. Success closes the owning overlay or detached editor, while no-text or failure leaves it open.
 
@@ -49,7 +49,7 @@ Annotations are serializable commands rather than baked pixels. Each command con
 Every command also exposes deterministic bounds and hit-testing through `src/shared/annotations.ts`. The Select tool searches commands from front to back, then uses those bounds for movement, eight-handle resizing, deletion, and property synchronization. Annotation coordinates are absolute source-image pixels: moving the crop frame never translates annotations.
 
 - `pen`: sampled points, simplified and rendered with quadratic smoothing
-- `highlight`: the same points and the same smoothing as `pen`, sharing its geometry throughout `src/shared/annotations.ts` and its path builder in `src/renderer/render.ts`. It diverges only in compositing - `multiply` at 45% alpha with `butt` caps, drawn in one `stroke()` call - so it darkens what it marks instead of covering it, and a self-crossing stroke stays one even tone. Shift or Control locks it straight, and it carries its own width separate from the pen's. See D-035
+- `highlight`: the same points and the same smoothing as `pen`, sharing its geometry throughout `src/shared/annotations.ts` and its path builder in `src/renderer/render.ts`. It diverges only in compositing - `source-over` at 52% alpha with `butt` caps, drawn in one `stroke()` call - so palette colours stay vivid on light and dark captures while a self-crossing stroke remains one even tone. Shift or Control locks it straight, and it carries its own width separate from the pen's. See D-035
 - `line` / `arrow`: two endpoints; Shift or Control locks to a 45-degree axis
 - `rectangle` / `ellipse`: bounding rectangle
 - `step`: numbered circular marker; numbering follows creation order and its slider size is stored through the style's source-pixel font size
@@ -127,26 +127,68 @@ For a distinct frame whose changed pixels cover at most 25% of the region, the e
 
 ## Color picker
 
-The tray menu's **Color picker**, or its global shortcut, opens the same frozen-desktop session a
-screenshot does, in `picker` mode, so the overlay renderer is `picker.html` instead of `index.html`. The colour
-reported is therefore a pixel of the tone-mapped native capture (D-014), not an untreated
-read-back, and it is frozen at invocation: a colour cannot be picked out of a running animation.
+The tray menu's **Color picker**, or its global shortcut, opens a separate `ColorPickerSession`.
+It does not call the screenshot capture path and never gives the renderer a desktop image. On
+Windows one compact, transparent, content-protected 640×640 window follows the pointer; avoiding a
+monitor-sized Electron surface preserves Chromium hardware-video planes. On macOS the established
+display overlay remains. `picker-live.ts` requests one coalesced active-size live sample at a time. On
+Windows `sample-display` reads that grid from the cached
+FP16 Desktop Duplication surface, applies the same SDR-white normalization and HDR gamut map as a
+screenshot, and returns compact row-major RRGGBB bytes. Other platforms fall back to a newly read
+screen source cropped to the same small grid. See D-041.
 
-`CapturePayload.cursor` carries the pointer position for each overlay, in CSS pixels relative to
+`ColorPickerPayload.cursor` carries the pointer position for each overlay, in CSS pixels relative to
 that display and null on the displays it is not on, so the picker opens on the pixel already under
 the pointer and only the display holding it shows a magnifier. The reveal focuses that display's
 editor rather than whichever overlay painted last.
 
 The overlay hides the system cursor and puts the magnifier in its place, centred on the sampled
-pixel, at a point it owns rather than at the OS cursor position. That indirection is what lets Shift slow sampling to an eighth speed without
-the operating system's pointer acceleration fighting it. The pointer model, including how the
+pixel, at a point it owns rather than at the OS cursor position. That indirection is what lets tighter
+wheel zoom levels slow sampling without the operating system's pointer acceleration fighting it.
+The pointer model, including how the
 resulting displacement is bled off so the screen edges stay reachable, is pure and lives in
-`src/shared/picker.ts`. Fine movement reads the modifier from the pointer event, not from a key
-listener, because keyboard events only reach the focused overlay and a multi-display capture has
-several. See D-032.
+`src/shared/picker.ts`. On the compact Windows surface, that displacement is additionally bounded
+by the live space around the physical pointer. Before either point reaches its guard, the surface
+recentres on their screen-space midpoint rather than on the cursor alone. This roughly doubles the
+usable precision separation while keeping the complete magnifier visible and its centre truthful.
+Movement is derived from consecutive absolute screen-space points, never the renderer's relative
+movement fields: those fields change coordinate frame when Windows recentres the BrowserWindow and
+can spike under fast input. Shift and other modifiers are deliberately ignored by picker movement;
+precision comes only from the selected zoom level. See D-032.
+
+The visible selector cannot wait for `window.screenX/Y` after a recenter. Moving a native window
+carries its already-composited bitmap immediately, while Chromium exposes the new screen origin on
+a later frame; painting from that late value briefly carries the selector past the pointer. The
+renderer therefore predicts the next display-relative origin with the same pure
+`floatingPickerRect` geometry as main, paints the corrected local placement in the animation-frame
+phase, and only then requests `setBounds`. The selector's absolute position is always derived from
+display/image coordinates, never fed back from the moving window. Main ignores identical bounds to
+avoid needless compositor transactions.
+
+On Windows CSS cursor hiding is reinforced by a balanced `cursor-hidden` request to the persistent
+native helper for the lifetime of the picker. This covers a fast physical pointer crossing outside
+the compact BrowserWindow between recenter operations; pick, cancel, replacement, and graceful
+helper shutdown restore the exact display-counter adjustment Capturo made.
+
+The wheel selects one of five odd-sized live grids: 25, 17, 13, 9, or 5 source pixels across the
+fixed 200px aperture, starting with the widest 25-pixel view. Odd grids preserve a true centre
+pixel. The tighter three levels also select 1/2, 1/4, or 1/8 owned-point movement. Those levels
+additionally cap owned-point velocity at 720,
+240, and 80 source pixels per second, so arbitrarily large physical deltas cannot defeat precision.
+Zoom state is not labeled in the UI. Sampling requests carry
+their grid size and stale in-flight results are accepted only when both point and active size still
+match. A grid also carries its display id; crossing a monitor clears the previous preview, and an
+old in-flight result from another output is rejected even if its numeric point happens to match.
+The aperture and hex caption are composed onto the hit canvas in one animation frame; the
+renderer copy-composites transparency across that entire canvas first, forcing a complete surface
+replacement so there is no independently moving transparent DOM layer or partial dirty rectangle
+for DWM to briefly retain after rapid direction changes. The visible canvas and cached aperture
+allocate backing pixels at `devicePixelRatio` and draw through a logical-coordinate transform, so
+the pixel grid, rim, and hex caption are not enlarged from a low-resolution CSS-pixel bitmap on a
+scaled display.
 
 Picking copies the colour to the clipboard in the main process - in the format set under Settings,
-and only if copy-on-pick is on - then closes the capture session and opens the colour window, a plain window rather than an
+and only if copy-on-pick is on - then closes the picker session and opens the colour window, a plain window rather than an
 overlay because the colour outlives the session. It holds the sampled RGB and a separate HSL used
 only to position the sliders; the picked value is never round-tripped through HSL, which would
 quantize it. Conversions, the related-colour row, and naming are pure in `src/shared/color.ts`.
