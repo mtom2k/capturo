@@ -790,3 +790,11 @@ The display id is part of live-grid validity. A helper response can arrive after
 window has crossed to another monitor, and two monitors can have the same display-relative numeric
 point. Reinitialization clears the old preview, while both the asynchronous acceptance guard and
 the exact-click fast path require the current display id in addition to point and grid size.
+
+**Amended 2026-08-24: picker pixel dimensions must be platform-neutral.** Electron 43 declares
+`screen.dipToScreenRect` in TypeScript but does not expose it in the macOS runtime. Calling it while
+building `ColorPickerPayload` threw before an overlay was created, so the picker appeared to do
+nothing on macOS even though type checking and the Windows path passed. The picker needs only the
+display's source-image width and height, not a converted desktop origin; those dimensions now come
+from `Display.size × Display.scaleFactor`. Windows-only native-helper calls may still use the
+screen conversion API for physical output origins, but no shared or macOS picker path may do so.

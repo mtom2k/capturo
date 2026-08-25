@@ -29,6 +29,24 @@ export const PICKER_ZOOM_LEVELS = [
 ] as const
 export const DEFAULT_PICKER_ZOOM_INDEX = 0
 
+/**
+ * Converts Electron's display size from DIP units to source-image pixels.
+ *
+ * `screen.dipToScreenRect` is not available in Electron's macOS runtime even though it is part
+ * of the cross-platform TypeScript surface. Picker payloads only need the display's pixel size,
+ * so deriving it from the documented scale factor keeps the macOS and Windows paths aligned
+ * without calling a platform-specific screen conversion API.
+ */
+export function displayPixelSize(size: Bounds, scaleFactor: number): Bounds {
+  const scale = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1
+  const width = Number.isFinite(size.width) ? Math.max(0, size.width) : 0
+  const height = Number.isFinite(size.height) ? Math.max(0, size.height) : 0
+  return {
+    width: Math.max(1, Math.ceil(width * scale)),
+    height: Math.max(1, Math.ceil(height * scale))
+  }
+}
+
 export function stepPickerZoomIndex(index: number, wheelDeltaY: number): number {
   const current = Math.min(Math.max(Math.round(Number.isFinite(index) ? index : DEFAULT_PICKER_ZOOM_INDEX), 0), PICKER_ZOOM_LEVELS.length - 1)
   if (!Number.isFinite(wheelDeltaY) || wheelDeltaY === 0) return current

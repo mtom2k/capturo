@@ -6,6 +6,7 @@ import {
   advancePointerAtFactor,
   constrainPointerOffset,
   cursorForDisplay,
+  displayPixelSize,
   floatingPickerRect,
   floatingPickerRegionOrigin,
   initialPointerState,
@@ -19,6 +20,17 @@ import {
 } from '../src/shared/picker'
 
 const bounds = { width: 1920, height: 1080 }
+
+describe('displayPixelSize', () => {
+  it('converts a Retina display from DIP units to source-image pixels', () => {
+    expect(displayPixelSize({ width: 1512, height: 982 }, 2)).toEqual({ width: 3024, height: 1964 })
+  })
+
+  it('rounds fractional scaled dimensions up and survives an invalid scale factor', () => {
+    expect(displayPixelSize({ width: 1365, height: 768 }, 1.25)).toEqual({ width: 1707, height: 960 })
+    expect(displayPixelSize({ width: 800, height: 600 }, Number.NaN)).toEqual({ width: 800, height: 600 })
+  })
+})
 
 describe('advancePointerAtFactor', () => {
   it('tracks the cursor one-to-one at wide zoom', () => {

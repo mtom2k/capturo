@@ -56,6 +56,17 @@ describe('live picker sampling continuity', () => {
   })
 })
 
+describe('macOS live picker compatibility', () => {
+  it('derives picker image dimensions without Electron screen conversion APIs unavailable on macOS', () => {
+    expect(pickerMain).toMatch(
+      /function buildPickerPayload[\s\S]*?const physical = displayPixelSize\(display\.size, display\.scaleFactor\)/
+    )
+    expect(pickerMain).toMatch(
+      /async function fallbackColorSample[\s\S]*?const expected = displayPixelSize\(display\.size, display\.scaleFactor\)/
+    )
+  })
+})
+
 describe('live picker chrome', () => {
   it('does not display an invocation instruction popup', () => {
     expect(pickerHtml).not.toContain('Click to pick a color')

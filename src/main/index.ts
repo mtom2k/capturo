@@ -55,6 +55,7 @@ import {
   FLOATING_PICKER_MAX_SIZE,
   PICKER_ZOOM_LEVELS,
   cursorForDisplay,
+  displayPixelSize,
   floatingPickerRect
 } from '../shared/picker'
 import {
@@ -704,8 +705,9 @@ async function captureSources(
   // here). Sizing to just those keeps the grab from paying for a 4K thumbnail of a screen it
   // will throw away.
   const sized = sizingDisplays.length > 0 ? sizingDisplays : displays
-  const maxWidth = Math.max(...sized.map((d) => Math.ceil(d.size.width * d.scaleFactor)))
-  const maxHeight = Math.max(...sized.map((d) => Math.ceil(d.size.height * d.scaleFactor)))
+  const pixelSizes = sized.map((display) => displayPixelSize(display.size, display.scaleFactor))
+  const maxWidth = Math.max(...pixelSizes.map((size) => size.width))
+  const maxHeight = Math.max(...pixelSizes.map((size) => size.height))
   return desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width: maxWidth, height: maxHeight },
@@ -824,7 +826,7 @@ function buildPickerPayload(
 ): ColorPickerPayload {
   const bounds = display.bounds
   const area = region.rect
-  const physical = screen.dipToScreenRect(null, bounds)
+  const physical = displayPixelSize(display.size, display.scaleFactor)
   const displayCursor = cursorForDisplay(cursor, bounds)
   const regionOrigin = { x: area.x - bounds.x, y: area.y - bounds.y }
   const cursorInRegion = displayCursor &&
@@ -1178,7 +1180,7 @@ async function fallbackColorSample(
     if (!source || source.thumbnail.isEmpty()) return { ok: false }
     const image = source.thumbnail
     const actual = image.getSize()
-    const expected = screen.dipToScreenRect(null, display.bounds)
+    const expected = displayPixelSize(display.size, display.scaleFactor)
     const centerX = Math.round(point.x * actual.width / Math.max(1, expected.width))
     const centerY = Math.round(point.y * actual.height / Math.max(1, expected.height))
     const half = Math.floor(size / 2)

@@ -14,8 +14,8 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 > 🪟 **Windows 11 is the supported platform.** It is the only one with published packages.
 >
 > 🍎 **macOS runs but is unsupported.** Capture, the menu-bar flow, settings, permissions, and
-> start-at-login all work on Apple Silicon (verified on macOS 26.2), and a universal build is
-> attached to v0.20.0 — but Capturo has no Apple Developer ID certificate, so it cannot be
+> start-at-login all work on Apple Silicon (verified on macOS 26.2), and an Apple Silicon build is
+> attached to v0.22.0 — but Capturo has no Apple Developer ID certificate, so it cannot be
 > notarized and Gatekeeper refuses it after download. Running it takes a manual quarantine removal,
 > and the Screen Recording grant lapses on every upgrade. See [macOS](#-macos) below.
 
@@ -32,13 +32,17 @@ Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/
 
 Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
 
-Source is at **0.22.3**, prepared as a draft; the newest published release is **0.22.0**. Windows x64 remains the only supported platform. The macOS artifacts attached to 0.22.0 are an unsupported preview — see [macOS](#-macos).
+Source and the newest stable release are **0.22.3**. The release publishes the Windows x64 Setup
+and Portable executables; Windows x64 remains the only supported platform. The macOS artifacts
+attached to 0.22.0 remain an unsupported preview — see [macOS](#-macos).
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
 Version 0.22.3 makes Color Picker a live, transparent tool: invoking it no longer freezes,
 tints, blurs, or blacks out the screen—including paused and playing browser video—and its Windows
-samples retain Capturo's HDR-aware color conversion. Version
+samples retain Capturo's HDR-aware color conversion. It also fixes Color Picker startup in local
+macOS builds, where an Electron screen-conversion API available in the type definitions was absent
+at runtime. Version
 0.22.2 adds a normal full editor window that frees the desktop after region selection, and includes
 the 0.22.1 HDR correction that preserves RGB channel ratios when bright FP16 pixels are mapped into
 an SDR image. Version 0.22.0 adds local macOS Copy text and the screen color picker introduced in
@@ -51,7 +55,8 @@ macOS support is real but unfinished, and the gap is a certificate rather than c
 **Working**, verified on macOS 26.2 (Apple Silicon): menu-bar icon opens capture on a single click,
 the overlay covers the whole display including the menu bar and the Dock, `Esc` cancels immediately,
 region selection and annotation, save, clipboard copy, GIF recording and preview, GIF copy as an
-animated file, Screen Recording permission flow in Settings, and Open on startup.
+animated file, the live Color Picker and its clipboard/result flow, Screen Recording permission
+handling in Settings, and Open on startup.
 
 **Copy text** works on both platforms, through each system's own local recognizer: Windows OCR on
 Windows and Apple's Vision framework on macOS. Neither uploads the image or downloads a model.
@@ -66,8 +71,8 @@ declares no camera, microphone, or Bluetooth usage and cannot capture audio.
 macOS applies a new Screen Recording grant only to a newly launched app, so Capturo offers a
 **Reopen Capturo** button wherever it asks for the permission.
 
-**About the macOS download.** A universal `.dmg` and `.zip` are attached to the
-[v0.20.0 release](https://github.com/mtom2k/capturo/releases/tag/v0.20.0), but macOS is **not a
+**About the macOS download.** An Apple Silicon `.dmg` and `.zip` are attached to the
+[v0.22.0 release](https://github.com/mtom2k/capturo/releases/tag/v0.22.0), but macOS is **not a
 supported platform** and those builds are ad-hoc signed rather than notarized. Distribution properly
 needs an Apple Developer ID certificate, and without one there are two consequences: Gatekeeper
 refuses the app after download with *"Capturo is damaged and can't be opened"* — its response to an

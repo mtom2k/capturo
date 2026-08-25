@@ -4,7 +4,10 @@ Last updated: 2026-08-24
 
 ## Phase
 
-`0.22.3` is the current source version and is being prepared as a Windows patch release. `0.22.0` is the latest published stable release; it carries Windows x64 Setup and Portable executables plus arm64 macOS preview artifacts. Windows x64 remains the only *supported* platform. The macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS state.
+`0.22.3` is the current source version and latest stable release. It publishes Windows x64 Setup
+and Portable executables. Windows x64 remains the only *supported* platform; the macOS artifacts
+attached to 0.22.0 remain an ad-hoc-signed preview carrying the Gatekeeper warning described under
+macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -73,6 +76,15 @@ a 1× canvas enlarged by Windows scaling.
 
 The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
 
+The final 0.22.3 fix makes the live Color Picker start on macOS. Electron's TypeScript surface
+declared `screen.dipToScreenRect`, but Electron 43 did not expose that conversion in the macOS
+runtime; the exception occurred while building the picker payload and aborted the session before
+any overlay existed. Picker and fallback-capture image dimensions now use each display's DIP size
+and scale factor. The packaged arm64 app was installed and verified end to end on a 2× Retina
+display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a live grid rendered,
+selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
+the normal-profile picker.
+
 Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
@@ -87,9 +99,9 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.22.3`. `release/BUILD-INFO.txt` inventories exactly the v0.22.3 Windows
-Setup and Portable executables. Local Windows binaries are not Authenticode-signed and may trigger
-an unknown-publisher warning.
+The package and stable-release version is `0.22.3`. The published release contains the v0.22.3
+Windows Setup and Portable executables. Windows binaries are not Authenticode-signed and may
+trigger an unknown-publisher warning.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -159,7 +171,7 @@ an unknown-publisher warning.
 ## Verification record
 
 - `npm run typecheck`: passed
-- `npm test`: 207/207 passed
+- `npm test`: 210/210 passed
 - `npm run build`: passed
 - `npm run dist:win`: passed; distinct NSIS and portable x64 artifacts produced
 - Windows desktop smoke: passed on a scaled, multi-display Windows 11 desktop
@@ -388,7 +400,7 @@ an unknown-publisher warning.
   - both executables report product/file version 0.22.2 and remain unsigned, so the draft release
     retains the unknown-publisher warning
 
-## macOS state (2026-08-17, macOS 26.2, Apple Silicon)
+## macOS state (2026-08-24, macOS 26.2, Apple Silicon)
 
 macOS moved from "launches but cannot capture" to a working preview during this session. Verified
 on this host:
@@ -403,6 +415,8 @@ on this host:
 - Permissions: Screen Recording is surfaced in Global Settings with request, System Settings and
   Reopen actions, distinguishes a first run from a lapsed grant, asks the system at most once per
   launch, and never stacks its own dialog on top of Apple's.
+- Color Picker: the packaged arm64 app opens from `Command+Shift+9`, renders a live 2× Retina
+  sample, copies the selected value, opens the matching result window, and cancels with `Esc`.
 - GIF: recording, preview, and Copy, which now places the animated `.gif` file on the clipboard as
   `public.file-url` rather than writing a bogus pasteboard type and reporting success.
 - Open on startup registers and unregisters an SMAppService login item, exercised end to end.
@@ -437,8 +451,7 @@ Still blocked on a certificate, not on code:
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
 - Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
-- Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 shipped macOS assets on that shared feed already.
-- Complete the remaining hands-on Windows acceptance items before publishing the 0.22.3 draft; creating the draft and uploading artifacts does not make it visible to the stable update checker.
+- Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 and 0.22.0 shipped macOS assets on that shared feed already.
 
 ### GIF optimization status
 

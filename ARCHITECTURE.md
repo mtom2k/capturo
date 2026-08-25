@@ -135,7 +135,10 @@ display overlay remains. `picker-live.ts` requests one coalesced active-size liv
 Windows `sample-display` reads that grid from the cached
 FP16 Desktop Duplication surface, applies the same SDR-white normalization and HDR gamut map as a
 screenshot, and returns compact row-major RRGGBB bytes. Other platforms fall back to a newly read
-screen source cropped to the same small grid. See D-041.
+screen source cropped to the same small grid. The payload's source-image dimensions are derived
+from Electron's display DIP size multiplied by its scale factor; do not use
+`screen.dipToScreenRect` here, because that declared API is unavailable in Electron's macOS
+runtime. See D-041.
 
 `ColorPickerPayload.cursor` carries the pointer position for each overlay, in CSS pixels relative to
 that display and null on the displays it is not on, so the picker opens on the pixel already under

@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- **Color Picker opens and samples correctly on macOS.** Picker startup called Electron's
+  `screen.dipToScreenRect`, which is declared to TypeScript but absent from the macOS runtime, so
+  the session threw before creating an overlay. Display image dimensions now come from the
+  platform-neutral display size and scale factor; Retina sampling, selection, clipboard copy, and
+  the result window were exercised end to end in the packaged arm64 app.
 - **Color Picker no longer jumps past the pointer when its compact window recentres.** The renderer
   predicts the same next window origin as the main process, paints the selector in that coordinate
   space before moving the native window, and derives the owned selector's screen position directly
