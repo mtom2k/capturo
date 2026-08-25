@@ -362,7 +362,10 @@ An ad-hoc designated requirement is a hash of the app's own code, so any build t
 
 That makes any stable certificate, not only a Developer ID, enough to stop the repeated prompting during development. `scripts/sign-mac.mjs` therefore prefers a Developer ID, then a stable local certificate (`Capturo Local Signing`, or `CAPTURO_MAC_SIGN_IDENTITY`), and only falls back to ad-hoc, where it warns and prints the resulting requirement so the consequence is visible in the build log. RELEASING.md documents creating the local certificate.
 
-Distribution is still gated on a real Developer ID Application certificate. Until one exists, no macOS artifact may be published, and a locally signed build proves nothing about Gatekeeper or notarization.
+Supported distribution is still gated on a real Developer ID Application certificate. An
+ad-hoc-signed build may be published only as an explicitly unsupported preview whose release notes
+and documentation disclose the Gatekeeper, notarization, and Screen Recording limitations. Local
+testing proves application behavior, but it proves nothing about Gatekeeper or notarization.
 
 ## D-029: macOS covers a display with one overlay window, not tiles
 

@@ -75,6 +75,10 @@
 
 ### Changed
 
+- **The public release now includes Apple Silicon preview packages.** The arm64 DMG and ZIP are
+  published alongside the two Windows x64 executables. They are explicitly unsupported,
+  ad-hoc-signed, and unnotarized, so Gatekeeper requires manual intervention and Screen Recording
+  permission may need to be granted again after an upgrade.
 - **Shift no longer changes Color Picker movement.** Precision is selected only with the five wheel
   zoom levels or exact arrow-key nudges. The renderer no longer reads modifier state, maintains a
   temporary fine mode, or installs Shift-specific keyup/blur handlers.

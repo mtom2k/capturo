@@ -11,11 +11,12 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-> 🪟 **Windows 11 is the supported platform.** It is the only one with published packages.
+> 🪟 **Windows 11 is the supported platform.** Windows packages are the supported downloads.
 >
 > 🍎 **macOS runs but is unsupported.** Capture, the menu-bar flow, settings, permissions, and
 > start-at-login all work on Apple Silicon (verified on macOS 26.2), and an Apple Silicon build is
-> attached to v0.22.0 — but Capturo has no Apple Developer ID certificate, so it cannot be
+> attached to v0.22.3 as an unsupported preview — but Capturo has no Apple Developer ID certificate,
+> so it cannot be
 > notarized and Gatekeeper refuses it after download. Running it takes a manual quarantine removal,
 > and the Screen Recording grant lapses on every upgrade. See [macOS](#-macos) below.
 
@@ -23,18 +24,23 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 
 ## ⬇️ Download
 
-Download the Windows installer from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
+Download the current packages from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
 
 | Artifact | Purpose |
 | --- | --- |
 | `Capturo-Setup-<version>-x64.exe` | Interactive Windows installer, published with each release |
 | `Capturo-Portable-<version>-x64.exe` | Portable build, no install, published alongside the installer |
+| `Capturo-<version>-arm64.dmg` | Unsupported Apple Silicon macOS preview disk image |
+| `Capturo-<version>-arm64-mac.zip` | Unsupported Apple Silicon macOS preview archive |
 
-Releases publish both artifacts. Local copies are kept in `release/`, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible and a differing digest is not evidence of a source difference.
+The 0.22.3 release publishes all four artifacts. Local copies are kept in `release/`, and
+`BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a
+release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
+and a differing digest is not evidence of a source difference.
 
 Source and the newest stable release are **0.22.3**. The release publishes the Windows x64 Setup
-and Portable executables; Windows x64 remains the only supported platform. The macOS artifacts
-attached to 0.22.0 remain an unsupported preview — see [macOS](#-macos).
+and Portable executables plus ad-hoc-signed Apple Silicon DMG and ZIP previews. Windows x64 remains
+the only supported platform — see [macOS](#-macos) before downloading the preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
@@ -72,8 +78,8 @@ macOS applies a new Screen Recording grant only to a newly launched app, so Capt
 **Reopen Capturo** button wherever it asks for the permission.
 
 **About the macOS download.** An Apple Silicon `.dmg` and `.zip` are attached to the
-[v0.22.0 release](https://github.com/mtom2k/capturo/releases/tag/v0.22.0), but macOS is **not a
-supported platform** and those builds are ad-hoc signed rather than notarized. Distribution properly
+[v0.22.3 release](https://github.com/mtom2k/capturo/releases/tag/v0.22.3), but macOS is **not a
+supported platform** and these builds are ad-hoc signed rather than notarized. Distribution properly
 needs an Apple Developer ID certificate, and without one there are two consequences: Gatekeeper
 refuses the app after download with *"Capturo is damaged and can't be opened"* — its response to an
 un-notarized download, not a corrupted file — and macOS ties the Screen Recording grant to the

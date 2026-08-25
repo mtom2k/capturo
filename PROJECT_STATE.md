@@ -5,9 +5,9 @@ Last updated: 2026-08-24
 ## Phase
 
 `0.22.3` is the current source version and latest stable release. It publishes Windows x64 Setup
-and Portable executables. Windows x64 remains the only *supported* platform; the macOS artifacts
-attached to 0.22.0 remain an ad-hoc-signed preview carrying the Gatekeeper warning described under
-macOS state.
+and Portable executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only
+*supported* platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning
+described under macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -74,7 +74,10 @@ one-frame overshoot-and-return caused by DWM carrying the old bitmap. Canvas bac
 the display device-pixel ratio, and the hex caption is device-aligned 14px semibold text rather than
 a 1× canvas enlarged by Windows scaling.
 
-The macOS artifact remains subject to D-028: without a Developer ID Application certificate the build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen Recording grant lapses on every rebuild.
+The macOS artifact remains subject to D-028: without a Developer ID Application certificate the
+build is ad-hoc signed, Gatekeeper refuses it on any machine that downloads it, and the Screen
+Recording grant lapses on every rebuild. Version 0.22.3 nevertheless publishes the arm64 DMG and
+ZIP as explicitly unsupported previews with those limitations disclosed in every download surface.
 
 The final 0.22.3 fix makes the live Color Picker start on macOS. Electron's TypeScript surface
 declared `screen.dipToScreenRect`, but Electron 43 did not expose that conversion in the macOS
@@ -100,8 +103,9 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 ## Current build
 
 The package and stable-release version is `0.22.3`. The published release contains the v0.22.3
-Windows Setup and Portable executables. Windows binaries are not Authenticode-signed and may
-trigger an unknown-publisher warning.
+Windows Setup and Portable executables plus Apple Silicon DMG and ZIP previews. Windows binaries
+are not Authenticode-signed and may trigger an unknown-publisher warning; macOS packages are
+ad-hoc signed, unnotarized, and unsupported.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -400,6 +404,18 @@ trigger an unknown-publisher warning.
   - both executables report product/file version 0.22.2 and remain unsigned, so the draft release
     retains the unknown-publisher warning
 
+- 0.22.3 release verification:
+  - strict type checking, all 210 automated tests, and the production build pass
+  - the packaged arm64 app was exercised through live Color Picker rendering, exact selection,
+    clipboard copy, the result window, `Command+Shift+9`, and `Esc`
+  - `hdiutil verify` accepts `Capturo-0.22.3-arm64.dmg`, and `unzip -t` reports no errors for
+    `Capturo-0.22.3-arm64-mac.zip`
+  - the published macOS SHA-256 values are
+    `c0db9f0cec9c33e7e0503c9755dda7701e74952ed53bef3eae4f0a0383fb126f` (DMG) and
+    `925f3261677012246a6ff65b8daec732cf53fffae48e2265dae01af9ad87c56f` (ZIP)
+  - all four release assets are public; the macOS assets are explicitly labeled unsupported,
+    ad-hoc-signed, and unnotarized
+
 ## macOS state (2026-08-24, macOS 26.2, Apple Silicon)
 
 macOS moved from "launches but cannot capture" to a working preview during this session. Verified
@@ -430,10 +446,11 @@ pack to install.
 Not available on macOS, by dependency rather than defect: HDR-correct capture, which runs through
 the Windows-only native helper.
 
-Still blocked on a certificate, not on code:
+Still blocked from *supported* macOS distribution by a certificate, not by code:
 
 - No Apple Developer ID Application certificate exists, so a macOS build cannot be notarized and
-  Gatekeeper refuses it on any machine that downloads it. **No macOS artifact may be published.**
+  Gatekeeper refuses it on any machine that downloads it. The published preview therefore requires
+  manual Gatekeeper intervention and must not be described as a supported macOS release.
 - An ad-hoc signature binds the Screen Recording grant to the build's own code hash, so the
   permission must be granted again after every build that changes code. A self-signed
   `Capturo Local Signing` certificate removes that for local development; see RELEASING.md.
@@ -450,8 +467,8 @@ Still blocked on a certificate, not on code:
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
-- Obtain a Developer ID Application certificate before any further macOS work. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
-- Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0 and 0.22.0 shipped macOS assets on that shared feed already.
+- Obtain a Developer ID Application certificate before describing macOS as supported. It unblocks notarization, Gatekeeper, and the TCC Screen Recording grant at once; nothing in the codebase can substitute for it.
+- Decide how the macOS artifact coexists with the in-app update checker, which reads a single `releases/latest` feed shared by every platform. 0.20.0, 0.22.0, and 0.22.3 shipped macOS assets on that shared feed already.
 
 ### GIF optimization status
 

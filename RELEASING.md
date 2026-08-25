@@ -105,7 +105,7 @@ time. The build prints the resulting requirement, so check it names a certificat
 This is for local development only. A self-signed certificate is not trusted by Gatekeeper and
 cannot be notarized, so it changes nothing about distribution.
 
-Ad-hoc signing is not distribution. Two limits decide what a macOS release can claim, and both
+Ad-hoc signing is not supported distribution. Two limits decide what a macOS release can claim, and both
 are recorded in D-028:
 
 - Gatekeeper refuses an ad-hoc signed app on any machine that downloads it. Distribution requires
@@ -113,12 +113,15 @@ are recorded in D-028:
 - TCC cannot hold a Screen Recording grant for an ad-hoc signature, which carries no Team ID and
   no designated requirement. Capturo appears in Screen & System Audio Recording and can be
   toggled on, but a freshly launched ad-hoc build still preflights as `denied` and captures
-  nothing. Screen capture is the product, so **macOS is not releasable until a Developer ID
-  certificate is available**, regardless of how much of the rest works.
+  nothing. Screen capture is the product, so **macOS cannot be described as supported until a
+  Developer ID certificate is available**, regardless of how much of the rest works.
 
-Do not publish a macOS artifact to GitHub Releases before that certificate exists and a signed,
-notarized build has captured, annotated, copied, and saved on real hardware. A macOS asset on a
-stable release also has to be reconciled with the in-app update checker, which reads one
+An ad-hoc-signed macOS artifact may be published only as an explicitly unsupported preview. The
+README, changelog, release notes, and download table must all say that it is ad-hoc signed and
+unnotarized, that Gatekeeper requires manual intervention, and that Screen Recording permission may
+need to be granted again after upgrades. Verify the DMG and ZIP containers, hashes, nested helper,
+bundle signature, and the capture/clipboard flow on real hardware before uploading. A macOS asset
+on a stable release must also be reconciled with the in-app update checker, which reads one
 `releases/latest` feed for every platform.
 
 When testing a macOS build, launch it with `open -a /Applications/Capturo.app`, not by executing
