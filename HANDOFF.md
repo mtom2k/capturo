@@ -110,6 +110,37 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   `Display.size × Display.scaleFactor`; Electron 43's declared `screen.dipToScreenRect` API is not
   present at runtime on macOS and using it in the shared picker startup path aborts the session.
 - Text placement: `openTextEditor`/`closeTextEditor` and the `#text-editor` / `#text-editor-resize` listeners in `src/renderer/editor.ts`. Two orderings are load-bearing and neither is caught by a type check or a unit test. `pointerDown` commits an open text box *itself* and arms `ignoreTextBlur`, because the browser moves focus after the handler returns and the blur would otherwise commit a box the same click has already emptied. The text box's Escape handler must call `stopPropagation`, because `handleShortcut` is on `window` and its `textEditor.hidden` guard is already false by the time the event bubbles, so without it one press cancels the whole capture. See D-031.
+- Panoramic Scrolling: the screenshot-toolbar entry and start call live in `src/renderer/editor.ts`;
+  the out-of-crop control lifecycle, display-media grant, and Full Tab handoff live in
+  `src/main/index.ts`; `src/renderer/panoramic-record.ts` owns live cropping, the miniature map, and
+  unique-coverage assembly; pure overlap, direction inference, rectangle subtraction, and output
+  limits live in `src/shared/scroll.ts`. It is user-driven and Windows-only. Keep both the
+  `cursor: never` request and the normalized pointer-mask repair path; neither alone is an output
+  guarantee on Windows. Nothing may hide the system cursor here: the user must keep seeing their
+  own pointer, and the mask is what keeps it out of the image. Main reports the pointer with a
+  region-derived radius so the mask scales with DPI, reports it up to one radius outside the region,
+  and the renderer masks a sample from before and after each frame read. Keep that mask on whole
+  pixels; a fractional rectangle both softens repaired seams and can trip the integer size guard
+  into a false "maximum size reached". The mask can still strand an uncovered region when the
+  pointer is within one radius of the leading edge, or when one accepted step carries the masked
+  band out of the viewport; that is a known, characterized gap with an intended repair, both
+  recorded in D-042 and `PROJECT_STATE.md`. Do not close it by shrinking the mask. Keep the control bar wholly outside the crop, keep the
+  viewport outline one click-through ring with a transparent centre placed `PANORAMIC_OUTLINE_GAP`
+  outside the crop, and validate every IPC sender. The outline must stay capturable rather than
+  content-protected (a protected window can stall the display-media stream), and must not be rebuilt
+  from thin strips: Windows inflates a two-pixel window to about 30x38 and the inflated top strip
+  lands inside the captured region. Never append a frame when
+  `analyzePanoramicMovement` is not accepted: rejection is the corruption boundary. Retain only
+  uncovered rectangles, not full viewport copies; revisiting coverage must add nothing. Pointer
+  masks deliberately remain uncovered until another clean viewport fills them. Preserve trusted
+  interior promotion for provisional edges, the 62% step bound, and broad-plus-detail history
+  authority. Up, down,
+  left, and right can change per match, but diagonal movement is deliberately rejected. The coarse
+  `capturedHistory` grid in `panoramic-record.ts` is load-bearing for reverse routes: it resolves
+  otherwise-symmetric consecutive-frame matches against the complete mosaic without lowering output
+  resolution. The final
+  canvas is allocated only once. Do not show the action on macOS until control exclusion and cursor
+  repair are proven in ScreenCaptureKit output. See D-042.
 - Highlighter: a pen stroke that composites differently. Geometry is shared with the pen throughout `src/shared/annotations.ts` (the switches are exhaustive, so adding an annotation type makes the compiler name every place that must handle it), and only `renderAnnotation` in `src/renderer/render.ts` diverges. It uses `source-over` at 52% so saturated colours remain visible on dark captures. Two details there are load-bearing: the path must be drawn in a single `stroke()` call or self-crossings composite twice and darken, and caps are `butt` because a round cap at highlighter widths overhangs the end of the drag. It also keeps its own width and slider range separate from the pen's. See D-035.
 - Blur/Pixelate intensity: the 1-100% UI state lives in `src/renderer/editor.ts`; monotonic percentage-to-radius/block mappings live in `src/renderer/render.ts` and are covered by `tests/effects.test.ts`. Do not reconnect these effects to `lineWidth`.
 - Visual system: `src/renderer/styles.css`

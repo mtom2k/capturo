@@ -76,6 +76,70 @@ Geometric sizes are continuous and expressed in pixels. Stroke width and numbere
 
 Blur and Pixelate are not geometric stroke sizes. Their `effectIntensity` is stored independently as 1-100%. Rendering maps that percentage monotonically to a 1-32 CSS-pixel-equivalent canvas blur radius or a 2-64 CSS-pixel-equivalent pixel block, multiplied by the capture's source-pixel scale so the visible strength is consistent on scaled displays. This gives both tools a common direction (higher always obscures more) without allowing a previous pen width to change the next privacy effect. Existing effect annotations retain their percentage and capture scale when selected, moved, resized, or exported.
 
+## Panoramic Scrolling
+
+Panoramic Scrolling starts from a normal screenshot selection on Windows. The amber toolbar action
+sends only the selected source-image rectangle and session id through the typed preload. Main
+validates that the sender owns the active screenshot editor, converts the rectangle to a
+display-relative fractional crop, tears down the frozen overlays, and opens `scroll-record.html`
+without a direction prompt. Its compact control window and captured-area map remain outside the
+crop.
+
+A thin cyan ring marks the selected viewport for the length of the session. It is one click-through
+window with a transparent centre, and it is deliberately *not* content-protected, because excluding
+a window from capture can stall the display-media stream the session is reading. What keeps it out
+of the image is its clearance gap: the painted band sits four device-independent pixels outside the
+crop, further than display-capture rounding reaches back across. It must stay one bordered window;
+Windows silently inflates a window a couple of pixels tall, which put a separate top strip straight
+inside the captured region.
+
+The target display is granted through the
+same main-owned `setDisplayMediaRequestHandler` used by GIF recording; the renderer asks the track
+to omit the cursor both when opening the stream and through `applyConstraints`. Nothing hides the
+system cursor: the user keeps seeing their own pointer inside the selected viewport, exactly as
+they do during an ordinary capture, and Capturo takes responsibility for keeping it out of the
+output instead. Because Chromium does not reliably honour the cursor-free request on Windows, main
+reports the live pointer as a normalized position plus a footprint radius derived from the region,
+so the mask scales with display DPI. The renderer brackets each frame with a pointer sample before
+and after it reads the video, excludes both footprints from retained coverage, refills them when
+the same world pixels appear elsewhere, and samples one fresh frame after the pointer moves to the
+out-of-crop Finish bar. The mask is rounded outward to whole frame pixels, because every retained
+rectangle is carved out of it and a fractional edge would resample the repaired seam. See D-042.
+
+The user scrolls the underlying application. This is deliberate: Windows UI Automation can scroll
+only controls that implement `ScrollPattern`, which is not a universal contract for browsers,
+games, remote desktops, canvas applications, or custom document viewers. A manual workflow keeps
+the capture source application-agnostic, while automatic UIA scrolling remains a possible later
+accelerator for compatible controls.
+
+`src/shared/scroll.ts` compares consecutive equal-sized RGBA viewports in all four cardinal
+directions. Reversed frame order derives up/left from the same matcher used for down/right. It
+samples at 20 fps, caps one verified step at 62% of the viewport, searches offsets, ignores a bounded leading band where sticky headers or sidebars tend
+to live, scores only locally textured patches on a fixed grid so uniform page margins cannot drown
+out text edges, and accepts only a low-error match with material improvement over zero movement.
+Unchanged, unrelated, animated, or ambiguous frames are rejected; the last accepted viewport remains the reference, so a bad match
+cannot enter the output silently. Periodic layouts with a competitive distant runner-up are also
+rejected. Each accepted match updates an unbounded two-dimensional viewport
+coordinate. A coarse 16-pixel-grid colour history scores accepted candidates against the complete
+mosaic, and both broad colour structure and locally detailed samples must agree. History is
+authoritative whenever enough known pixels overlap: if every candidate contradicts it, the frame
+fails closed instead of falling back to a locally plausible match. Newly exposed strips
+are subtracted against captured rectangles, so retracing or
+crossing a prior route stores no duplicate pixels. `src/renderer/panoramic-record.ts` retains only
+those uncovered pieces. Edge strips remain provisional until a strong later alignment redraws them
+from the trusted viewport interior, removing transient hover/status overlays. The renderer redraws
+the pieces into the thumbnail with a current-viewport outline. Finish
+allocates the final canvas once, draws the pieces without rescaling, encodes PNG in memory, and transfers it through sender-validated IPC to
+the existing detached editor. No intermediate capture is written to disk.
+
+The decoded result is bounded to 30,000 pixels on either axis and 120 million total pixels. These
+limits bound canvas allocation and IPC memory before export. Panoramic output preserves alpha
+because a two-dimensional route can leave uncaptured holes inside its bounding rectangle. It is
+exposed only on Windows,
+where display-source mapping, decoded-frame delivery, cursor repair, and out-of-crop controls have
+been validated together. Do not expose the macOS action until the same output-level smoke matrix
+proves that its control remains outside every stitched pixel.
+
 ## Copy text (local OCR)
 
 Copy text deliberately reuses the final screenshot export rather than OCRing the original display frame. Crop, annotations, privacy effects, and automatically committed transparency therefore match what the user sees. The sandboxed renderer receives no native capability: it can request `capture:copy-text` only for its active session and supplies a PNG data URL under the same typed context bridge as image Copy/Save.
@@ -171,7 +235,9 @@ avoid needless compositor transactions.
 On Windows CSS cursor hiding is reinforced by a balanced `cursor-hidden` request to the persistent
 native helper for the lifetime of the picker. This covers a fast physical pointer crossing outside
 the compact BrowserWindow between recenter operations; pick, cancel, replacement, and graceful
-helper shutdown restore the exact display-counter adjustment Capturo made.
+helper shutdown restore the user's configured cursor scheme. The picker is the only live tool that
+does this. Panoramic Scrolling deliberately leaves the pointer visible and excludes it from output
+with a mask instead.
 
 The wheel selects one of five odd-sized live grids: 25, 17, 13, 9, or 5 source pixels across the
 fixed 200px aperture, starting with the widest 25-pixel view. Odd grids preserve a true centre

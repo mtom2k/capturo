@@ -5,6 +5,7 @@ const pickerCss = readFileSync(new URL('../src/renderer/picker.css', import.meta
 const pickerRenderer = readFileSync(new URL('../src/renderer/picker-live.ts', import.meta.url), 'utf8')
 const pickerHtml = readFileSync(new URL('../src/renderer/picker.html', import.meta.url), 'utf8')
 const pickerMain = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
+const nativeHelper = readFileSync(new URL('../native/capturo-capture/main.cpp', import.meta.url), 'utf8')
 
 describe('live picker transparency', () => {
   it('clears the root document, body, and hit canvas together', () => {
@@ -128,5 +129,10 @@ describe('Windows video-plane compatibility', () => {
     )
     expect(pickerMain).toMatch(/setSystemCursorHidden\(true\)/)
     expect(pickerMain).toMatch(/setSystemCursorHidden\(false\)/)
+    // The picker replaces the pointer with its own magnifier, so it is the one live tool that
+    // suppresses the system cursor. ShowCursor's per-thread counter cannot do that from a helper.
+    expect(nativeHelper).toContain('SetSystemCursor(transparent, cursorId)')
+    expect(nativeHelper).toContain('SystemParametersInfoW(SPI_SETCURSORS')
+    expect(nativeHelper).not.toContain('ShowCursor(')
   })
 })

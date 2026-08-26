@@ -147,6 +147,9 @@ export type CapturePayload = {
   // A detached editor receives a flattened selected composite. If that composite already has
   // transparency, keep PNG mandatory even though its original transparency command is baked in.
   forcePng?: boolean
+  // Windows-only Panoramic Scrolling support. The live stream, cursor omission, and
+  // out-of-crop chrome contract has not yet been validated on macOS.
+  rollingCaptureAvailable?: boolean
 }
 
 // The editor owns all interaction; fillers are passive and repaint from these updates so

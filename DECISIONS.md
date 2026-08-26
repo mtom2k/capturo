@@ -801,3 +801,111 @@ nothing on macOS even though type checking and the Windows path passed. The pick
 display's source-image width and height, not a converted desktop origin; those dimensions now come
 from `Display.size × Display.scaleFactor`. Windows-only native-helper calls may still use the
 screen conversion API for physical output origins, but no shared or macOS picker path may do so.
+
+## D-042: Panoramic Scrolling is user-driven overlap stitching
+
+**Status:** accepted
+
+A long screenshot must work across applications, not only inside a browser Capturo controls. Page
+DOM capture and Chrome DevTools can produce excellent full-page browser images, but they cannot see
+native document viewers, remote desktops, games, canvases, or another browser's privileged page.
+Windows UI Automation has a `ScrollPattern`, but only a target control that implements that pattern
+can be moved through it. Neither is a valid product-wide foundation.
+
+Panoramic Scrolling begins with Capturo's normal screenshot viewport and then returns control to the
+live target. There is no direction prompt: each accepted frame independently infers up, down, left,
+or right, so the user can change axes or retrace a route in one session.
+A recorder receives the selected display through main's existing display-media grant, crops the
+same fractional region as GIF recording, and asks the track to omit the cursor. A compact control
+bar reports progress and renders a live captured-area miniature outside the crop; its cyan rectangle
+identifies the current panoramic viewport. No external ring was created at first: output testing
+showed that display-capture rounding can admit a one-pixel chrome edge into the selected crop. The
+2026-08-25 amendment below reinstates one, held clear of the crop by a clearance gap sized for
+exactly that rounding. Capturo
+does not inject wheel input, inspect the target process, access its document model, or require an
+accessibility permission.
+
+Consecutive RGBA viewports are aligned by four pure overlap searches in `src/shared/scroll.ts`.
+Reversing frame order derives up/left from the same audited matcher used for down/right. The score
+samples locally textured patches on a resolution-independent grid,
+ignores a bounded leading band where sticky headers or sidebars commonly remain fixed, and must be both low in absolute error
+and materially better than the unchanged position. A null match is not an inconvenience to work
+around: it is the corruption boundary. Unchanged, unrelated, animation-heavy, or ambiguous frames
+are skipped while the last accepted frame remains the reference, and the UI asks for slower
+movement. An accepted move updates a two-dimensional viewport coordinate; its newly exposed strip
+is geometrically subtracted from every prior captured rectangle. Only uncovered pieces are retained,
+making revisits idempotent and letting the miniature distinguish captured areas from holes. Diagonal
+movement, perspective/scale changes, and heuristic seam blending remain outside this decision:
+users move one cardinal direction at a time, and ambiguous motion is rejected.
+
+**Amended 2026-08-25: fast movement and periodic pages fail closed.** The recorder samples at 20
+fps and no single candidate may reveal more than 62% of an axis. A competitive distant runner-up
+marks periodic structure as ambiguous. Once a candidate overlaps enough captured history, both the
+broad viewport colours and locally detailed samples must agree with its proposed world position;
+if history disproves every candidate, the local matcher cannot override it. The last verified frame
+remains the reference, and returning to it clears the warning. Capturo does not throttle or inject
+the user's scrolling because doing so would make the universal capture path application-specific.
+
+**Amended 2026-08-25: edges and cursors are provisional coverage.** Newly exposed edge pixels are
+redrawn only after a strong later alignment carries them into the trusted viewport interior. This
+repairs transient browser URL/status overlays instead of preserving their ghost across seams.
+Chromium's `cursor: never` constraint remains requested but is not treated as an output guarantee.
+Main reports the live normalized pointer position; the renderer subtracts a high-DPI-safe pointer
+mask from every retained and refreshed rectangle, fills that missing coverage from later frames,
+and samples a final clean frame after the pointer reaches the out-of-crop controls.
+
+**Amended 2026-08-25: the pointer stays visible, and the region is outlined.** Suppressing the
+system cursor while it was over the selected viewport made the live application feel broken, and it
+put global Windows state (`SetSystemCursor`) at the mercy of Capturo exiting cleanly. Panoramic
+Scrolling therefore hides nothing: the user sees their own pointer and it behaves normally, exactly
+as during an ordinary frozen capture, and excluding it from the output is Capturo's job alone. Main
+reports the pointer as a normalized position plus a footprint radius derived from the region, so
+the renderer's mask scales with display DPI instead of guessing from frame size, and it reports a
+pointer up to one radius outside the region because a bitmap whose hotspot sits just outside still
+paints into it. The renderer takes a pointer sample immediately before and after reading each
+video frame and masks both, since a pointer can travel further than its own footprint between
+samples. The mask is rounded outward to whole frame pixels: every retained rectangle is carved out
+of it, and a fractional edge both resampled the repaired seam and could make a healthy session
+report that it had reached the maximum panoramic size.
+
+The mask's limits are known rather than assumed. Masked pixels are recovered from a later frame,
+but only while that band is still inside the viewport after the next accepted step, which requires
+the step to stay under the pointer's distance from the trailing edge. Two cases therefore strand an
+uncovered region: a pointer within one mask radius of the leading edge, and a step large enough to
+carry the band out in one sample. Simulating the real coverage bookkeeping shows nothing at a
+40-pixel step with the pointer mid-viewport, one stranded region with the pointer near the leading
+edge, and one per step at 380 pixels — a step the 62% bound still accepts. Accept this only as the
+current state: the retained previous frame holds those pixels unmasked whenever the step is large
+enough to strand them, so filling from it closes the common case, and the frozen screenshot that
+started the session is the correct source for the base viewport, which no forward-looking repair
+can reach. Do not respond by shrinking the mask; that trades a visible hole for a baked-in cursor.
+
+The selected viewport is also marked while the session runs. It is one click-through, transparent
+centred ring rather than the four thin strips tried first: Windows silently inflates a window a
+couple of pixels tall to roughly 30x38, and the inflated top strip landed inside the captured
+region. The ring is deliberately capturable rather than content-protected, because excluding a
+window from capture is what can stall a Windows display-media stream. Its four-pixel clearance gap
+is the whole guarantee, and it is more than display-capture rounding can reach back across; a real
+Windows run confirmed the band paints 6 to 4 device-independent pixels outside the crop with no
+ring pixel inside it. Do not close that gap, and do not rebuild the outline from thin strips.
+
+Consecutive-frame overlap can be symmetric when a user reverses over content captured earlier. The
+recorder therefore keeps a coarse 16-pixel-grid colour history of the complete mosaic and scores
+each cardinal candidate at its proposed world position. A sufficiently sampled, uniquely better
+history alignment wins; otherwise the pure consecutive-frame matcher remains authoritative. The
+grid affects placement only—the retained layers and final PNG remain full resolution.
+
+Memory grows with unique captured coverage, not with the number of samples. The renderer retains
+one last accepted RGBA frame plus uncovered rectangular layers. Finish allocates the output canvas
+once and draws every layer without scaling. Two-dimensional paths may leave transparent holes, so
+the Full Tab handoff preserves PNG. The PNG crosses one
+sender-validated IPC call and opens in the existing detached editor; intermediate frames never
+reach disk. Width and height are capped at 30,000 pixels and decoded area at 120 million pixels so
+canvas and IPC allocations fail predictably before browser limits or process memory do.
+
+The initial implementation is Windows-only. Its output contract depends on the combination of
+Windows display-source mapping, decoded video-frame callbacks, cursor repair, and keeping the
+control window outside the crop. The macOS preview must hide the action until real-hardware
+output proves the equivalent contract there. Automatic UI Automation scrolling may later be
+offered as an optional convenience after capability detection, but manual scrolling remains the
+universal and auditable path.

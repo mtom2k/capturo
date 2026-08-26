@@ -274,10 +274,9 @@ export async function suppressWindowBorder(nativeHandle: bigint): Promise<boolea
   }
 }
 
-// Hides the Windows system cursor for the live picker even if a very fast physical movement
-// briefly outruns its compact transparent hit window. The native helper balances ShowCursor's
-// display counter and restores it on normal helper shutdown; CSS cursor:none remains the fallback
-// on platforms without this request.
+// Hides the Windows system cursor for live tools even if Chromium's CSS/display-media cursor
+// exclusion lags behind a fast physical movement. The native helper temporarily replaces standard
+// system cursor shapes and restores the user's scheme on exit; CSS remains the fallback elsewhere.
 export async function setSystemCursorHidden(hidden: boolean): Promise<boolean> {
   if (process.platform !== 'win32') return false
   try {

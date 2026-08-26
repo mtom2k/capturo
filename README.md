@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.22.3-blue)
+![version](https://img.shields.io/badge/version-0.24.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -38,13 +38,18 @@ The 0.22.3 release publishes all four artifacts. Local copies are kept in `relea
 release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source and the newest stable release are **0.22.3**. The release publishes the Windows x64 Setup
-and Portable executables plus ad-hoc-signed Apple Silicon DMG and ZIP previews. Windows x64 remains
-the only supported platform — see [macOS](#-macos) before downloading the preview.
+Source and the current local Windows build are **0.24.0**. The newest published stable release is
+still **0.22.3** until the 0.24.0 artifacts are uploaded to GitHub; that release publishes Windows
+x64 Setup and Portable executables plus ad-hoc-signed Apple Silicon DMG and ZIP previews. Windows
+x64 remains the only supported platform — see [macOS](#-macos) before downloading the preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.22.3 makes Color Picker a live, transparent tool: invoking it no longer freezes,
+Version 0.24.0 adds direction-free **Panoramic Scrolling** on Windows, a live captured-area
+miniature with unique-coverage tracking, an outline marking the viewport being followed, and
+zoom/pan controls in Full Tab. Your mouse pointer stays visible throughout and is kept out of the
+stitched image rather than hidden from you. Version 0.22.3 makes
+Color Picker a live, transparent tool: invoking it no longer freezes,
 tints, blurs, or blacks out the screen—including paused and playing browser video—and its Windows
 samples retain Capturo's HDR-aware color conversion. It also fixes Color Picker startup in local
 macOS builds, where an Electron screen-conversion API available in the type definitions was absent
@@ -92,6 +97,8 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 ## ✨ What Capturo can do
 
 - Select, move, and resize a precise screen region on scaled or multi-display desktops.
+- Build long two-dimensional screenshots on Windows with **Panoramic Scrolling**, moving up, down,
+  left, or right while Capturo maps only newly revealed pixels.
 - Draw with Pen, Highlighter, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
 - Highlight with a vivid translucent marker stroke that remains visible on both light and dark
   captures while the marked content stays readable. Hold **Shift** or **Ctrl** to run it straight
@@ -126,6 +133,35 @@ and opens a resizable, minimizable window with the same editing and export tools
 available if you start another capture. Capturo keeps one full editor at a time and focuses it
 rather than replacing unsaved work. The overlay closes only after the full editor has decoded and
 become visible; a failed hidden startup is discarded instead of blocking the next attempt.
+The Full Tab toolbar includes zoom-out, percentage/Fit, and zoom-in controls. `Ctrl/Cmd++`,
+`Ctrl/Cmd+-`, and `Ctrl/Cmd+0` provide the same actions; Ctrl/Cmd-wheel zooms around the pointer and
+an ordinary wheel pans when the image is larger than the editor workspace.
+
+### Panoramic Scrolling
+
+On Windows, select the visible viewport you want to extend and choose the amber **Panoramic
+Scrolling** action. Capturo returns immediately to the live application, and a thin cyan outline
+stays around the selected viewport so you can see exactly what is being captured; it sits just
+outside those pixels and never appears in the image. Move through the content
+at a moderate pace in any cardinal direction—up, down, left, or right—and
+change direction whenever needed. The compact bar outside the captured pixels shows a miniature
+mosaic of everything captured so far; its cyan rectangle marks the current viewport. Choose
+**Finish** to open the PNG in Full Tab. Leave at least 66 screen pixels above or below the viewport
+so Capturo can keep the bar and preview outside the image.
+
+Panoramic Scrolling is user-driven so it works with browsers, document viewers, remote desktops, and
+custom applications rather than only controls that expose an automation scroll API. It matches
+overlapping pixels, checks candidate movement against the captured mosaic, and subtracts every
+already-captured rectangle before retaining new pixels. Retracing therefore moves the preview
+viewport without duplicating content. Short-lived content along an edge is provisional until a
+later clean frame confirms it. Your mouse pointer stays visible the whole time and keeps working
+normally; Capturo tracks its footprint and fills those pixels from another observation rather than
+baking a cursor into the image. Move one cardinal direction at a time: diagonal motion, animated
+content, large sticky regions, or moving too far between samples may not provide a safe match;
+Capturo asks you to pause or retrace the missed area instead of guessing. Two-dimensional routes can leave transparent uncaptured space inside the
+final bounds, so panoramic output remains PNG. Existing frozen annotations are not included.
+Output is capped at 30,000 pixels on either axis and 120 million pixels. macOS preview builds hide
+the action until the equivalent live-stream and external-chrome contract is validated there.
 
 Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
 

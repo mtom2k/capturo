@@ -5,6 +5,7 @@ import type { CapturoGifApi, GifPreviewPayload, GifRecordPayload } from '../shar
 import type { CapturoUpdatesApi } from '../shared/updates'
 import type { CapturoPermissionsApi } from '../shared/permissions'
 import type { CapturoColorApi, ColorPickerPayload, PickedColor, Rgb } from '../shared/color'
+import type { CapturoScrollApi } from '../shared/scroll'
 
 const api: CapturoApi = {
   onInitialize(listener) {
@@ -103,9 +104,21 @@ const colorApi: CapturoColorApi = {
   pickAgain: () => ipcRenderer.invoke('color:pick-again')
 }
 
+// Exposed to the screenshot editor and the Panoramic Scrolling control window. Main
+// validates both senders: only an active screenshot editor may start, and only the current
+// validates both senders; only the active panoramic window may request its payload, finish, or cancel.
+const scrollApi: CapturoScrollApi = {
+  start: (sessionId, region) => ipcRenderer.invoke('scroll:start', sessionId, region),
+  requestInitialization: () => ipcRenderer.invoke('scroll:request-initialization'),
+  cursorPosition: () => ipcRenderer.invoke('scroll:cursor-position'),
+  finish: (png) => ipcRenderer.invoke('scroll:finish', png),
+  cancel: () => ipcRenderer.invoke('scroll:cancel')
+}
+
 contextBridge.exposeInMainWorld('capturo', api)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
 contextBridge.exposeInMainWorld('capturoGif', gifApi)
 contextBridge.exposeInMainWorld('capturoUpdates', updatesApi)
 contextBridge.exposeInMainWorld('capturoPermissions', permissionsApi)
 contextBridge.exposeInMainWorld('capturoColor', colorApi)
+contextBridge.exposeInMainWorld('capturoScroll', scrollApi)

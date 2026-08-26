@@ -1,13 +1,14 @@
 # Project State
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 ## Phase
 
-`0.22.3` is the current source version and latest stable release. It publishes Windows x64 Setup
-and Portable executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only
-*supported* platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning
-described under macOS state.
+`0.24.0` is the current source and local Windows build version. The latest published stable release
+remains `0.22.3` until the new artifacts are uploaded; it publishes Windows x64 Setup and Portable
+executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only *supported*
+platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under
+macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -88,6 +89,56 @@ display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a 
 selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
 the normal-profile picker.
 
+Version 0.24.0 adds **Panoramic Scrolling** on Windows (D-042). A normal screenshot selection now
+becomes one direction-free live session. Every accepted frame infers up, down, left, or right;
+Capturo tracks the viewport in two-dimensional coordinates, removes already-captured intersections,
+and displays the growing mosaic and current viewport in a compact preview. Direction changes and
+retracing do not duplicate pixels. Weak, unchanged, and ambiguous frames remain outside the
+corruption boundary. Output is limited to 30,000 pixels per axis and 120 million pixels and remains
+PNG when a two-dimensional route leaves transparent holes. Full Tab now includes zoom buttons,
+percentage/Fit, Ctrl/Cmd zoom shortcuts, pointer-centered Ctrl/Cmd-wheel zoom, and wheel panning.
+macOS still hides Panoramic Scrolling pending equivalent live-stream validation.
+
+The 2026-08-25 Windows validation exercised a live forward/reverse route in Notepad: revisiting the
+captured span left the panorama fixed at 1170×837 and reported **Already captured here** in both
+directions. Finish produced a sharp 1170×837 PNG in Full Tab with the visible Fit/zoom controls.
+The expanded stress fixture then exercised controlled vertical and horizontal movement, reversal,
+a distant scrollbar jump, retrace recovery, periodic repeated rows, a transient bottom-edge URL
+overlay, and pointer inclusion. The distant jump and periodic ambiguity now fail closed; retracing
+clears the warning; provisional edge coverage is repaired from a trusted interior frame. A live
+run also proved that Chromium can still composite the cursor despite `cursor: never`, so the final
+implementation masks its normalized footprint and refills it from clean coverage.
+`npm run dist:win` then passed strict type checking, all 233 tests, the production renderer build,
+and Windows x64 Setup/Portable packaging. The rebuilt 0.24.0 Setup SHA-256 is
+`97db45053fe9171e21c97ffaeee76010dddc31ac8d20efaac664461917c4ff92`; Portable is
+`3cb5cc1d42e1479aedc019faa459b2d7fdf9ad8aa7ad336ff5aba83034d8bb1b`.
+`release/BUILD-INFO.txt` records the same two-artifact inventory.
+
+The 2026-08-25 follow-up made the pointer visible again and marked the selected region. Hiding the
+system cursor inside the viewport was removed entirely; the pointer mask is now sized from the
+region in device-independent pixels, reported for a pointer up to one radius outside the crop,
+sampled on both sides of every frame read, and rounded outward to whole pixels. A scripted run
+against the real build confirmed the recorder starts at the full 930x660 device pixels for a
+620x440 device-independent selection, that the reported pointer at the region centre is `0.5/0.5`
+with radii of `40/620` and `40/440`, and that a native-helper screenshot of the live desktop shows
+the new viewport ring painting from 6 to 4 device-independent pixels outside the crop with zero ring
+pixels inside it. The first attempt at that ring used four two-pixel strips; Windows inflated them
+to about 30x38 and drove the top strip through the captured region, which is why the outline is one
+bordered window.
+
+That tree was then repackaged, superseding the two hashes above. The native helper was rebuilt and
+self-tested first, and `npm run dist:win` passed strict type checking, all 237 tests, the production
+renderer build, and Windows x64 Setup/Portable packaging. The 0.24.0 Setup SHA-256 is
+`220841b93ad0a7c64fd8d776bbb94f1bf5dbfd4a4564692f12af582611d0381a`; Portable is
+`6e4e00740c7d056a2fd770e92d92607ecb493ad098e8f2a60dabca39299cb0e7`. `release/BUILD-INFO.txt`
+records the same two-artifact inventory. The packaged build was then driven over CDP to confirm the
+recorder still loads from inside the asar and the outline lands identically there.
+
+A 2191x13927 real-world panoramic capture was analysed pixel by pixel: no alpha channel and so no
+uncovered pixels, zero duplicated textured rows across 13,926 row comparisons, and no horizontal
+drift, with the captured panel edge fixed at x=135 in all 1,164 sampled rows. Every discontinuity
+the scan flagged was a genuine page design edge.
+
 Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
@@ -102,10 +153,10 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package and stable-release version is `0.22.3`. The published release contains the v0.22.3
-Windows Setup and Portable executables plus Apple Silicon DMG and ZIP previews. Windows binaries
-are not Authenticode-signed and may trigger an unknown-publisher warning; macOS packages are
-ad-hoc signed, unnotarized, and unsupported.
+The package and current local Windows build version is `0.24.0`. The latest published stable release
+remains v0.22.3 until 0.24.0 is uploaded; it contains Windows Setup and Portable executables plus
+Apple Silicon DMG and ZIP previews. Windows binaries are not Authenticode-signed and may trigger an
+unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and unsupported.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -121,6 +172,7 @@ ad-hoc signed, unnotarized, and unsupported.
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
 - [x] Move a selected screenshot into one independent normal full-editor window, then continue editing, copying, OCRing, or saving while the desktop is free
+- [x] Windows Panoramic Scrolling with four-direction inference, captured-area preview, unique-coverage assembly, bounded output, and Full Tab handoff
 - [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
 - [x] macOS Copy text through Apple's Vision framework, local and in-memory, sharing the Windows request protocol
 - [x] Escape cancellation
@@ -464,6 +516,15 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
+- Hands-on Panoramic Scrolling pass on Windows: a full scroll to Finish with the pointer visible
+  inside the viewport, a scaled display, and a Windows large-pointer setting. The outline geometry,
+  pointer reporting, and recorder startup are confirmed over CDP; feel, real wheel input, and the
+  stitched result under a moving pointer are not.
+- Repair the pointer mask so it cannot leave an uncovered region (see Known constraints). The
+  intended fix is to fill anything the current frame masks from the retained previous frame, where
+  those world pixels were unmasked, since the two masks are disjoint exactly when the step is large
+  enough to strand them. Showing uncovered area in the miniature and seeding the base viewport from
+  the frozen screenshot that started the session would close the remaining cases.
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
@@ -484,6 +545,12 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
+- Panoramic Scrolling keeps the pointer visible and excludes it with a mask, so an uncovered region
+  can survive in two characterized cases: the pointer sitting within one mask radius of the leading
+  edge, and a scroll step large enough that the masked band leaves the viewport in one sample. The
+  mask heals from later frames only while that band is still inside the viewport, which requires the
+  step to stay under the pointer's distance from the trailing edge. Simulated against the real
+  coverage bookkeeping; not yet observed in a real capture, and a 30-megapixel test capture had none.
 - Copy text returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters. On Windows it depends on the OCR languages installed for the current user; on macOS the recognition languages ship with the OS and nothing needs installing. The two recognizers group lines differently, so output is comparable but not identical across platforms, and macOS reconstructs reading order itself, which can interleave genuinely multi-column text (D-036).
 - macOS screen capture requires user-granted Screen Recording permission, and macOS applies a new grant only to a freshly launched app. macOS also has no readable "not asked yet" state for this permission, so Capturo cannot distinguish a first run from a refusal and must attempt the request before reporting either.
 - An ad-hoc signed macOS build cannot hold that grant at all, so local macOS builds cannot capture.
