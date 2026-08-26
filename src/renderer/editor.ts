@@ -60,8 +60,13 @@ const undoButton = document.querySelector<HTMLButtonElement>('#undo')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
 const copyTextButton = document.querySelector<HTMLButtonElement>('#copy-text')!
 const openDetachedButton = document.querySelector<HTMLButtonElement>('#open-detached')!
+const scrollCaptureButton = document.querySelector<HTMLButtonElement>('#scroll-capture')!
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
+const zoomSeparator = document.querySelector<HTMLElement>('#zoom-separator')!
+const zoomOutButton = document.querySelector<HTMLButtonElement>('#zoom-out')!
+const zoomResetButton = document.querySelector<HTMLButtonElement>('#zoom-reset')!
+const zoomInButton = document.querySelector<HTMLButtonElement>('#zoom-in')!
 const textEditor = document.querySelector<HTMLTextAreaElement>('#text-editor')!
 const textResizeHandle = document.querySelector<HTMLDivElement>('#text-editor-resize')!
 const status = document.querySelector<HTMLElement>('#status')!
@@ -139,6 +144,11 @@ let transparencySplit = 50
 let beforeCanvas: HTMLCanvasElement | null = null
 let splitPreviewPointerId: number | null = null
 let inheritedTransparency = false
+let detachedZoom = 1
+let detachedPan: Point | null = null
+
+const MIN_DETACHED_ZOOM = 0.25
+const MAX_DETACHED_ZOOM = 8
 
 function id(): string {
   return crypto.randomUUID()
@@ -297,21 +307,86 @@ function toCssRect(rect: Rect): Rect {
 
 function layoutCanvas(): void {
   if (!payload) return
-  canvasViewport = role === 'detached'
-    ? detachedEditorCanvasRect(
-        { width: payload.imageWidth, height: payload.imageHeight },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    : {
+  if (role === 'detached') {
+    const fit = detachedEditorCanvasRect(
+      { width: payload.imageWidth, height: payload.imageHeight },
+      { width: window.innerWidth, height: window.innerHeight }
+    )
+    const width = fit.width * detachedZoom
+    const height = fit.height * detachedZoom
+    const workspace = {
+      left: 24,
+      top: 76,
+      right: Math.max(25, window.innerWidth - 24),
+      bottom: Math.max(77, window.innerHeight - 24)
+    }
+    const availableWidth = workspace.right - workspace.left
+    const availableHeight = workspace.bottom - workspace.top
+    const centeredX = workspace.left + (availableWidth - width) / 2
+    const centeredY = workspace.top + (availableHeight - height) / 2
+    const requestedX = detachedPan?.x ?? centeredX
+    const requestedY = detachedPan?.y ?? centeredY
+    const x = width <= availableWidth
+      ? centeredX
+      : Math.max(workspace.right - width, Math.min(workspace.left, requestedX))
+    const y = height <= availableHeight
+      ? centeredY
+      : Math.max(workspace.bottom - height, Math.min(workspace.top, requestedY))
+    detachedPan = { x, y }
+    canvasViewport = { x, y, width, height }
+    zoomResetButton.textContent = `${Math.max(1, Math.round(width / Math.max(1, payload.imageWidth) * 100))}%`
+    zoomOutButton.disabled = detachedZoom <= MIN_DETACHED_ZOOM
+    zoomInButton.disabled = detachedZoom >= MAX_DETACHED_ZOOM
+  } else {
+    canvasViewport = {
         x: -payload.imageOrigin.x,
         y: -payload.imageOrigin.y,
         width: payload.captureSize.width,
         height: payload.captureSize.height
       }
+  }
   canvas.style.left = `${canvasViewport.x}px`
   canvas.style.top = `${canvasViewport.y}px`
   canvas.style.width = `${canvasViewport.width}px`
   canvas.style.height = `${canvasViewport.height}px`
+}
+
+function setDetachedZoom(nextZoom: number, anchor?: Point): void {
+  if (role !== 'detached' || !payload) return
+  const next = Math.max(MIN_DETACHED_ZOOM, Math.min(MAX_DETACHED_ZOOM, nextZoom))
+  if (Math.abs(next - detachedZoom) < 0.0001) return
+  const focus = anchor ?? { x: window.innerWidth / 2, y: (76 + window.innerHeight - 24) / 2 }
+  const relativeX = (focus.x - canvasViewport.x) / Math.max(1, canvasViewport.width)
+  const relativeY = (focus.y - canvasViewport.y) / Math.max(1, canvasViewport.height)
+  const fit = detachedEditorCanvasRect(
+    { width: payload.imageWidth, height: payload.imageHeight },
+    { width: window.innerWidth, height: window.innerHeight }
+  )
+  detachedZoom = next
+  detachedPan = {
+    x: focus.x - relativeX * fit.width * detachedZoom,
+    y: focus.y - relativeY * fit.height * detachedZoom
+  }
+  layoutCanvas()
+  redraw()
+}
+
+function resetDetachedZoom(): void {
+  if (role !== 'detached') return
+  detachedZoom = 1
+  detachedPan = null
+  layoutCanvas()
+  redraw()
+}
+
+function panDetached(deltaX: number, deltaY: number): void {
+  if (role !== 'detached') return
+  detachedPan = {
+    x: canvasViewport.x - deltaX,
+    y: canvasViewport.y - deltaY
+  }
+  layoutCanvas()
+  redraw()
 }
 
 function updateUiPosition(): void {
@@ -353,6 +428,7 @@ function setExportBusy(value: boolean): void {
   copyButton.disabled = value
   copyTextButton.disabled = value
   openDetachedButton.disabled = value
+  scrollCaptureButton.disabled = value
   saveButton.disabled = value
 }
 
@@ -948,6 +1024,23 @@ async function openDetachedEditor(): Promise<void> {
   }
 }
 
+async function startPanoramicCapture(): Promise<void> {
+  if (busy || !payload || !selection || role === 'detached') return
+  setExportBusy(true)
+  setStatus('Starting Panoramic Scrolling…', 0)
+  try {
+    const result = await window.capturoScroll.start(payload.sessionId, selection)
+    if (!result.started) {
+      setExportBusy(false)
+      if (result.error) setStatus(result.error, 3400)
+      else status.classList.remove('visible')
+    }
+  } catch {
+    setExportBusy(false)
+    setStatus('Capturo could not start Panoramic Scrolling.', 3400)
+  }
+}
+
 async function saveImage(): Promise<void> {
   if (busy || !payload) return
   commitTransparencyDraft()
@@ -982,6 +1075,21 @@ function handleShortcut(event: KeyboardEvent): void {
     return
   }
   const command = event.ctrlKey || event.metaKey
+  if (role === 'detached' && command && (event.key === '+' || event.key === '=')) {
+    event.preventDefault()
+    setDetachedZoom(detachedZoom * 1.25)
+    return
+  }
+  if (role === 'detached' && command && event.key === '-') {
+    event.preventDefault()
+    setDetachedZoom(detachedZoom / 1.25)
+    return
+  }
+  if (role === 'detached' && command && event.key === '0') {
+    event.preventDefault()
+    resetDetachedZoom()
+    return
+  }
   if (event.key === 'Escape') {
     event.preventDefault()
     if (!transparentPanel.hidden) closeTransparencyPanel()
@@ -1088,10 +1196,16 @@ function initialize(nextPayload: CapturePayload): void {
     document.title = 'Capturo — Full editor'
     hint.hidden = true
     openDetachedButton.hidden = true
+    scrollCaptureButton.hidden = true
+    zoomSeparator.hidden = false
+    zoomOutButton.hidden = false
+    zoomResetButton.hidden = false
+    zoomInButton.hidden = false
     cancelButton.title = 'Close full editor (Esc)'
     cancelButton.setAttribute('aria-label', 'Close full editor')
     claimed = true
   }
+  scrollCaptureButton.hidden = role !== 'editor' || nextPayload.rollingCaptureAvailable !== true
 
   void (async () => {
     try {
@@ -1125,6 +1239,18 @@ canvas.addEventListener('pointerdown', pointerDown)
 canvas.addEventListener('pointermove', pointerMove)
 canvas.addEventListener('pointerup', pointerUp)
 canvas.addEventListener('pointercancel', pointerUp)
+canvas.addEventListener('wheel', (event) => {
+  if (role !== 'detached') return
+  event.preventDefault()
+  if (event.ctrlKey || event.metaKey) {
+    setDetachedZoom(
+      event.deltaY < 0 ? detachedZoom * 1.15 : detachedZoom / 1.15,
+      { x: event.clientX, y: event.clientY }
+    )
+  } else {
+    panDetached(event.deltaX, event.deltaY)
+  }
+}, { passive: false })
 canvas.addEventListener('dblclick', (event) => {
   if (role === 'filler') return
   if (activeTool !== 'select' || !selection) return
@@ -1199,8 +1325,12 @@ undoButton.addEventListener('click', () => {
 copyButton.addEventListener('click', () => void copyImage())
 copyTextButton.addEventListener('click', () => void copyText())
 openDetachedButton.addEventListener('click', () => void openDetachedEditor())
+scrollCaptureButton.addEventListener('click', () => void startPanoramicCapture())
 saveButton.addEventListener('click', () => void saveImage())
 cancelButton.addEventListener('click', () => void cancelCapture())
+zoomOutButton.addEventListener('click', () => setDetachedZoom(detachedZoom / 1.25))
+zoomResetButton.addEventListener('click', resetDetachedZoom)
+zoomInButton.addEventListener('click', () => setDetachedZoom(detachedZoom * 1.25))
 
 transparentClose.addEventListener('click', closeTransparencyPanel)
 transparentCancel.addEventListener('click', closeTransparencyPanel)

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 const main = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const editor = readFileSync(new URL('../src/renderer/editor.ts', import.meta.url), 'utf8')
 const preload = readFileSync(new URL('../src/preload/index.ts', import.meta.url), 'utf8')
+const editorHtml = readFileSync(new URL('../src/renderer/index.html', import.meta.url), 'utf8')
 
 describe('detached editor startup', () => {
   it('lets the ready renderer pull initialization instead of racing a page-load push', () => {
@@ -21,5 +22,16 @@ describe('detached editor startup', () => {
 
   it('does not let an unrevealed stale editor block the next attempt', () => {
     expect(main).toMatch(/if \(!existing\.revealed\) \{[\s\S]*?closeDetachedEditor\(existing\)/)
+  })
+
+  it('provides visible Full Tab zoom controls, shortcuts, pointer zoom, and panning', () => {
+    expect(editorHtml).toContain('id="zoom-out"')
+    expect(editorHtml).toContain('id="zoom-reset"')
+    expect(editorHtml).toContain('id="zoom-in"')
+    expect(editor).toContain("command && (event.key === '+' || event.key === '=')")
+    expect(editor).toContain("command && event.key === '-'")
+    expect(editor).toContain("command && event.key === '0'")
+    expect(editor).toContain("canvas.addEventListener('wheel'")
+    expect(editor).toContain('panDetached(event.deltaX, event.deltaY)')
   })
 })

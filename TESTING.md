@@ -8,7 +8,7 @@ Run the complete non-GUI gate with:
 npm run build
 ```
 
-This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies that only the color-matching component connected to the seed is removed, nearby tones obey tolerance without crossing a non-matching barrier, and feathering produces a partial-alpha boundary. Highlight geometry tests assert every geometric operation against the pen rather than in isolation, since the two must stay identical: bounds including the half-stroke padding that keeps a fat highlight grabbable, hit testing along and beside the stroke, translation, resize remapping, and clamping into the selection. Blur/Pixelate tests verify that 1-100% maps to useful rendering bounds, increases strictly across representative percentages, and clamps invalid input. OCR tests verify BOM/Windows-line-ending cleanup, preservation of internal spaces and blank lines, and rejection of non-text or empty recognition results. Update tests verify strict stable-semver parsing/comparison, newer/equal/older release evaluation, and rejection of drafts, prereleases, malformed responses, and unsafe tags. The GIF suite parses encoded Graphic Control Extensions and verifies that every selectable FPS totals one real second without rounding drift, irregular sample timestamps preserve their actual duration, identical-frame coalescing does not lose time, and static spans beyond the 16-bit delay limit split without truncation. Color tests verify hex/HSL conversion in both directions including the greys where hue is undefined, that a half-typed hex value is rejected rather than guessed, the alpha-carrying output forms, that readable text colour follows luminance rather than HSL lightness, and that the related-colour row stays on one hue and still spreads for a colour starting near black or white. Picker tests cover DIP-to-device-pixel display sizing without macOS-only runtime APIs, one-to-one wide tracking, one-eighth maximum-zoom movement, smooth displacement decay after zooming out, single-pixel arrow nudges, and a magnifier region centred on corner pixels. Static renderer coverage also asserts that Shift cannot alter picker movement and that macOS payload/fallback sampling uses the platform-neutral size conversion. It also verifies the two-frame queue boundary, sparse/coalesced/full palette-path selection, decoded sparse-frame compositing through Sharp, preview signature validation, and that temporary clipboard cleanup targets only expired Capturo-owned GIF files. Color picker settings tests verify that a settings file written before the feature existed gains the whole section rather than leaving the picker unbound, that only the three real formats are accepted, and that a truthy non-boolean is not read as consent to write to the clipboard. Settings tests verify the open-on-startup/update-check defaults and boolean/timestamp normalization plus the pre-timer default and 0-10 second normalization; the pure countdown helper covers every whole-second boundary through zero. Screen-permission tests verify that unrecognized statuses normalize to `unknown` rather than to `denied`, that `denied` keeps offering the request action because macOS reports a never-asked app that way, that no message accuses the user of refusing, that policy-restricted and unreadable states route only to System Settings, and that every message sending the user outside Capturo tells them to reopen it.
+This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits; static tests pin the renderer entry, typed bridge, owner checks, cursor omission, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering, settings normalization, and screen-permission routing.
 
 ## Driving a build without a person at the keyboard
 
@@ -65,6 +65,35 @@ Verify on at least 100% and one scaled DPI setting:
       Repeat detach several times after closing the prior editor. Simulate or observe a slow/failed
       renderer load and confirm the overlay remains available, the hidden attempt is discarded after
       the timeout, and a later attempt can open normally instead of reporting a phantom existing tab.
+      In Full Tab, use the visible minus, percentage/Fit, and plus controls. Verify Ctrl/Cmd `+`,
+      `-`, and `0`, then Ctrl/Cmd-wheel around a corner and ordinary wheel panning at high zoom.
+      Annotations must remain aligned to source pixels at every level and after window resizing.
+    - **Panoramic Scrolling (Windows).** Select a browser/document viewport and choose the amber
+      action. There must be no direction prompt. The frozen overlay
+      must close, the live application must accept wheel/touchpad input, and neither the cyan
+      viewport outline nor the out-of-crop control bar may appear inside the captured pixels. The
+      outline must frame the selected region with a visible gap, must not swallow clicks, scrolls,
+      or hover states in the application underneath, and must disappear on Finish, Cancel, and
+      Escape. The miniature must show
+      captured content and a cyan current-viewport rectangle. Move down, back up over captured
+      content, right, left, and down again. Direction and viewport must follow each change;
+      retracing must add no duplicate pixels while genuinely uncovered rectangles expand the map.
+      Finish and confirm one seam-free PNG opens in Full Tab with transparent holes retained for an
+      L-shaped route. Annotate, Copy, Copy text, and Save it. Move too far between samples, move
+      diagonally, and animate a large portion of the viewport: Capturo must ask for slower movement and must not append a corrupted
+      strip. Use a periodic list/grid and make a scrollbar jump greater than 62% of the viewport;
+      neither may be accepted on a merely local match. Retrace the last verified view and confirm
+      the warning clears. Trigger a transient bottom-edge URL/status overlay while scrolling and
+      confirm a later trusted interior frame repairs it. The mouse pointer must stay visible and
+      normally shaped everywhere, inside the selected viewport included; if it ever disappears
+      there, the session is hiding the system cursor and that is a regression. Keep the pointer
+      inside the viewport while moving, sweep it quickly across newly exposed content, then move it
+      to Finish; no cursor, shadow, or masked hole may remain in the PNG. Repeat once with a
+      Windows large-pointer setting and once on a scaled display, since the mask is sized from the
+      display scale. Kill the app mid-session and confirm the system cursor is unaffected.
+      Confirm unchanged frames add nothing, Escape/Cancel restores the tray-only state, a
+      second capture focuses the active panoramic controls, and reaching the size limit still permits
+      Finish. On macOS preview builds confirm Panoramic Scrolling is absent.
     - **Copy text (Windows).** Confirm the OCR action is immediately beside regular Copy and its hover tooltip explains both local Windows OCR and `Ctrl/Cmd+Shift+C`. Select clear multiline text, use the button, paste into Notepad, and verify plausible reading order and line breaks. Repeat through the shortcut. Success must close the editor; a blank/non-text selection or recognition failure must leave it open with useful status. Test a language installed in the Windows profile and a language without its OCR pack. Important text must be reviewed because OCR is not guaranteed exact.
     - Add a visible text annotation and confirm Copy text can recognize the final composite. Cover source text with Blur or Pixelate and confirm Capturo does not bypass that privacy effect by OCRing the original frame. Leave a transparency preview pending and verify Copy text commits what is visible before recognition. Regular Copy must still place an image, never text.
     - During Copy text, confirm no screenshot appears in `%TEMP%`, the repository, or the Pictures folder, and no network request is made. Recognized text must not appear in Capturo's stderr/log output. An over-64-MiB PNG, native-helper failure, or 20-second timeout should fail closed and leave the editor available rather than hanging it.

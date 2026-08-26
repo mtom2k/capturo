@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased
+## 0.24.0 - 2026-08-25
+
+### Added
+
+- **Panoramic Scrolling captures in every cardinal direction on Windows.** One amber action replaces
+  the Vertical/Horizontal prompt. Capturo infers up, down, left, or right on every safe match,
+  tracks two-dimensional coordinates, stores only rectangles not already captured, and shows the
+  growing mosaic plus current viewport in a compact preview. Direction changes and retracing do
+  not duplicate pixels. Output remains bounded to 30,000 pixels per axis and 120 million pixels.
+- **Full Tab supports image zoom and pan.** Visible zoom-out, percentage/Fit, and zoom-in controls
+  accompany `Ctrl/Cmd+-`, `Ctrl/Cmd+0`, and `Ctrl/Cmd++`. Ctrl/Cmd-wheel zooms around the pointer;
+  an ordinary wheel pans a magnified image horizontally or vertically.
+
+### Fixed
+
+- **Panoramic Scrolling keeps your pointer visible.** Capturo no longer hides the system cursor
+  while it is over the selected viewport, which made the live application feel broken and left
+  global Windows cursor state depending on a clean exit. The pointer behaves normally and is still
+  excluded from the stitched image: Capturo masks its footprint, now sized from the display scale
+  and sampled on both sides of every frame, and fills those pixels from a later clean observation.
+- **The selected viewport is outlined during a panoramic capture.** A thin cyan ring sits just
+  outside the captured pixels for the length of the session, so the region being followed is
+  visible without appearing in the output.
+- **Panoramic Scrolling now rejects unsafe jumps instead of inventing seams.** Capturo samples at
+  20 fps, limits a single verified step to 62% of the viewport, rejects periodic-layout ambiguity,
+  and requires frame-to-frame candidates to agree with both broad and detailed captured history.
+  A fast or unrelated jump asks the user to pause or retrace; returning to the last verified view
+  clears the warning immediately.
+- **Transient edge chrome no longer ghosts into stitched output.** Provisional edges are promoted
+  only after they move into a strongly aligned viewport interior, repairing hover URL overlays and
+  other short-lived edge content. The capturable external cyan ring was removed; the miniature is
+  the sole viewport indicator, and internal added-pixel totals are no longer shown.
+- **Pointers are excluded even when Chromium ignores its cursor-free stream constraint.** Capturo
+  tracks the pointer footprint as untrusted coverage, fills it from later clean frames, and waits
+  for a final cursor-free frame after the pointer reaches the out-of-crop Finish bar.
 
 ## 0.22.3 - 2026-08-24
 

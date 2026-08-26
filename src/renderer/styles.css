@@ -163,6 +163,16 @@ button {
   background: #0e7490;
 }
 
+/* Panoramic Scrolling returns to the live application and builds a larger image rather than exporting
+   the frozen frame. Amber distinguishes that temporal action from detach and the final exports. */
+.toolbar button.primary.accent-scroll {
+  background: #d97706;
+}
+.toolbar button.primary.accent-scroll:hover,
+.toolbar button.primary.accent-scroll:focus-visible {
+  background: #b45309;
+}
+
 /* Save is the third primary action, so it is filled like the two copies rather than reading as a
    secondary control. Green is the remaining unambiguous hue next to Copy's blue and Copy text's
    violet, and it carries the same "this completes the capture" meaning. The floppy mark still
@@ -202,6 +212,15 @@ button {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.toolbar button.zoom-value {
+  width: auto;
+  min-width: 52px;
+  padding: 0 7px;
+  color: #bae6fd;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 body.detached-editor {

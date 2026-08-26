@@ -65,6 +65,15 @@ import {
   type GifPreviewActionResult,
   type GifRecordPayload
 } from '../shared/gif'
+import {
+  panoramicOutlineRect,
+  PANORAMIC_OUTLINE_THICKNESS,
+  PANORAMIC_POINTER_RADIUS_DIP,
+  type FinishScrollCaptureResult,
+  type PanoramicPointer,
+  type ScrollCapturePayload,
+  type StartScrollCaptureResult
+} from '../shared/scroll'
 import { integerRect, overlayRegions, surroundingStrips, type OverlayRegion } from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 import {
@@ -150,6 +159,18 @@ let recordingBorderWindow: BrowserWindow | null = null
 let recordingShadeWindows: BrowserWindow[] = []
 let recordingTargetDisplayId: string | null = null
 let recordingPayload: GifRecordPayload | null = null
+// Panoramic Scrolling uses the same display-media grant as GIF recording but owns a separate,
+// out-of-crop control window and final-image lifecycle. Its frames are stitched in the renderer and
+// transferred back as one PNG for the normal detached editor. See D-042.
+let scrollingWindow: BrowserWindow | null = null
+let scrollingTargetDisplayId: string | null = null
+let scrollingPayload: ScrollCapturePayload | null = null
+// A click-through outline drawn around the selected viewport, so the user can see what the session
+// is following while they keep working in the live application. It is deliberately not
+// content-protected; its clearance gap is what keeps it out of the capture. See D-042.
+let scrollingOutlineWindow: BrowserWindow | null = null
+const PANORAMIC_CONTROL_WIDTH = 650
+const PANORAMIC_CONTROL_HEIGHT = 58
 type GifPreviewState = {
   bytes: Buffer
   savedPath: string | null
@@ -415,7 +436,7 @@ function notify(title: string, body: string): void {
 }
 
 function updateCheckBlockedByCapture(): boolean {
-  return session !== null || pickerSession !== null || recordingWindow !== null
+  return session !== null || pickerSession !== null || recordingWindow !== null || scrollingWindow !== null
 }
 
 async function openCapturoReleases(): Promise<boolean> {
@@ -757,7 +778,8 @@ function buildPayload(
       top: Math.max(0, display.workArea.y - area.y),
       bottom: Math.max(0, area.y + area.height - (display.workArea.y + display.workArea.height))
     },
-    cursor: localCursor
+    cursor: localCursor,
+    rollingCaptureAvailable: process.platform === 'win32'
   }
 }
 
@@ -971,7 +993,8 @@ async function openDetachedEditorWindow(
       captureSize: { width: size.width, height: size.height },
       safeArea: { top: 0, bottom: 0 },
       cursor: null,
-      forcePng
+      forcePng,
+      rollingCaptureAvailable: false
     }
   }
   state.payload.sessionId = state.id
@@ -1039,6 +1062,7 @@ async function spawnOverlay(
 // same way and reuse the same selection UI; the mode picks which renderer loads and what
 // happens after a region is chosen (screenshot exports; GIF starts recording).
 async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
+  if (focusScrollingCapture()) return
   if (!(await ensureScreenPermission())) return
   closePickerSession()
   closeSession()
@@ -1097,6 +1121,7 @@ function startCapture(): Promise<void> {
 }
 
 async function startColorPicker(): Promise<void> {
+  if (focusScrollingCapture()) return
   if (!(await ensureScreenPermission())) {
     restoreColorWindow()
     return
@@ -1148,6 +1173,7 @@ async function startColorPicker(): Promise<void> {
 }
 
 function startGifCapture(): Promise<void> {
+  if (focusScrollingCapture()) return Promise.resolve()
   if (gifPreviewWindow && !gifPreviewWindow.isDestroyed()) {
     if (gifPreviewWindow.isMinimized()) gifPreviewWindow.restore()
     gifPreviewWindow.show()
@@ -1605,6 +1631,125 @@ function registerIpc(): void {
     void startColorPicker()
   })
 
+  // Panoramic capture begins from an ordinary screenshot selection. The recorder infers a safe
+  // cardinal movement from every pair of frames, so one session can change between up, down,
+  // left, and right without a direction prompt.
+  ipcMain.handle(
+    'scroll:start',
+    async (event, sessionId: string, region: Rect): Promise<StartScrollCaptureResult> => {
+      const active = validSession(event, sessionId)
+      const entry = active?.overlays.get(event.sender.id)
+      if (!active || active.mode !== 'screenshot' || !entry || entry.payload.role !== 'editor') {
+        return { started: false, error: 'This capture is no longer available.' }
+      }
+      if (process.platform !== 'win32') {
+        return { started: false, error: 'Panoramic capture is currently available on Windows only.' }
+      }
+      if (focusExistingDetachedEditor()) {
+        return { started: false, error: 'Close the existing full editor before starting a panoramic capture.' }
+      }
+      if (!region || !Number.isFinite(region.x) || !Number.isFinite(region.y) ||
+          !Number.isFinite(region.width) || !Number.isFinite(region.height) ||
+          region.width < 8 || region.height < 8 ||
+          region.x < 0 || region.y < 0 ||
+          region.x + region.width > entry.payload.imageWidth + 1 ||
+          region.y + region.height > entry.payload.imageHeight + 1) {
+        return { started: false, error: 'Select a valid viewport before starting Panoramic Scrolling.' }
+      }
+
+      const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === entry.payload.displayId)
+      if (!display) return { started: false, error: 'The selected display is no longer available.' }
+      const payload: ScrollCapturePayload = {
+        crop: {
+          x: region.x / entry.payload.imageWidth,
+          y: region.y / entry.payload.imageHeight,
+          width: region.width / entry.payload.imageWidth,
+          height: region.height / entry.payload.imageHeight
+        }
+      }
+      if (!placeControlBarOutside(
+        display,
+        regionInDip(display, payload.crop),
+        PANORAMIC_CONTROL_WIDTH,
+        PANORAMIC_CONTROL_HEIGHT
+      )) {
+        return {
+          started: false,
+          error: 'Leave at least 66 pixels above or below the selected viewport for the panoramic-capture controls.'
+        }
+      }
+      closeSession()
+      openScrollingWindow(display, payload)
+      return { started: true }
+    }
+  )
+
+  ipcMain.handle('scroll:request-initialization', (event): ScrollCapturePayload | null => {
+    if (!scrollingWindow || scrollingWindow.isDestroyed() || !scrollingPayload) return null
+    return event.sender.id === scrollingWindow.webContents.id ? scrollingPayload : null
+  })
+
+  // The pointer stays visible throughout a panoramic session: hiding it inside the selected
+  // viewport made the live application feel broken. Capturo instead reports where it is, and the
+  // recorder treats that footprint as untrusted coverage, so the pointer is excluded from the
+  // output the way the frozen screenshot path never records one at all. The reported area extends
+  // one pointer radius past every edge, because a bitmap whose hotspot sits just outside the
+  // region still paints into it. See D-042.
+  ipcMain.handle('scroll:cursor-position', (event): PanoramicPointer | null => {
+    if (!scrollingWindow || scrollingWindow.isDestroyed() || !scrollingPayload ||
+        event.sender.id !== scrollingWindow.webContents.id) return null
+    const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === scrollingTargetDisplayId)
+    if (!display) return null
+    const region = regionInDip(display, scrollingPayload.crop)
+    if (region.width <= 0 || region.height <= 0) return null
+    const radius = PANORAMIC_POINTER_RADIUS_DIP
+    const cursor = screen.getCursorScreenPoint()
+    if (cursor.x < region.x - radius || cursor.x >= region.x + region.width + radius ||
+        cursor.y < region.y - radius || cursor.y >= region.y + region.height + radius) return null
+    return {
+      x: (cursor.x - region.x) / region.width,
+      y: (cursor.y - region.y) / region.height,
+      radiusX: radius / region.width,
+      radiusY: radius / region.height
+    }
+  })
+
+  ipcMain.handle('scroll:finish', async (event, png: ArrayBuffer): Promise<FinishScrollCaptureResult> => {
+    if (!scrollingWindow || scrollingWindow.isDestroyed() || event.sender.id !== scrollingWindow.webContents.id) {
+      return { opened: false, error: 'The panoramic capture is no longer active.' }
+    }
+    if (!(png instanceof ArrayBuffer) || png.byteLength === 0 || png.byteLength > 512 * 1024 * 1024) {
+      return { opened: false, error: 'The stitched image is too large to open.' }
+    }
+    const image = nativeImage.createFromBuffer(Buffer.from(png))
+    if (image.isEmpty()) return { opened: false, error: 'Capturo could not decode the stitched image.' }
+    const displayId = scrollingTargetDisplayId
+    if (!displayId) return { opened: false, error: 'The captured display is no longer available.' }
+
+    // Keep the control renderer alive until the detached editor acknowledges readiness. This lets
+    // it surface a useful error and retry instead of disappearing if the editor fails to load.
+    const activeWindow = scrollingWindow
+    activeWindow.hide()
+    setScrollingOutlineVisible(false)
+    // A two-dimensional route can leave uncaptured transparent space inside its bounding box.
+    // Preserve that truth in the full editor and all subsequent saves.
+    if (!(await openDetachedEditorWindow(image, displayId, true))) {
+      if (scrollingWindow === activeWindow && !activeWindow.isDestroyed()) {
+        activeWindow.show()
+        activeWindow.focus()
+        setScrollingOutlineVisible(true)
+      }
+      return { opened: false, error: 'Capturo could not open the stitched image in the full editor.' }
+    }
+    closeScrollingCapture()
+    return { opened: true }
+  })
+
+  ipcMain.handle('scroll:cancel', (event) => {
+    if (!scrollingWindow || scrollingWindow.isDestroyed()) return
+    if (event.sender.id === scrollingWindow.webContents.id) closeScrollingCapture()
+  })
+
   // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
   // the selection overlays and open the recording control window over the chosen display; it
   // captures the live region and encodes it. The region arrives in the frozen image's pixels,
@@ -1888,6 +2033,51 @@ function closeRecording(): void {
   for (const strip of shade) if (!strip.isDestroyed()) strip.destroy()
 }
 
+function closeScrollingCapture(): void {
+  const window = scrollingWindow
+  scrollingWindow = null
+  scrollingTargetDisplayId = null
+  scrollingPayload = null
+  closeScrollingOutline()
+  if (window && !window.isDestroyed()) window.destroy()
+}
+
+// A thin cyan ring around the selected viewport, with a transparent, click-through centre. The
+// painted band clears the crop by PANORAMIC_OUTLINE_GAP device-independent pixels, further than
+// display-capture rounding reaches back across, so the indicator stays capturable rather than
+// content-protected. Do not rebuild this as separate thin strips: Windows inflates a window that
+// small, and the inflated top strip lands inside the captured region.
+function openScrollingOutline(region: Rect): void {
+  closeScrollingOutline()
+  scrollingOutlineWindow = createChromeWindow(
+    panoramicOutlineRect(region),
+    `height:100vh;box-sizing:border-box;border:${PANORAMIC_OUTLINE_THICKNESS}px solid rgba(56,189,248,0.9)`,
+    false
+  )
+}
+
+function closeScrollingOutline(): void {
+  const outline = scrollingOutlineWindow
+  scrollingOutlineWindow = null
+  if (outline && !outline.isDestroyed()) outline.destroy()
+}
+
+function setScrollingOutlineVisible(visible: boolean): void {
+  const outline = scrollingOutlineWindow
+  if (!outline || outline.isDestroyed()) return
+  if (visible) outline.showInactive()
+  else outline.hide()
+}
+
+function focusScrollingCapture(): boolean {
+  const window = scrollingWindow
+  if (!window || window.isDestroyed()) return false
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+  return true
+}
+
 async function cleanupExpiredGifClipboardFiles(): Promise<void> {
   const directory = path.join(app.getPath('temp'), 'Capturo', 'Clipboard')
   try {
@@ -1993,7 +2183,7 @@ async function prepareRecordingChrome(window: BrowserWindow): Promise<void> {
 // A tiny transparent, click-through, content-protected window filling a rectangle. Used both
 // for the shade strips and (with a border) is close to the ring window. Loads inline HTML so
 // no renderer entry is needed; no preload since it is purely visual.
-function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
+function createChromeWindow(rect: Rect, bodyStyle: string, protectFromCapture = true): BrowserWindow {
   const bounds = integerRect(rect)
   const window = new BrowserWindow({
     ...bounds,
@@ -2016,7 +2206,7 @@ function createChromeWindow(rect: Rect, bodyStyle: string): BrowserWindow {
   // the requested outer bounds so adjacent shade strips and the selection ring remain exact.
   window.setBounds(bounds)
   window.setAlwaysOnTop(true, 'screen-saver')
-  window.setContentProtection(true)
+  window.setContentProtection(protectFromCapture)
   window.setIgnoreMouseEvents(true)
   const html = `<!doctype html><html><body style="margin:0;${bodyStyle}"></body></html>`
   void window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
@@ -2067,6 +2257,13 @@ function placeControlBar(display: Electron.Display, region: Rect, width: number,
   return { x, y: Math.round(Math.min(region.y + margin, bounds.y + bounds.height - height - margin)) }
 }
 
+function placeControlBarOutside(display: Electron.Display, region: Rect, width: number, height: number): Point | null {
+  const point = placeControlBar(display, region, width, height)
+  const outside = point.y + height <= region.y || point.y >= region.y + region.height ||
+    point.x + width <= region.x || point.x >= region.x + region.width
+  return outside ? point : null
+}
+
 // A thin red ring around the region. Transparent centre, click-through, content-protected, so
 // it frames the recording for the user without appearing in it.
 function createBorderWindow(region: Rect): BrowserWindow {
@@ -2075,6 +2272,79 @@ function createBorderWindow(region: Rect): BrowserWindow {
     { x: region.x - pad, y: region.y - pad, width: region.width + pad * 2, height: region.height + pad * 2 },
     `height:100vh;box-sizing:border-box;border:${pad}px solid #ef4444`
   )
+}
+
+// A user-driven panoramic capture leaves the selected application interactive and records only its
+// viewport. The control bar and the viewport outline both live entirely outside that crop, because
+// panoramic chrome inside it would be captured: content protection is not an option here, since
+// excluding a window from capture can stall the Windows display-media stream this session reads.
+// The outline's clearance gap is what keeps display-capture rounding from reaching it. See D-042.
+function openScrollingWindow(display: Electron.Display, payload: ScrollCapturePayload): void {
+  closeRecording()
+  closeScrollingCapture()
+  scrollingTargetDisplayId = String(display.id)
+  scrollingPayload = payload
+
+  const region = regionInDip(display, payload.crop)
+  const width = PANORAMIC_CONTROL_WIDTH
+  const height = PANORAMIC_CONTROL_HEIGHT
+  const position = placeControlBarOutside(display, region, width, height)
+  if (!position) {
+    closeScrollingCapture()
+    return
+  }
+  const { x, y } = position
+  const bounds = integerRect({ x, y, width, height })
+  const window = new BrowserWindow({
+    ...bounds,
+    frame: false,
+    thickFrame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  })
+  window.setBounds(bounds)
+  scrollingWindow = window
+  openScrollingOutline(region)
+  window.setAlwaysOnTop(true, 'screen-saver')
+  window.on('closed', () => {
+    if (scrollingWindow === window) {
+      scrollingWindow = null
+      scrollingTargetDisplayId = null
+      scrollingPayload = null
+      closeScrollingOutline()
+    }
+  })
+  window.once('ready-to-show', () => {
+    void prepareRecordingChrome(window).finally(() => {
+      if (!window.isDestroyed()) {
+        window.show()
+        window.focus()
+      }
+    })
+  })
+
+  const devUrl = rendererUrl()
+  const load = devUrl
+    ? window.loadURL(`${devUrl}/scroll-record.html`)
+    : window.loadFile(path.join(__dirname, '../renderer/scroll-record.html'))
+  void load.catch((error) => {
+    console.error('Could not open panoramic capture controls', error)
+    if (scrollingWindow === window) closeScrollingCapture()
+  })
 }
 
 // The GIF recording control bar: a small always-on-top window over the recorded display, next
@@ -2152,7 +2422,7 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
 function registerDisplayMediaHandler(): void {
   electronSession.defaultSession.setDisplayMediaRequestHandler(
     (_request, callback) => {
-      const displayId = recordingTargetDisplayId
+      const displayId = recordingTargetDisplayId ?? scrollingTargetDisplayId
       if (!displayId) {
         callback({})
         return
@@ -2438,6 +2708,7 @@ if (!app.requestSingleInstanceLock()) {
     closeSession()
     closePickerSession()
     closeRecording()
+    closeScrollingCapture()
     closeGifPreview()
     cancelAutomaticUpdateCheck()
     stopCaptureHelper()

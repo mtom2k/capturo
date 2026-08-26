@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Capturo Panoramic Capture</title>
+  </head>
+  <body>
+    <div id="bar" class="scroll-bar">
+      <span class="scroll-dot" aria-hidden="true"></span>
+      <div class="scroll-copy">
+        <strong id="title">Preparing panoramic capture…</strong>
+        <span id="status">Opening the live screen</span>
+      </div>
+      <span class="scroll-spacer"></span>
+      <div class="scroll-preview-wrap" title="Captured-area map; the cyan outline is the current viewport">
+        <canvas id="preview" aria-label="Preview of the already-captured panoramic area"></canvas>
+      </div>
+      <button id="finish" class="scroll-btn primary" disabled>Finish</button>
+      <button id="cancel" class="scroll-btn">Cancel</button>
+    </div>
+    <video id="video" muted playsinline></video>
+    <script type="module" src="./panoramic-record.ts"></script>
+  </body>
+</html>

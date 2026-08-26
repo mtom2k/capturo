@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capturo Panoramic Fixture</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { background: #0b1020; }
+    body {
+      margin: 0;
+      min-width: 1640px;
+      color: #f8fafc;
+      font: 16px/1.35 "Segoe UI", sans-serif;
+      background: #111827;
+    }
+    header {
+      position: fixed;
+      z-index: 20;
+      inset: 0 0 auto 0;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      color: #f8fafc;
+      background: #3b0764;
+      border-bottom: 2px solid #f59e0b;
+    }
+    header strong { letter-spacing: 0.08em; }
+    header span { color: #fde68a; }
+    main { padding-top: 58px; }
+    .row {
+      height: 154px;
+      display: grid;
+      grid-template-columns: 100px 1fr 420px;
+      align-items: stretch;
+      border-bottom: 3px solid #fb7185;
+    }
+    .row:nth-child(4n + 1) { background: #172554; }
+    .row:nth-child(4n + 2) { background: #052e16; }
+    .row:nth-child(4n + 3) { background: #3f1d0b; }
+    .row:nth-child(4n + 4) { background: #312e81; }
+    .index {
+      display: grid;
+      place-items: center;
+      font: 700 30px/1 ui-monospace, monospace;
+      color: #fef3c7;
+      background: rgba(0, 0, 0, 0.28);
+      border-right: 3px solid #f59e0b;
+    }
+    .copy { padding: 22px 28px; }
+    .copy h2 { margin: 0 0 12px; font-size: 24px; }
+    .copy p { max-width: 720px; margin: 0; color: #cbd5e1; }
+    .pattern {
+      margin: 18px;
+      border: 3px solid #f8fafc;
+      background:
+        linear-gradient(135deg, transparent 25%, rgba(255,255,255,.18) 25% 50%, transparent 50% 75%, rgba(255,255,255,.18) 75%),
+        #7c2d12;
+      background-size: 32px 32px;
+    }
+    #hover-status {
+      position: fixed;
+      z-index: 30;
+      left: 0;
+      bottom: 0;
+      max-width: 620px;
+      padding: 7px 12px;
+      color: #fff;
+      background: #111827;
+      border: 2px solid #facc15;
+      border-left: 0;
+      font: 13px/1 ui-monospace, monospace;
+      opacity: 0;
+    }
+    #hover-status.visible { opacity: 1; }
+    #pulse {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: #f43f5e;
+      animation: pulse 600ms steps(2, end) infinite;
+    }
+    @keyframes pulse { 50% { background: #fbbf24; transform: scale(1.35); } }
+  </style>
+</head>
+<body>
+  <header>
+    <strong><span id="pulse"></span>CAPTURO PANORAMIC STRESS FIXTURE</strong>
+    <span>Fixed header · transient edge overlay · 2D overflow</span>
+  </header>
+  <main id="rows"></main>
+  <div id="hover-status">https://fixture.invalid/transient-link/000</div>
+  <script>
+    const rows = document.querySelector('#rows')
+    const status = document.querySelector('#hover-status')
+    for (let index = 0; index < 90; index += 1) {
+      const row = document.createElement('section')
+      row.className = 'row'
+      row.innerHTML = `
+        <div class="index">${String(index).padStart(2, '0')}</div>
+        <div class="copy">
+          <h2>Unique panoramic checkpoint ${String(index).padStart(2, '0')}</h2>
+          <p>row-${index}-token-${(index * 7919).toString(16).padStart(6, '0')} · alpha bravo cedar delta ember fjord glyph harbor indigo jigsaw kestrel lumen</p>
+        </div>
+        <div class="pattern" aria-hidden="true"></div>`
+      rows.append(row)
+    }
+
+    let hideTimer = 0
+    addEventListener('scroll', () => {
+      status.textContent = `https://fixture.invalid/transient-link/${String(Math.round(scrollY / 37)).padStart(3, '0')}`
+      status.classList.add('visible')
+      clearTimeout(hideTimer)
+      hideTimer = setTimeout(() => status.classList.remove('visible'), 220)
+    }, { passive: true })
+  </script>
+</body>
+</html>

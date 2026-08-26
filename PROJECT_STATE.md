@@ -1,13 +1,14 @@
 # Project State
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 ## Phase
 
-`0.22.3` is the current source version and latest stable release. It publishes Windows x64 Setup
-and Portable executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only
-*supported* platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning
-described under macOS state.
+`0.24.0` is the current source and local Windows build version. The latest published stable release
+remains `0.22.3` until the new artifacts are uploaded; it publishes Windows x64 Setup and Portable
+executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only *supported*
+platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under
+macOS state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -88,6 +89,44 @@ display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a 
 selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
 the normal-profile picker.
 
+Version 0.24.0 adds **Panoramic Scrolling** on Windows (D-042). A normal screenshot selection now
+becomes one direction-free live session. Every accepted frame infers up, down, left, or right;
+Capturo tracks the viewport in two-dimensional coordinates, removes already-captured intersections,
+and displays the growing mosaic and current viewport in a compact preview. Direction changes and
+retracing do not duplicate pixels. Weak, unchanged, and ambiguous frames remain outside the
+corruption boundary. Output is limited to 30,000 pixels per axis and 120 million pixels and remains
+PNG when a two-dimensional route leaves transparent holes. Full Tab now includes zoom buttons,
+percentage/Fit, Ctrl/Cmd zoom shortcuts, pointer-centered Ctrl/Cmd-wheel zoom, and wheel panning.
+macOS still hides Panoramic Scrolling pending equivalent live-stream validation.
+
+The 2026-08-25 Windows validation exercised a live forward/reverse route in Notepad: revisiting the
+captured span left the panorama fixed at 1170×837 and reported **Already captured here** in both
+directions. Finish produced a sharp 1170×837 PNG in Full Tab with the visible Fit/zoom controls.
+The expanded stress fixture then exercised controlled vertical and horizontal movement, reversal,
+a distant scrollbar jump, retrace recovery, periodic repeated rows, a transient bottom-edge URL
+overlay, and pointer inclusion. The distant jump and periodic ambiguity now fail closed; retracing
+clears the warning; provisional edge coverage is repaired from a trusted interior frame. A live
+run also proved that Chromium can still composite the cursor despite `cursor: never`, so the final
+implementation masks its normalized footprint and refills it from clean coverage.
+`npm run dist:win` then passed strict type checking, all 233 tests, the production renderer build,
+and Windows x64 Setup/Portable packaging. The rebuilt 0.24.0 Setup SHA-256 is
+`97db45053fe9171e21c97ffaeee76010dddc31ac8d20efaac664461917c4ff92`; Portable is
+`3cb5cc1d42e1479aedc019faa459b2d7fdf9ad8aa7ad336ff5aba83034d8bb1b`.
+`release/BUILD-INFO.txt` records the same two-artifact inventory.
+
+The 2026-08-25 follow-up made the pointer visible again and marked the selected region. Hiding the
+system cursor inside the viewport was removed entirely; the pointer mask is now sized from the
+region in device-independent pixels, reported for a pointer up to one radius outside the crop,
+sampled on both sides of every frame read, and rounded outward to whole pixels. A scripted run
+against the real build confirmed the recorder starts at the full 930x660 device pixels for a
+620x440 device-independent selection, that the reported pointer at the region centre is `0.5/0.5`
+with radii of `40/620` and `40/440`, and that a native-helper screenshot of the live desktop shows
+the new viewport ring painting from 6 to 4 device-independent pixels outside the crop with zero ring
+pixels inside it. The first attempt at that ring used four two-pixel strips; Windows inflated them
+to about 30x38 and drove the top strip through the captured region, which is why the outline is one
+bordered window. Panoramic Scrolling has not been re-packaged since; the next `npm run dist:win`
+supersedes the artifact hashes above.
+
 Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
 The screenshot toolbar now places **Copy text** immediately beside regular Copy. It OCRs the final rendered selection through Windows' installed OCR languages, copies non-empty plain text, supports `Ctrl/Cmd+Shift+C`, automatically commits pending transparency, and leaves the editor open on no-text or failure. Pixels remain in memory over Capturo's private native-helper pipe; there is no OCR network request, model download, or temporary screenshot file.
@@ -102,10 +141,10 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package and stable-release version is `0.22.3`. The published release contains the v0.22.3
-Windows Setup and Portable executables plus Apple Silicon DMG and ZIP previews. Windows binaries
-are not Authenticode-signed and may trigger an unknown-publisher warning; macOS packages are
-ad-hoc signed, unnotarized, and unsupported.
+The package and current local Windows build version is `0.24.0`. The latest published stable release
+remains v0.22.3 until 0.24.0 is uploaded; it contains Windows Setup and Portable executables plus
+Apple Silicon DMG and ZIP previews. Windows binaries are not Authenticode-signed and may trigger an
+unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and unsupported.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 
@@ -121,6 +160,7 @@ ad-hoc signed, unnotarized, and unsupported.
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
 - [x] Move a selected screenshot into one independent normal full-editor window, then continue editing, copying, OCRing, or saving while the desktop is free
+- [x] Windows Panoramic Scrolling with four-direction inference, captured-area preview, unique-coverage assembly, bounded output, and Full Tab handoff
 - [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
 - [x] macOS Copy text through Apple's Vision framework, local and in-memory, sharing the Windows request protocol
 - [x] Escape cancellation
