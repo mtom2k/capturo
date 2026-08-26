@@ -559,9 +559,26 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
   }
 
   const images = await Promise.all(
-    displays.map(async (_display, index) => {
+    displays.map(async (display, index) => {
       const result = results[index]
-      if (!result?.ok || !result.width || !result.height) return null
+      if (!result?.ok || !result.width || !result.height) {
+        // Never let this pass quietly. The fallback is Chromium's 8-bit capture, which cannot tone
+        // map an HDR display, so a silent fallback is indistinguishable from a broken HDR fix.
+        console.error(
+          `capture helper did not serve display ${display.id}` +
+          `${result?.stage ? ` (stage ${result.stage}${result.hr ? ` hr ${result.hr}` : ''})` : ''}` +
+          '; falling back to desktopCapturer, which cannot tone map HDR'
+        )
+        return null
+      }
+      // An HDR frame whose white level was not measured for this capture is the one case that
+      // produces a plausible-looking but over-exposed image, so say so even when it succeeded.
+      if (result.hdrActive && result.whiteLevelSource && result.whiteLevelSource !== 'queried') {
+        console.error(
+          `display ${display.id} is HDR but Windows did not report its SDR white level; ` +
+          `used ${result.sdrWhiteNits} nits from the ${result.whiteLevelSource}`
+        )
+      }
       try {
         // Trust the helper's reported dimensions rather than re-decoding, so nothing can
         // reinterpret the image at a different scale factor on the way through.
@@ -578,7 +595,9 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
     results.forEach((result, index) => {
       if (!result?.timings) return
       const stages = Object.entries(result.timings).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ')
-      logTiming(`helper display ${displays[index].id}: [${stages}]`)
+      const colour = `${result.format ?? 'unknown'}, hdr ${result.hdrActive ? 'on' : 'off'}, ` +
+        `sdr white ${result.sdrWhiteNits ?? '?'} nits (${result.whiteLevelSource ?? 'unknown'})`
+      logTiming(`helper display ${displays[index].id}: ${colour} [${stages}]`)
     })
   }
   return images

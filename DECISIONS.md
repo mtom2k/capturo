@@ -610,6 +610,31 @@ has no HDR headroom, but ordinary SDR pixels remain byte-exact and bright colors
 Per-channel clipping and independent Reinhard-style curves were rejected because both change the
 ratios that define the color.
 
+**Amended 2026-08-25: the SDR white level is trusted in a fixed order, and a fallback is loud.**
+The tone map is only as good as the scale it divides by. Windows reports the SDR white level
+through `GetDisplayConfigBufferSizes` plus `QueryDisplayConfig`, which is a pair whose result can
+change between the two calls; Windows then answers `ERROR_INSUFFICIENT_BUFFER`, and build 26200 has
+been seen answering `ERROR_GEN_FAILURE`. A single attempt followed by a compiled-in 200 nit guess
+turns a transient failure into a rescaled frame: against a real 240 nit level that guess lifts every
+pixel by 20% and clips the highlights, which is indistinguishable from the tone mapping having
+broken. The query is now retried, an implausible level (outside 40-1000 nits) is treated as unknown,
+and the level is resolved in descending order of trust — measured now, last measured for this
+output, then the guess. Each capture reports which of the three it used.
+
+A capture that the helper cannot serve falls back to Chromium's 8-bit capture, which is the path
+that cannot tone map HDR at all. That fallback is real and must stay, but it is no longer silent:
+main logs the display, the helper's failing stage, and the fact that HDR cannot be tone mapped, and
+it logs separately whenever an HDR frame's white level was not measured for that capture.
+`CAPTURO_TIMING=1` now names the pixel format, HDR state, white level, and its source per display,
+which is the first thing to read when a capture looks washed.
+
+Matching a DXGI output by exact desktop origin is deliberately kept. A tolerance for near matches
+was implemented and removed: both sides of that comparison come from Windows, they agree even for a
+portrait display at -606 device-independent pixels on a 1.5 scale factor (naive multiplication says
+-909, Windows says -908), and a near match selects an output that `DuplicateOutput1` then refuses
+with `E_INVALIDARG`, replacing a clean refusal with a confusing one. If a real mismatch is ever
+observed, resolve the point through `MonitorFromPoint` rather than widening the comparison.
+
 The native helper's `--self-test` pins four load-bearing properties: SDR values are untouched, HDR
 component ratios survive, neutral HDR white stays neutral, and invalid/negative FP16 values cannot
 reach the PNG conversion. `native/capturo-capture/build.cmd` runs that test after every native build.

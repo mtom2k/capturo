@@ -38,6 +38,14 @@ export type HelperResult = {
   text?: string
   pixels?: string
   timings?: Record<string, number>
+  // Reported per capture so a wrong-looking image can be explained from the log rather than
+  // guessed at. `whiteLevelSource` is "queried" when Windows answered for this frame; anything
+  // else means the exposure rests on an earlier measurement or the compiled-in guess.
+  format?: string
+  hdrActive?: boolean
+  sdrWhiteNits?: number
+  whiteLevelQueried?: boolean
+  whiteLevelSource?: string
 }
 
 // Null on a platform with no helper at all, which is the ordinary case on Linux.

@@ -282,18 +282,30 @@ std::vector<uint8_t> ReadFileBytes(const std::wstring& filePath) {
         std::istreambuf_iterator<char>());
 }
 
-// Windows exposes the SDR reference white through the display configuration APIs. The
-// legacy query fails on some Windows 11 builds (observed returning ERROR_GEN_FAILURE on
-// build 26200), so the caller must be prepared for this to return 0.
+// Windows exposes the SDR reference white through the display configuration APIs. Getting this
+// wrong is not a cosmetic error: the whole frame is divided by it, so a value 20% low lifts every
+// pixel by 20% and clips the highlights, which is exactly what an over-saturated, washed capture
+// looks like. See D-015 and D-038.
+//
+// GetDisplayConfigBufferSizes and QueryDisplayConfig are a pair, and the display topology can
+// change between the two calls; Windows then answers ERROR_INSUFFICIENT_BUFFER. It has also been
+// observed answering ERROR_GEN_FAILURE on build 26200. Both are transient, so retry the pair
+// instead of reporting a failure the caller can only answer with a guessed white level. Returning
+// 0 now means "genuinely unknown", not "asked at an unlucky moment".
 float QuerySdrWhiteNits(const std::wstring& deviceName) {
+    for (int attempt = 0; attempt < 4; ++attempt) {
     UINT32 pathCount = 0, modeCount = 0;
-    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return 0.0f;
+    LONG status = GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount);
+    if (status != ERROR_SUCCESS) {
+        if (status == ERROR_GEN_FAILURE) { Sleep(2); continue; }
+        return 0.0f;
+    }
 
     std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
     std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS) {
-        return 0.0f;
-    }
+    status = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr);
+    if (status == ERROR_INSUFFICIENT_BUFFER || status == ERROR_GEN_FAILURE) { Sleep(2); continue; }
+    if (status != ERROR_SUCCESS) return 0.0f;
     paths.resize(pathCount);
 
     for (const auto& path : paths) {
@@ -313,7 +325,11 @@ float QuerySdrWhiteNits(const std::wstring& deviceName) {
         white.header.id = path.targetInfo.id;
         if (DisplayConfigGetDeviceInfo(&white.header) != ERROR_SUCCESS) return 0.0f;
         // SDRWhiteLevel is reported as (nits / 80) * 1000.
-        return (static_cast<float>(white.SDRWhiteLevel) / 1000.0f) * kScRgbWhiteNits;
+        const float nits = (static_cast<float>(white.SDRWhiteLevel) / 1000.0f) * kScRgbWhiteNits;
+        // A zero or absurd level would silently rescale the whole frame. Reject it as unknown.
+        return nits >= 40.0f && nits <= 1000.0f ? nits : 0.0f;
+    }
+    return 0.0f;
     }
     return 0.0f;
 }
@@ -411,6 +427,10 @@ struct OutputCapture {
     ComPtr<IDXGIOutput5> output5;
     DXGI_OUTPUT_DESC desc{};
     uint64_t luid = 0;
+    // The last SDR white level Windows actually reported for this output. A transient query
+    // failure must reuse this rather than fall back to a guess, because the guess rescales the
+    // entire frame. Cleared with the rest of the cache when the topology changes.
+    float lastGoodSdrWhiteNits = 0.0f;
     ComPtr<IDXGIOutputDuplication> dup;
     ComPtr<ID3D11Texture2D> readback;
     D3D11_TEXTURE2D_DESC frameDesc{};
@@ -438,6 +458,9 @@ struct CaptureResult {
     bool hdrActive = false;
     float sdrWhiteNits = 0.0f;
     bool whiteLevelQueried = false;
+    // "queried", "cached", or "fallback". Anything but "queried" means the exposure of this
+    // frame rests on an earlier measurement or a guess, which is worth seeing in the log.
+    const char* whiteLevelSource = "queried";
     double tSetup = 0, tAcquire = 0, tConvert = 0, tEncode = 0;
 };
 
@@ -448,11 +471,11 @@ std::string SerializeResult(const CaptureResult& r) {
     if (r.ok) {
         std::snprintf(buf, sizeof(buf),
             "{\"ok\":true,\"width\":%u,\"height\":%u,\"format\":\"%s\",\"hdrActive\":%s,"
-            "\"sdrWhiteNits\":%.1f,\"whiteLevelQueried\":%s,"
+            "\"sdrWhiteNits\":%.1f,\"whiteLevelQueried\":%s,\"whiteLevelSource\":\"%s\","
             "\"timings\":{\"setup\":%.1f,\"acquire\":%.1f,\"convert\":%.1f,\"encode\":%.1f}}",
             r.width, r.height, r.isFloat ? "R16G16B16A16_FLOAT" : "B8G8R8A8_UNORM",
             r.hdrActive ? "true" : "false", r.sdrWhiteNits, r.whiteLevelQueried ? "true" : "false",
-            r.tSetup, r.tAcquire, r.tConvert, r.tEncode);
+            r.whiteLevelSource, r.tSetup, r.tAcquire, r.tConvert, r.tEncode);
     } else {
         std::snprintf(buf, sizeof(buf), "{\"ok\":false,\"stage\":\"%s\",\"hr\":\"0x%08lX\"}",
             r.stage ? r.stage : "unknown", static_cast<unsigned long>(r.hr));
@@ -471,6 +494,16 @@ HRESULT EnsureFactory(Capturer& cap) {
     return hr;
 }
 
+// Finds the output the caller means by its exact desktop origin. Both sides of this comparison
+// come from Windows -- the caller scales device-independent bounds through Electron's
+// dipToScreenRect, which asks Windows for the physical rectangle -- so they agree even for the
+// awkward cases, such as a portrait display at -606 device-independent pixels on a 1.5 scale
+// factor, where naive multiplication says -909 and Windows says -908.
+//
+// Accepting a near match instead was tried and removed: with a tolerance, an origin a pixel away
+// selects an output that DuplicateOutput1 then refuses with E_INVALIDARG, which turns a clean
+// refusal into a confusing one. If a mismatch is ever observed in the wild, fix it by asking
+// Windows which output owns the point (MonitorFromPoint) rather than by widening this comparison.
 bool FindOutput(IDXGIFactory1* factory, long ox, long oy,
                 ComPtr<IDXGIAdapter1>& outAdapter, ComPtr<IDXGIOutput>& outOutput, DXGI_OUTPUT_DESC& outDesc) {
     ComPtr<IDXGIAdapter1> adapter;
@@ -490,6 +523,28 @@ bool FindOutput(IDXGIFactory1* factory, long ox, long oy,
         adapter.Reset();
     }
     return false;
+}
+
+// Resolves the SDR white level for one output, in descending order of trust: what Windows reports
+// now, the last value it reported for this output, and only then the compiled-in guess. Falling
+// straight to the guess after a transient failure rescales the whole frame -- a 200 nit guess
+// against a real 240 lifts every pixel by 20% and clips the highlights, which is exactly what an
+// over-saturated, washed capture looks like. See D-015 and D-038.
+float ResolveSdrWhiteNits(OutputCapture& oc, CaptureResult& r) {
+    const float queried = QuerySdrWhiteNits(oc.desc.DeviceName);
+    if (queried > 0.0f) {
+        oc.lastGoodSdrWhiteNits = queried;
+        r.whiteLevelQueried = true;
+        r.whiteLevelSource = "queried";
+        return queried;
+    }
+    r.whiteLevelQueried = false;
+    if (oc.lastGoodSdrWhiteNits > 0.0f) {
+        r.whiteLevelSource = "cached";
+        return oc.lastGoodSdrWhiteNits;
+    }
+    r.whiteLevelSource = "fallback";
+    return kFallbackSdrWhiteNits;
 }
 
 bool OutputHdrActive(IDXGIOutput5* output5) {
@@ -689,11 +744,8 @@ Attempt CaptureAttempt(Capturer& cap, long ox, long oy, const std::wstring& outp
     // HDR state and SDR white are re-read per capture; the user can toggle them any time.
     r.hdrActive = OutputHdrActive(oc.output5.Get());
     float nits = requestedNits;
-    if (nits <= 0.0f) {
-        nits = QuerySdrWhiteNits(oc.desc.DeviceName);
-        r.whiteLevelQueried = nits > 0.0f;
-        if (!r.whiteLevelQueried) nits = kFallbackSdrWhiteNits;
-    }
+    if (nits <= 0.0f) nits = ResolveSdrWhiteNits(oc, r);
+    else r.whiteLevelSource = "requested";
     r.sdrWhiteNits = nits;
 
     const long long ta0 = NowQpc();
@@ -737,9 +789,7 @@ Attempt SampleAttempt(Capturer& cap, long ox, long oy, long centerX, long center
     ID3D11DeviceContext* context = it->second.context.Get();
 
     r.hdrActive = OutputHdrActive(oc.output5.Get());
-    float nits = QuerySdrWhiteNits(oc.desc.DeviceName);
-    r.whiteLevelQueried = nits > 0.0f;
-    if (!r.whiteLevelQueried) nits = kFallbackSdrWhiteNits;
+    const float nits = ResolveSdrWhiteNits(oc, r);
     r.sdrWhiteNits = nits;
 
     const long long ta0 = NowQpc();
