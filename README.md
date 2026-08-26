@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.24.0-blue)
+![version](https://img.shields.io/badge/version-0.30.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -38,17 +38,20 @@ The 0.22.3 release publishes all four artifacts. Local copies are kept in `relea
 release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source and the current local Windows build are **0.24.0**. The newest published stable release is
-still **0.22.3** until the 0.24.0 artifacts are uploaded to GitHub; that release publishes Windows
+Source and the current local Windows build are **0.30.0**. The newest published stable release is
+still **0.22.3** until the 0.30.0 artifacts are uploaded to GitHub; that release publishes Windows
 x64 Setup and Portable executables plus ad-hoc-signed Apple Silicon DMG and ZIP previews. Windows
 x64 remains the only supported platform — see [macOS](#-macos) before downloading the preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.24.0 adds direction-free **Panoramic Scrolling** on Windows, a live captured-area
+Version 0.30.0 adds direction-free **Panoramic Scrolling** on Windows, a live captured-area
 miniature with unique-coverage tracking, an outline marking the viewport being followed, and
 zoom/pan controls in Full Tab. Your mouse pointer stays visible throughout and is kept out of the
-stitched image rather than hidden from you. Version 0.22.3 makes
+stitched image rather than hidden from you. It also hardens HDR capture: the SDR white level the
+whole frame is divided by is retried and falls back to the last measured value rather than a
+guess, and a capture that cannot use the HDR-aware path now says so instead of quietly producing a
+washed, over-saturated image. Version 0.22.3 makes
 Color Picker a live, transparent tool: invoking it no longer freezes,
 tints, blurs, or blacks out the screen—including paused and playing browser video—and its Windows
 samples retain Capturo's HDR-aware color conversion. It also fixes Color Picker startup in local

@@ -10,6 +10,28 @@ npm run build
 
 This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering, settings normalization, and screen-permission routing.
 
+## Diagnosing a washed or over-saturated capture on HDR
+
+Run the app with `CAPTURO_TIMING=1`. Each display prints its pixel format, HDR state, SDR white
+level, and where that level came from, for example:
+
+```
+[timing] helper display 1148328176: R16G16B16A16_FLOAT, hdr on, sdr white 240 nits (queried) [...]
+```
+
+`R16G16B16A16_FLOAT` with `hdr on` is the tone-mapped path. Read the three failure signatures:
+
+- A line saying the helper did not serve a display means the frame came from Chromium's 8-bit
+  capture, which cannot tone map HDR. The message names the helper's failing stage.
+- `(cached)` or `(fallback)` instead of `(queried)` means Windows would not report the white level
+  for that capture; `(fallback)` in particular means the frame was divided by a guess.
+- `B8G8R8A8_UNORM` with `hdr on` would mean DXGI declined the float format.
+
+To compare against a reference, capture the same screen with
+`native/capturo-capture/build/capturo-capture.exe --output ref.png` and with any GDI-based tool.
+On a correctly tone-mapped display the two agree closely; a mean per-channel difference under about
+half a level is normal, and a systematic brightness or saturation offset is not.
+
 ## Driving a build without a person at the keyboard
 
 Several checks below can be run unattended against the packaged app rather than by hand: the

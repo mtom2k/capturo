@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.24.0 - 2026-08-25
+## 0.30.0 - 2026-08-25
+
+The work first assembled as 0.24.0 ships here; 0.24.0 was built locally but never published, so it
+has no entry of its own.
 
 ### Added
 
@@ -15,6 +18,14 @@
 
 ### Fixed
 
+- **HDR captures can no longer be silently over-exposed.** The SDR white level that the whole
+  frame is divided by comes from a Windows query that can fail transiently; Capturo used to answer
+  one failure with a compiled-in 200 nit guess, which lifts every pixel and clips the highlights on
+  a display whose real level is higher. The query is now retried, an implausible answer is
+  rejected, and the level falls back to the last one actually measured for that display before it
+  ever reaches the guess. A capture that the native helper cannot serve still falls back to the
+  8-bit path that cannot tone map HDR, but that fallback, and any HDR frame whose white level was
+  not measured, are now reported instead of passing quietly.
 - **Panoramic Scrolling keeps your pointer visible.** Capturo no longer hides the system cursor
   while it is over the selected viewport, which made the live application feel broken and left
   global Windows cursor state depending on a clean exit. The pointer behaves normally and is still

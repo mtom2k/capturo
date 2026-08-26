@@ -4,7 +4,7 @@ Last updated: 2026-08-25
 
 ## Phase
 
-`0.24.0` is the current source and local Windows build version. The latest published stable release
+`0.30.0` is the current source and local Windows build version. The latest published stable release
 remains `0.22.3` until the new artifacts are uploaded; it publishes Windows x64 Setup and Portable
 executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only *supported*
 platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under
@@ -89,7 +89,7 @@ display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a 
 selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
 the normal-profile picker.
 
-Version 0.24.0 adds **Panoramic Scrolling** on Windows (D-042). A normal screenshot selection now
+Version 0.30.0 adds **Panoramic Scrolling** on Windows (D-042). A normal screenshot selection now
 becomes one direction-free live session. Every accepted frame infers up, down, left, or right;
 Capturo tracks the viewport in two-dimensional coordinates, removes already-captured intersections,
 and displays the growing mosaic and current viewport in a compact preview. Direction changes and
@@ -109,10 +109,34 @@ clears the warning; provisional edge coverage is repaired from a trusted interio
 run also proved that Chromium can still composite the cursor despite `cursor: never`, so the final
 implementation masks its normalized footprint and refills it from clean coverage.
 `npm run dist:win` then passed strict type checking, all 233 tests, the production renderer build,
-and Windows x64 Setup/Portable packaging. The rebuilt 0.24.0 Setup SHA-256 is
+and Windows x64 Setup/Portable packaging. That build was 0.24.0, a local-only version superseded by
+0.30.0; its hashes are kept as the record of that run. The rebuilt 0.24.0 Setup SHA-256 is
 `97db45053fe9171e21c97ffaeee76010dddc31ac8d20efaac664461917c4ff92`; Portable is
 `3cb5cc1d42e1479aedc019faa459b2d7fdf9ad8aa7ad336ff5aba83034d8bb1b`.
 `release/BUILD-INFO.txt` records the same two-artifact inventory.
+
+A 2026-08-25 HDR investigation compared all three capture paths against a GDI reference on a live
+HDR display (3840x2160, HDR on, SDR white 240 nits, FP16 desktop duplication). The native helper's
+one-shot and serve modes and Chromium's `getDisplayMedia` all matched the reference: mean
+per-channel difference 0.14 over 331,776 sampled points for the helper, and mean luma 7.6 against
+7.5 with identical mean saturation. The reported symptom could not be reproduced in that state, so
+the work went into removing the ways the result can be silently wrong: the SDR white level is
+retried and resolved measured-now, then last-measured, then guessed; an implausible level is
+rejected; and both a helper fallback and an unmeasured HDR white level are now logged. An
+origin-matching tolerance was implemented and reverted after testing showed a near match selects an
+output `DuplicateOutput1` refuses. See D-038.
+
+Version 0.30.0 is the build that ships all of the above. The native helper was rebuilt and
+self-tested, `npm run dist:win` passed strict type checking, all 246 tests, the production renderer
+build, and Windows x64 Setup/Portable packaging from a wiped `out/` and `release/win-unpacked/`.
+The 0.30.0 Setup SHA-256 is
+`60157761e9ff59bba3de4afbfce85c519d044383dbc374fc8ff79e2daac5647f`; Portable is
+`3646416282ccc80a6cecec03f67ca1ccb11a272de8a5ee5d94ec6135c19fad8b`. `release/BUILD-INFO.txt`
+records the same two-artifact inventory. A capture through the packaged app reports both displays
+served by the helper with the white level measured for that frame: the HDR primary on
+`R16G16B16A16_FLOAT` at 240 nits and the secondary on `B8G8R8A8_UNORM` at 80. The HDR result was
+confirmed by hand on real hardware: desktop icon colours match a GDI reference with no lift or
+false saturation, which is the symptom that prompted the investigation.
 
 The 2026-08-25 follow-up made the pointer visible again and marked the selected region. Hiding the
 system cursor inside the viewport was removed entirely; the pointer mask is now sized from the
@@ -153,9 +177,10 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package and current local Windows build version is `0.24.0`. The latest published stable release
-remains v0.22.3 until 0.24.0 is uploaded; it contains Windows Setup and Portable executables plus
-Apple Silicon DMG and ZIP previews. Windows binaries are not Authenticode-signed and may trigger an
+The package and current local Windows build version is `0.30.0`. The latest published stable release
+remains v0.22.3 until 0.30.0 is uploaded; it contains Windows Setup and Portable executables plus
+Apple Silicon DMG and ZIP previews. The intermediate `0.24.0` was built and exercised locally but
+never published, and its contents ship as part of 0.30.0. Windows binaries are not Authenticode-signed and may trigger an
 unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and unsupported.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
@@ -542,6 +567,12 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 - Runs of identical frames coalesce into a single written frame. The pending frame's delay is extended instead of emitting another full-palette frame. Combined with transparent-pixel differencing, this cuts per-frame palette overhead for static content. Covered by unit tests in `tests/gif.test.ts`.
 
 ## Known constraints
+
+- A capture the native Windows helper cannot serve falls back to Chromium's 8-bit capture, which
+  cannot tone map an HDR display; that frame will look washed and over-saturated. The fallback is
+  necessary and stays, but it is now reported rather than silent. `CAPTURO_TIMING=1` names the
+  format, HDR state, SDR white level and its source per display, and main logs the failing helper
+  stage. See D-015 and D-038 and the diagnosis section in `TESTING.md`.
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
