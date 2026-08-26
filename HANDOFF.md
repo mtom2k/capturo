@@ -121,7 +121,10 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   region-derived radius so the mask scales with DPI, reports it up to one radius outside the region,
   and the renderer masks a sample from before and after each frame read. Keep that mask on whole
   pixels; a fractional rectangle both softens repaired seams and can trip the integer size guard
-  into a false "maximum size reached". Keep the control bar wholly outside the crop, keep the
+  into a false "maximum size reached". The mask can still strand an uncovered region when the
+  pointer is within one radius of the leading edge, or when one accepted step carries the masked
+  band out of the viewport; that is a known, characterized gap with an intended repair, both
+  recorded in D-042 and `PROJECT_STATE.md`. Do not close it by shrinking the mask. Keep the control bar wholly outside the crop, keep the
   viewport outline one click-through ring with a transparent centre placed `PANORAMIC_OUTLINE_GAP`
   outside the crop, and validate every IPC sender. The outline must stay capturable rather than
   content-protected (a protected window can stall the display-media stream), and must not be rebuilt

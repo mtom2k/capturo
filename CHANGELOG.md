@@ -30,8 +30,7 @@
   clears the warning immediately.
 - **Transient edge chrome no longer ghosts into stitched output.** Provisional edges are promoted
   only after they move into a strongly aligned viewport interior, repairing hover URL overlays and
-  other short-lived edge content. The capturable external cyan ring was removed; the miniature is
-  the sole viewport indicator, and internal added-pixel totals are no longer shown.
+  other short-lived edge content. Internal added-pixel totals are no longer shown.
 - **Pointers are excluded even when Chromium ignores its cursor-free stream constraint.** Capturo
   tracks the pointer footprint as untrusted coverage, fills it from later clean frames, and waits
   for a final cursor-free frame after the pointer reaches the out-of-crop Finish bar.

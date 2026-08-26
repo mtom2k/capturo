@@ -124,8 +124,20 @@ with radii of `40/620` and `40/440`, and that a native-helper screenshot of the 
 the new viewport ring painting from 6 to 4 device-independent pixels outside the crop with zero ring
 pixels inside it. The first attempt at that ring used four two-pixel strips; Windows inflated them
 to about 30x38 and drove the top strip through the captured region, which is why the outline is one
-bordered window. Panoramic Scrolling has not been re-packaged since; the next `npm run dist:win`
-supersedes the artifact hashes above.
+bordered window.
+
+That tree was then repackaged, superseding the two hashes above. The native helper was rebuilt and
+self-tested first, and `npm run dist:win` passed strict type checking, all 237 tests, the production
+renderer build, and Windows x64 Setup/Portable packaging. The 0.24.0 Setup SHA-256 is
+`220841b93ad0a7c64fd8d776bbb94f1bf5dbfd4a4564692f12af582611d0381a`; Portable is
+`6e4e00740c7d056a2fd770e92d92607ecb493ad098e8f2a60dabca39299cb0e7`. `release/BUILD-INFO.txt`
+records the same two-artifact inventory. The packaged build was then driven over CDP to confirm the
+recorder still loads from inside the asar and the outline lands identically there.
+
+A 2191x13927 real-world panoramic capture was analysed pixel by pixel: no alpha channel and so no
+uncovered pixels, zero duplicated textured rows across 13,926 row comparisons, and no horizontal
+drift, with the captured panel edge fixed at x=135 in all 1,164 sampled rows. Every discontinuity
+the scan flagged was a genuine page design edge.
 
 Version 0.20.0 also reworks text placement: a text box commits when focus leaves it rather than only on `Ctrl/Cmd+Enter`, Escape unwinds the text before the capture instead of cancelling both at once, and the resize grip is a Capturo element sized to be grabbed rather than the browser's fixed ~15px corner. The toolbar gives Save its own green fill and Cancel a red tint. See D-031 and the D-007 amendment.
 
@@ -504,6 +516,15 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 - Hands-on screenshot transparency smoke on Windows: sampled/custom colors, tolerance and feather extremes, split drag, Undo, clipboard alpha, and forced-PNG save while JPEG is configured.
 - Hands-on Copy text toolbar smoke on Windows: button/tooltip placement, multiline paste, shortcut, annotation/privacy-effect composite, no-text retention, and installed/missing language behavior.
 - Hands-on GUI smoke on Windows (drag-select, Pause/Resume/Stop, border/shade appearance, save).
+- Hands-on Panoramic Scrolling pass on Windows: a full scroll to Finish with the pointer visible
+  inside the viewport, a scaled display, and a Windows large-pointer setting. The outline geometry,
+  pointer reporting, and recorder startup are confirmed over CDP; feel, real wheel input, and the
+  stitched result under a moving pointer are not.
+- Repair the pointer mask so it cannot leave an uncovered region (see Known constraints). The
+  intended fix is to fill anything the current frame masks from the retained previous frame, where
+  those world pixels were unmasked, since the two masks are disjoint exactly when the step is large
+  enough to strand them. Showing uncovered area in the miniature and seeding the base viewport from
+  the frozen screenshot that started the session would close the remaining cases.
 - Confirm the mouse cursor appears in a real recording (getDisplayMedia default; the smoke region had no cursor motion).
 - Exercise the visible Windows notification click and tray-menu release action by hand on the next available-update pass; the live 0.16.0-to-0.17.0 Settings result and fixed **View release** action are verified.
 - Authenticode-sign Windows releases before considering automatic update download or installation; portable builds still need an explicit policy.
@@ -524,6 +545,12 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.
+- Panoramic Scrolling keeps the pointer visible and excludes it with a mask, so an uncovered region
+  can survive in two characterized cases: the pointer sitting within one mask radius of the leading
+  edge, and a scroll step large enough that the masked band leaves the viewport in one sample. The
+  mask heals from later frames only while that band is still inside the viewport, which requires the
+  step to stay under the pointer's distance from the trailing edge. Simulated against the real
+  coverage bookkeeping; not yet observed in a real capture, and a 30-megapixel test capture had none.
 - Copy text returns plain text rather than document layout, and can misrecognize small, stylized, low-contrast, rotated, or obscured characters. On Windows it depends on the OCR languages installed for the current user; on macOS the recognition languages ship with the OS and nothing needs installing. The two recognizers group lines differently, so output is comparable but not identical across platforms, and macOS reconstructs reading order itself, which can interleave genuinely multi-column text (D-036).
 - macOS screen capture requires user-granted Screen Recording permission, and macOS applies a new grant only to a freshly launched app. macOS also has no readable "not asked yet" state for this permission, so Capturo cannot distinguish a first run from a refusal and must attempt the request before reporting either.
 - An ad-hoc signed macOS build cannot hold that grant at all, so local macOS builds cannot capture.

@@ -46,7 +46,9 @@ x64 remains the only supported platform — see [macOS](#-macos) before download
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
 Version 0.24.0 adds direction-free **Panoramic Scrolling** on Windows, a live captured-area
-miniature with unique-coverage tracking, and zoom/pan controls in Full Tab. Version 0.22.3 makes
+miniature with unique-coverage tracking, an outline marking the viewport being followed, and
+zoom/pan controls in Full Tab. Your mouse pointer stays visible throughout and is kept out of the
+stitched image rather than hidden from you. Version 0.22.3 makes
 Color Picker a live, transparent tool: invoking it no longer freezes,
 tints, blurs, or blacks out the screen—including paused and playing browser video—and its Windows
 samples retain Capturo's HDR-aware color conversion. It also fixes Color Picker startup in local

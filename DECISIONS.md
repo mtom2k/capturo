@@ -818,8 +818,10 @@ or right, so the user can change axes or retrace a route in one session.
 A recorder receives the selected display through main's existing display-media grant, crops the
 same fractional region as GIF recording, and asks the track to omit the cursor. A compact control
 bar reports progress and renders a live captured-area miniature outside the crop; its cyan rectangle
-identifies the current panoramic viewport. No external ring is created: output testing showed that
-display-capture rounding can admit a one-pixel chrome edge into the selected crop. Capturo
+identifies the current panoramic viewport. No external ring was created at first: output testing
+showed that display-capture rounding can admit a one-pixel chrome edge into the selected crop. The
+2026-08-25 amendment below reinstates one, held clear of the crop by a clearance gap sized for
+exactly that rounding. Capturo
 does not inject wheel input, inspect the target process, access its document model, or require an
 accessibility permission.
 
@@ -865,6 +867,18 @@ video frame and masks both, since a pointer can travel further than its own foot
 samples. The mask is rounded outward to whole frame pixels: every retained rectangle is carved out
 of it, and a fractional edge both resampled the repaired seam and could make a healthy session
 report that it had reached the maximum panoramic size.
+
+The mask's limits are known rather than assumed. Masked pixels are recovered from a later frame,
+but only while that band is still inside the viewport after the next accepted step, which requires
+the step to stay under the pointer's distance from the trailing edge. Two cases therefore strand an
+uncovered region: a pointer within one mask radius of the leading edge, and a step large enough to
+carry the band out in one sample. Simulating the real coverage bookkeeping shows nothing at a
+40-pixel step with the pointer mid-viewport, one stranded region with the pointer near the leading
+edge, and one per step at 380 pixels — a step the 62% bound still accepts. Accept this only as the
+current state: the retained previous frame holds those pixels unmasked whenever the step is large
+enough to strand them, so filling from it closes the common case, and the frozen screenshot that
+started the session is the correct source for the base viewport, which no forward-looking repair
+can reach. Do not respond by shrinking the mask; that trades a visible hole for a baked-in cursor.
 
 The selected viewport is also marked while the session runs. It is one click-through, transparent
 centred ring rather than the four thin strips tried first: Windows silently inflates a window a
