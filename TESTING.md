@@ -90,7 +90,7 @@ Verify on at least 100% and one scaled DPI setting:
       In Full Tab, use the visible minus, percentage/Fit, and plus controls. Verify Ctrl/Cmd `+`,
       `-`, and `0`, then Ctrl/Cmd-wheel around a corner and ordinary wheel panning at high zoom.
       Annotations must remain aligned to source pixels at every level and after window resizing.
-    - **Panoramic Scrolling (Windows).** Select a browser/document viewport and choose the amber
+    - **Panoramic Scrolling (Windows and macOS).** Select a browser/document viewport and choose the amber
       action. There must be no direction prompt. The frozen overlay
       must close, the live application must accept wheel/touchpad input, and neither the cyan
       viewport outline nor the out-of-crop control bar may appear inside the captured pixels. The
@@ -115,7 +115,19 @@ Verify on at least 100% and one scaled DPI setting:
       display scale. Kill the app mid-session and confirm the system cursor is unaffected.
       Confirm unchanged frames add nothing, Escape/Cancel restores the tray-only state, a
       second capture focuses the active panoramic controls, and reaching the size limit still permits
-      Finish. On macOS preview builds confirm Panoramic Scrolling is absent.
+      Finish.
+    - **Panoramic Scrolling on macOS.** Run the whole procedure above again on macOS, where it is
+      newer and less proven than on Windows. `tests/fixtures/panoramic-app.cjs` is a scrollable
+      target for it. Three macOS-specific checks come first. Select a viewport whose top edge is
+      close under the menu bar and one whose bottom edge is close over the Dock: the control bar
+      must appear fully inside the work area and never overlap the selected region, and a viewport
+      that fills the work area must refuse to start with the clearance message rather than opening
+      a session. Confirm the cyan outline keeps a visible gap on all four sides, including where
+      the region sits against the top or bottom of the screen, and that no ring pixel reaches the
+      output. On a Retina display, check the finished PNG at 1:1 for outline or control-bar pixels
+      along any edge, since display-capture rounding works in device pixels. Then confirm the
+      target application still scrolls by wheel and trackpad while the control bar holds focus, and
+      note whether keyboard scrolling in the target requires clicking back into it.
     - **Copy text (Windows).** Confirm the OCR action is immediately beside regular Copy and its hover tooltip explains both local Windows OCR and `Ctrl/Cmd+Shift+C`. Select clear multiline text, use the button, paste into Notepad, and verify plausible reading order and line breaks. Repeat through the shortcut. Success must close the editor; a blank/non-text selection or recognition failure must leave it open with useful status. Test a language installed in the Windows profile and a language without its OCR pack. Important text must be reviewed because OCR is not guaranteed exact.
     - Add a visible text annotation and confirm Copy text can recognize the final composite. Cover source text with Blur or Pixelate and confirm Capturo does not bypass that privacy effect by OCRing the original frame. Leave a transparency preview pending and verify Copy text commits what is visible before recognition. Regular Copy must still place an image, never text.
     - During Copy text, confirm no screenshot appears in `%TEMP%`, the repository, or the Pictures folder, and no network request is made. Recognized text must not appear in Capturo's stderr/log output. An over-64-MiB PNG, native-helper failure, or 20-second timeout should fail closed and leave the editor available rather than hanging it.
@@ -275,7 +287,7 @@ In addition to the common matrix:
 3. Verify a menu-bar click starts a capture immediately and opens no menu, that right-click and Control-click open the menu without starting a capture, and that a rebound shortcut shows its new label in that menu.
 4. Verify the capture overlay covers the menu bar and the Dock: both must dim with the rest of the frozen desktop, exactly one Dock may be visible, and a selection must be able to include menu-bar and Dock content. Two Docks, or an undimmed menu bar, means the overlay was clamped back into the work area (D-029).
 5. Verify that a capture does not switch on a Focus mode; the single full-display overlay is the one arrangement D-013 avoids on Windows.
-6. Verify the Global Settings Screen recording row in each state, using `CAPTURO_SCREEN_ACCESS_STATE` in a development build to reach the ones this machine cannot produce. Granted must be a quiet line with a green chip and no buttons. Denied must be a callout with a numbered next step and **Request access**, **Open System Settings**, **Reopen Capturo**. With `screenAccessWasGranted: true` in the development `settings.json`, denied must instead read **NEEDS RE-GRANTING** and tell the user to switch the permission off and on. Confirm the row refreshes when the window regains focus, and that no state overflows the fixed-size window.
+6. Verify the Global Settings Screen recording row in each state, using `CAPTURO_SCREEN_ACCESS_STATE` in a development build to reach the ones this machine cannot produce. Granted must be a quiet line with a green chip and exactly one button, **Manage Permissions**, which opens Privacy & Security → Screen Recording; it must carry no callout styling and offer no Request access or Reopen Capturo. Denied must be a callout with a numbered next step and **Request access**, **Manage Permissions**, **Reopen Capturo**. With `screenAccessWasGranted: true` in the development `settings.json`, denied must instead read **NEEDS RE-GRANTING** and tell the user to switch the permission off and on. Confirm the row refreshes when the window regains focus, and that no state overflows the fixed-size window.
 7. Verify Capturo asks at most once, and never twice at the same time. With Screen Recording not granted, trigger capture repeatedly and quickly from the menu bar and the shortcut. **Only one dialog may ever be on screen**: the attempt that raises Apple's system prompt must not also show Capturo's dialog behind it. Exactly one system prompt may appear per launch, exactly one Capturo dialog may be open at a time, and dismissing it must not reveal another queued behind it. When reproducing this with extra `electron .` instances, give every instance the same smoke flag: `second-instance` only reaches the running app when `userData` matches, so instances launched without it run independently and prove nothing. `stderr` prints one `[permission] capture refused` line per genuine refusal, so the count is checkable rather than a judgement call. A regression here pushes users into pressing **Deny**, which records a refusal only System Settings can undo.
 8. Verify **Reopen Capturo** from both Settings and the capture permission dialog: Capturo must quit and come back with its tray icon, working shortcuts, and a permission state that reflects any change made in System Settings while it was running.
 9. Verify that a first run raises the macOS system prompt and that Capturo then appears in System Settings → Privacy & Security → Screen & System Audio Recording.

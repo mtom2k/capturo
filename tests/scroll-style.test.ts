@@ -80,3 +80,29 @@ describe('panoramic capture workflow', () => {
     expect(recorder).toContain('Finalizing the captured areas…')
   })
 })
+
+describe('panoramic capture on macOS', () => {
+  it('offers the action on both platforms that can hold chrome outside a live crop', () => {
+    expect(main).toContain("const panoramicCaptureSupported = process.platform === 'win32' || isMac")
+    expect(main).toContain('rollingCaptureAvailable: panoramicCaptureSupported')
+    expect(main).toContain('if (!panoramicCaptureSupported) {')
+    // The old gate refused macOS outright, and the editor hid the button from its payload flag.
+    expect(main).not.toContain("Panoramic capture is currently available on Windows only.")
+    expect(main).not.toContain("rollingCaptureAvailable: process.platform === 'win32'")
+  })
+
+  // AppKit constrains an ordinary window to the visible frame, so a control bar requested over the
+  // menu bar or the Dock is pushed back inside it -- possibly into the crop being recorded, which
+  // this capturable chrome would then be stitched into. Asking against the work area is what makes
+  // the placement one macOS will honour. See D-029 and D-042.
+  it('places its control bar where macOS will not move it', () => {
+    expect(main).toContain('return isMac ? display.workArea : display.bounds')
+    expect(main).toContain('controlBarPlacementOutside(controlBarBounds(display), region, width, height)')
+  })
+
+  // The outline is drawn just outside the crop, so the same clamp would slide its painted band
+  // into the output. Chrome windows opt out of it the way the capture overlays already do.
+  it('keeps the viewport outline clear of that clamp too', () => {
+    expect(main).toMatch(/enableLargerThanScreen: isMac,\n    webPreferences: \{ sandbox: true/)
+  })
+})

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  controlBarPlacement,
+  controlBarPlacementOutside,
   detachedEditorCanvasRect,
   getResizeHandle,
   integerRect,
@@ -214,5 +216,68 @@ describe('overlayRegions', () => {
         .reduce((total, region) => total + region.rect.width * region.rect.height, 0)
       expect(area).toBe(macBounds.width * macBounds.height)
     }
+  })
+})
+
+describe('control bar placement', () => {
+  // A 1512x982 Retina MacBook display: 38pt of menu bar at the top and a 74pt Dock at the bottom.
+  const display = { x: 0, y: 0, width: 1512, height: 982 }
+  const workArea = { x: 0, y: 38, width: 1512, height: 870 }
+  const width = 650
+  const height = 58
+
+  it('prefers the space above the region and centres the bar on it', () => {
+    const region = { x: 400, y: 400, width: 600, height: 300 }
+    const point = controlBarPlacement(display, region, width, height)
+    expect(point.y + height).toBeLessThanOrEqual(region.y)
+    expect(point.x + width / 2).toBe(region.x + region.width / 2)
+  })
+
+  it('falls below the region when there is no room above it', () => {
+    const region = { x: 400, y: 10, width: 600, height: 300 }
+    const point = controlBarPlacement(display, region, width, height)
+    expect(point.y).toBeGreaterThanOrEqual(region.y + region.height)
+  })
+
+  it('keeps the bar inside the bounds it was given', () => {
+    const region = { x: 1400, y: 400, width: 100, height: 200 }
+    const point = controlBarPlacement(workArea, region, width, height)
+    expect(point.x).toBeGreaterThanOrEqual(workArea.x)
+    expect(point.x + width).toBeLessThanOrEqual(workArea.x + workArea.width)
+    expect(point.y).toBeGreaterThanOrEqual(workArea.y)
+  })
+
+  // The macOS reason the bounds are a parameter at all. AppKit pushes a window requested over the
+  // menu bar back into the visible frame, and for a panoramic session that reflow lands the bar
+  // inside the crop it must stay out of. Placing against the work area asks for a position macOS
+  // will actually honour. See D-029 and D-042.
+  it('never requests the macOS menu bar or Dock when placed against the work area', () => {
+    const region = { x: 300, y: 80, width: 900, height: 500 }
+    const point = controlBarPlacement(workArea, region, width, height)
+    expect(point.y).toBeGreaterThanOrEqual(workArea.y)
+    expect(point.y + height).toBeLessThanOrEqual(workArea.y + workArea.height)
+  })
+
+  it('refuses a placement that would overlap the region', () => {
+    // A region filling the work area leaves nowhere outside it, so a panoramic session must not
+    // start rather than stitch its own control bar into the output.
+    const region = { ...workArea }
+    expect(controlBarPlacementOutside(workArea, region, width, height)).toBeNull()
+  })
+
+  it('returns the placement whenever one clears the region', () => {
+    const region = { x: 400, y: 400, width: 600, height: 300 }
+    const point = controlBarPlacementOutside(workArea, region, width, height)
+    expect(point).not.toBeNull()
+    expect(point!.y + height).toBeLessThanOrEqual(region.y)
+  })
+
+  // A region tall enough to squeeze the bar out of the work area but not out of the display is
+  // exactly the case where using display bounds on macOS produces a bar the compositor then moves
+  // into the crop. The work area must report no room instead.
+  it('reports no room where the display alone would have found some on macOS', () => {
+    const region = { x: 0, y: 38, width: 1512, height: 870 }
+    expect(controlBarPlacementOutside(display, region, width, height)).not.toBeNull()
+    expect(controlBarPlacementOutside(workArea, region, width, height)).toBeNull()
   })
 })

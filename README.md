@@ -70,7 +70,9 @@ macOS support is real but unfinished, and the gap is a certificate rather than c
 the overlay covers the whole display including the menu bar and the Dock, `Esc` cancels immediately,
 region selection and annotation, save, clipboard copy, GIF recording and preview, GIF copy as an
 animated file, the live Color Picker and its clipboard/result flow, Screen Recording permission
-handling in Settings, and Open on startup.
+handling in Settings, and Open on startup. Panoramic Scrolling is now available on macOS too; it
+shares the display-media path GIF recording already uses there, and has not yet had the same amount
+of real-hardware testing it has had on Windows.
 
 **Copy text** works on both platforms, through each system's own local recognizer: Windows OCR on
 Windows and Apple's Vision framework on macOS. Neither uploads the image or downloads a model.
@@ -83,7 +85,9 @@ Notifications and Login Items are optional and only appear if you use those feat
 declares no camera, microphone, or Bluetooth usage and cannot capture audio.
 
 macOS applies a new Screen Recording grant only to a newly launched app, so Capturo offers a
-**Reopen Capturo** button wherever it asks for the permission.
+**Reopen Capturo** button wherever it asks for the permission. Settings also keeps a **Manage
+Permissions** button on the Screen recording row in every state, granted included, so the Screen
+Recording pane is always one click away when you want to review or revoke the grant.
 
 **About the macOS download.** An Apple Silicon `.dmg` and `.zip` are attached to the
 [v0.22.3 release](https://github.com/mtom2k/capturo/releases/tag/v0.22.3), but macOS is **not a
@@ -163,8 +167,12 @@ baking a cursor into the image. Move one cardinal direction at a time: diagonal 
 content, large sticky regions, or moving too far between samples may not provide a safe match;
 Capturo asks you to pause or retrace the missed area instead of guessing. Two-dimensional routes can leave transparent uncaptured space inside the
 final bounds, so panoramic output remains PNG. Existing frozen annotations are not included.
-Output is capped at 30,000 pixels on either axis and 120 million pixels. macOS preview builds hide
-the action until the equivalent live-stream and external-chrome contract is validated there.
+Output is capped at 30,000 pixels on either axis and 120 million pixels. Panoramic Scrolling runs on
+Windows and on macOS; it uses the same live display-media stream and out-of-crop control bar that GIF
+recording already uses on both. On macOS the bar is placed inside the work area rather than over the
+menu bar or the Dock, because AppKit would otherwise slide it back into the visible frame — and a
+capturable bar that moves into the selected viewport would be stitched into the image. Where a region
+leaves no room outside it, Capturo declines to start rather than record its own chrome.
 
 Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
 

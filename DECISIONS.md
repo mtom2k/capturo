@@ -928,9 +928,34 @@ sender-validated IPC call and opens in the existing detached editor; intermediat
 reach disk. Width and height are capped at 30,000 pixels and decoded area at 120 million pixels so
 canvas and IPC allocations fail predictably before browser limits or process memory do.
 
-The initial implementation is Windows-only. Its output contract depends on the combination of
-Windows display-source mapping, decoded video-frame callbacks, cursor repair, and keeping the
-control window outside the crop. The macOS preview must hide the action until real-hardware
-output proves the equivalent contract there. Automatic UI Automation scrolling may later be
-offered as an optional convenience after capability detection, but manual scrolling remains the
-universal and auditable path.
+The initial implementation was Windows-only. Its output contract depends on the combination of
+display-source mapping, decoded video-frame callbacks, cursor repair, and keeping the control
+window outside the crop, and none of that had been exercised on macOS.
+
+**Amended 2026-08-26: macOS runs the same session, placed against the work area.** GIF recording
+exercises the same contract on macOS — it reads the same display-media grant, crops the same
+fractional region from the same decoded stream, and keeps its own control bar outside the recorded
+area — so the gate is now a named predicate covering Windows and macOS and the stitching, masking,
+and bounds logic is untouched. macOS contributes one real difference. AppKit constrains an ordinary
+window to the screen's visible frame, so a control bar requested over the menu bar or the Dock is
+pushed back inside it, and because panoramic chrome is deliberately capturable (above), that reflow
+can land the bar inside the very viewport being recorded. Placement therefore takes its usable
+bounds as a parameter — the whole display on Windows, the work area on macOS — and a region that
+leaves no room outside it refuses to start rather than stitching the bar into the output. The
+viewport outline sets `enableLargerThanScreen` for the same reason the capture overlays do (D-029),
+so its painted band keeps the clearance gap it was given instead of sliding into the crop.
+
+The real-hardware bar this decision originally set has **not** yet been cleared on macOS. What
+supports the change is the shared contract with GIF recording, the platform-neutrality of the
+stitching code, and unit coverage of the placement rule; what is still missing is an observed macOS
+session producing a correct multi-directional PNG. The feature therefore ships enabled and
+documented as less proven than on Windows, and this paragraph stands until a macOS run is recorded
+in TESTING.md. Three things need measuring there: whether the control bar taking focus disturbs
+keyboard scrolling in the target application, whether Retina display-capture rounding reaches
+across the same four-pixel outline gap a Windows run confirmed, and whether the work-area placement
+holds for a viewport pressed against the menu bar or the Dock. Enabling before that evidence exists
+is a deliberate trade — a hidden action cannot be tested by the people who would report on it —
+rather than an oversight.
+
+Automatic UI Automation scrolling may later be offered as an optional convenience after capability
+detection, but manual scrolling remains the universal and auditable path.

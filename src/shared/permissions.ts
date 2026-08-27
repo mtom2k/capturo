@@ -34,6 +34,11 @@ export type ScreenAccessState = {
 // 'request' attempts a capture, which raises the system prompt only if macOS has never asked.
 // 'open-settings' opens the Screen Recording pane. 'relaunch' restarts Capturo, which is the only
 // way a grant made while Capturo was running takes effect.
+//
+// 'open-settings' is offered in every supported state, granted included. A permission is not a
+// one-way door: a granted user may want to review or revoke it, and macOS is the only place that
+// can be done. Hiding the way there once the answer was yes left Settings showing a status with
+// no route to the pane behind it.
 export type ScreenAccessActionKind = 'request' | 'open-settings' | 'relaunch'
 
 export type ScreenAccessAction = {
@@ -46,7 +51,9 @@ export type ScreenAccessPresentation = {
   summary: string
   detail: string
   tone: 'ok' | 'pending' | 'error'
-  // In display order. Empty when there is nothing for the user to do.
+  // In display order. Never empty on a supported platform: managing the permission stays
+  // available even when nothing is wrong. `tone` -- not this length -- says whether the user
+  // has something to fix. Empty only where the platform has no permission to manage.
   actions: ScreenAccessAction[]
 }
 
@@ -58,7 +65,7 @@ export type CapturoPermissionsApi = {
 }
 
 const REQUEST: ScreenAccessAction = { kind: 'request', label: 'Request access' }
-const OPEN_SETTINGS: ScreenAccessAction = { kind: 'open-settings', label: 'Open System Settings' }
+const MANAGE: ScreenAccessAction = { kind: 'open-settings', label: 'Manage Permissions' }
 const RELAUNCH: ScreenAccessAction = { kind: 'relaunch', label: 'Reopen Capturo' }
 
 const KNOWN_STATUSES: ScreenAccessStatus[] = ['not-determined', 'granted', 'denied', 'restricted']
@@ -80,7 +87,12 @@ export function presentScreenAccess(state: ScreenAccessState): ScreenAccessPrese
   }
 
   if (state.status === 'granted') {
-    return { summary: 'Granted', detail: 'Capturo can capture this screen.', tone: 'ok', actions: [] }
+    return {
+      summary: 'Granted',
+      detail: 'Capturo can capture this screen. Manage or revoke this permission in System Settings.',
+      tone: 'ok',
+      actions: [MANAGE]
+    }
   }
 
   if (state.status === 'restricted') {
@@ -88,7 +100,7 @@ export function presentScreenAccess(state: ScreenAccessState): ScreenAccessPrese
       summary: 'Restricted',
       detail: 'Screen Recording is restricted on this device, usually by a device policy. Capturo cannot request it.',
       tone: 'error',
-      actions: [OPEN_SETTINGS]
+      actions: [MANAGE]
     }
   }
 
@@ -97,7 +109,7 @@ export function presentScreenAccess(state: ScreenAccessState): ScreenAccessPrese
       summary: 'Unknown',
       detail: 'macOS did not report a Screen Recording status. Check it in System Settings, then reopen Capturo.',
       tone: 'error',
-      actions: [OPEN_SETTINGS, RELAUNCH]
+      actions: [MANAGE, RELAUNCH]
     }
   }
 
@@ -110,7 +122,7 @@ export function presentScreenAccess(state: ScreenAccessState): ScreenAccessPrese
         'Capturo had Screen Recording access and no longer does. If System Settings still shows Capturo switched on, ' +
         'switch it off and on again, then reopen Capturo.',
       tone: 'error',
-      actions: [OPEN_SETTINGS, RELAUNCH, REQUEST]
+      actions: [MANAGE, RELAUNCH, REQUEST]
     }
   }
 
@@ -120,6 +132,6 @@ export function presentScreenAccess(state: ScreenAccessState): ScreenAccessPrese
       'Capturo cannot capture your screen yet. Step 1: allow Screen Recording. ' +
       'Step 2: reopen Capturo, because macOS only applies it to a newly launched app.',
     tone: 'error',
-    actions: [REQUEST, OPEN_SETTINGS, RELAUNCH]
+    actions: [REQUEST, MANAGE, RELAUNCH]
   }
 }

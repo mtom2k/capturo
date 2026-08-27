@@ -147,8 +147,11 @@ export type CapturePayload = {
   // A detached editor receives a flattened selected composite. If that composite already has
   // transparency, keep PNG mandatory even though its original transparency command is baked in.
   forcePng?: boolean
-  // Windows-only Panoramic Scrolling support. The live stream, cursor omission, and
-  // out-of-crop chrome contract has not yet been validated on macOS.
+  // Whether this platform can run Panoramic Scrolling. Windows and macOS both can: the session
+  // needs a croppable live display-media stream, chrome it can hold outside that crop, and a
+  // readable cursor position to mask, and macOS supplies all three through the same grant and
+  // external control bar GIF recording already uses there. The editor hides the action wherever
+  // this is not true rather than offering a capture that would produce nothing. See D-042.
   rollingCaptureAvailable?: boolean
 }
 
