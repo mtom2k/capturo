@@ -4,7 +4,7 @@ Last updated: 2026-08-25
 
 ## Phase
 
-`0.30.0` is the current source and local Windows build version. The latest published stable release
+`0.31.0` is the current source version. The latest published stable release
 remains `0.22.3` until the new artifacts are uploaded; it publishes Windows x64 Setup and Portable
 executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only *supported*
 platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under
@@ -89,7 +89,7 @@ display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a 
 selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
 the normal-profile picker.
 
-Version 0.30.0 adds **Panoramic Scrolling** on Windows and macOS (D-042). A normal screenshot selection now
+Version 0.31.0 adds **Panoramic Scrolling** on Windows and macOS (D-042). A normal screenshot selection now
 becomes one direction-free live session. Every accepted frame infers up, down, left, or right;
 Capturo tracks the viewport in two-dimensional coordinates, removes already-captured intersections,
 and displays the growing mosaic and current viewport in a compact preview. Direction changes and
@@ -97,7 +97,7 @@ retracing do not duplicate pixels. Weak, unchanged, and ambiguous frames remain 
 corruption boundary. Output is limited to 30,000 pixels per axis and 120 million pixels and remains
 PNG when a two-dimensional route leaves transparent holes. Full Tab now includes zoom buttons,
 percentage/Fit, Ctrl/Cmd zoom shortcuts, pointer-centered Ctrl/Cmd-wheel zoom, and wheel panning.
-Version 0.30.0 enables Panoramic Scrolling on macOS as well: the gate is one
+Version 0.31.0 enables Panoramic Scrolling on macOS as well: the gate is one
 predicate covering both platforms, the control bar is placed against the macOS work area so AppKit
 cannot slide capturable chrome into the recorded crop, and the viewport outline opts out of the same
 clamp. The stitching, masking, and bounds logic is unchanged. A macOS hands-on pass has not been
@@ -116,7 +116,7 @@ run also proved that Chromium can still composite the cursor despite `cursor: ne
 implementation masks its normalized footprint and refills it from clean coverage.
 `npm run dist:win` then passed strict type checking, all 233 tests, the production renderer build,
 and Windows x64 Setup/Portable packaging. That build was 0.24.0, a local-only version superseded by
-0.30.0; its hashes are kept as the record of that run. The rebuilt 0.24.0 Setup SHA-256 is
+0.31.0; its hashes are kept as the record of that run. The rebuilt 0.24.0 Setup SHA-256 is
 `97db45053fe9171e21c97ffaeee76010dddc31ac8d20efaac664461917c4ff92`; Portable is
 `3cb5cc1d42e1479aedc019faa459b2d7fdf9ad8aa7ad336ff5aba83034d8bb1b`.
 `release/BUILD-INFO.txt` records the same two-artifact inventory.
@@ -132,10 +132,13 @@ rejected; and both a helper fallback and an unmeasured HDR white level are now l
 origin-matching tolerance was implemented and reverted after testing showed a near match selects an
 output `DuplicateOutput1` refuses. See D-038.
 
-Version 0.30.0 is the build that ships all of the above. The native helper was rebuilt and
-self-tested, `npm run dist:win` passed strict type checking, all 246 tests, the production renderer
-build, and Windows x64 Setup/Portable packaging from a wiped `out/` and `release/win-unpacked/`.
-The 0.30.0 Setup SHA-256 is
+Version 0.31.0 is the build that ships all of the above. The Windows packaging run recorded below
+was made under the withdrawn 0.30.0 version and predates the macOS Panoramic Scrolling change, so
+its hashes are the record of that run rather than of a 0.31.0 artifact; Windows executables for
+0.31.0 have still to be built. That run rebuilt and self-tested the native helper, and
+`npm run dist:win` passed strict type checking, all 246 tests, the production renderer build, and
+Windows x64 Setup/Portable packaging from a wiped `out/` and `release/win-unpacked/`.
+The withdrawn 0.30.0 Setup SHA-256 is
 `60157761e9ff59bba3de4afbfce85c519d044383dbc374fc8ff79e2daac5647f`; Portable is
 `3646416282ccc80a6cecec03f67ca1ccb11a272de8a5ee5d94ec6135c19fad8b`. `release/BUILD-INFO.txt`
 records the same two-artifact inventory. A capture through the packaged app reports both displays
@@ -183,10 +186,12 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package and current local Windows build version is `0.30.0`. The latest published stable release
-remains v0.22.3 until 0.30.0 is uploaded; it contains Windows Setup and Portable executables plus
+The package version is `0.31.0`. The latest published stable release
+remains v0.22.3 until 0.31.0 is uploaded; it contains Windows Setup and Portable executables plus
 Apple Silicon DMG and ZIP previews. The intermediate `0.24.0` was built and exercised locally but
-never published, and its contents ship as part of 0.30.0. Windows binaries are not Authenticode-signed and may trigger an
+never published, and `0.30.0` was tagged and briefly published before being withdrawn because its
+macOS artifact post-dated its tag; the contents of both ship as part of `0.31.0`, and neither tag
+exists. Windows binaries are not Authenticode-signed and may trigger an
 unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and unsupported.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.

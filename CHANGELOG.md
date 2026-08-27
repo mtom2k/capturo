@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.30.0 - 2026-08-26
+## 0.31.0 - 2026-08-26
 
-The work first assembled as 0.24.0 ships here; 0.24.0 was built locally but never published, so it
-has no entry of its own.
+The work first assembled as 0.24.0 and 0.30.0 ships here. 0.24.0 was built locally but never
+published. 0.30.0 was tagged and briefly published, then withdrawn before its macOS artifact matched
+its tag: the macOS Panoramic Scrolling work landed after the tag was cut, so the release would have
+shipped a disk image that no commit produced. Neither version has an entry of its own, and neither
+tag exists.
 
 ### Added
 
