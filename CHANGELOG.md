@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Panoramic Scrolling works on macOS.** The action was hidden outside Windows while its
+  live-stream and out-of-crop chrome contract went unvalidated on macOS. Both are the same ones GIF
+  recording already uses there, so the session now runs on macOS with the stitching, masking, and
+  bounds logic unchanged. Two macOS specifics are handled: the control bar is placed against the
+  work area rather than the whole display, because AppKit slides a window requested over the menu
+  bar or the Dock back into the visible frame and that reflow could drop capturable chrome inside
+  the recorded viewport; and the viewport outline opts out of the same clamp so its painted band
+  stays outside the crop. Where a region leaves no room for the bar outside it, the session
+  declines to start instead of recording its own chrome.
+- **Settings keeps a Manage Permissions button on the Screen recording row.** It was previously
+  offered only while something was wrong, so a user who had already granted Screen Recording had no
+  way to reach the pane from Capturo to review or revoke it. The button is now present in every
+  state on macOS, and the row still calls attention to itself only when there is something to fix.
+
 ## 0.30.0 - 2026-08-25
 
 The work first assembled as 0.24.0 ships here; 0.24.0 was built locally but never published, so it

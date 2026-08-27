@@ -205,3 +205,40 @@ export function translatePoint(point: Point, delta: Point): Point {
 export function translateRect(rect: Rect, delta: Point): Rect {
   return { ...rect, x: rect.x + delta.x, y: rect.y + delta.y }
 }
+
+// Places a floating control bar just outside a region: above it when there is room, else below,
+// else inside its top edge as a last resort. Always horizontally centred on the region and kept
+// within `bounds`.
+//
+// `bounds` is the area the bar may occupy, and the caller decides which one that is. Windows
+// passes the whole display, because a bar over the taskbar is merely unusual. macOS passes the
+// work area, because AppKit constrains an ordinary window to the screen's visible frame: a bar
+// requested over the menu bar or the Dock is pushed back inside it, and for panoramic capture
+// that reflow can land the bar inside the very region being recorded. Asking for a position the
+// platform will honour is the only way the "outside the crop" contract survives. See D-029/D-042.
+export function controlBarPlacement(bounds: Rect, region: Rect, width: number, height: number): Point {
+  const margin = 8
+  const x = Math.round(
+    Math.max(bounds.x + margin, Math.min(bounds.x + bounds.width - width - margin, region.x + region.width / 2 - width / 2))
+  )
+  const above = region.y - height - margin
+  if (above >= bounds.y + margin) return { x, y: Math.round(above) }
+  const below = region.y + region.height + margin
+  if (below + height <= bounds.y + bounds.height - margin) return { x, y: Math.round(below) }
+  return { x, y: Math.round(Math.min(region.y + margin, bounds.y + bounds.height - height - margin)) }
+}
+
+// The same placement, but null rather than a position when the bar would overlap the region.
+// Panoramic capture leaves its chrome capturable, so an overlapping bar would be stitched into
+// the output; refusing to start is the correct outcome. See D-042.
+export function controlBarPlacementOutside(
+  bounds: Rect,
+  region: Rect,
+  width: number,
+  height: number
+): Point | null {
+  const point = controlBarPlacement(bounds, region, width, height)
+  const outside = point.y + height <= region.y || point.y >= region.y + region.height ||
+    point.x + width <= region.x || point.x >= region.x + region.width
+  return outside ? point : null
+}

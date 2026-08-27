@@ -74,7 +74,14 @@ import {
   type ScrollCapturePayload,
   type StartScrollCaptureResult
 } from '../shared/scroll'
-import { integerRect, overlayRegions, surroundingStrips, type OverlayRegion } from '../shared/geometry'
+import {
+  controlBarPlacement,
+  controlBarPlacementOutside,
+  integerRect,
+  overlayRegions,
+  surroundingStrips,
+  type OverlayRegion
+} from '../shared/geometry'
 import { getSettings, loadSettings, updateSettings } from './settings'
 import {
   captureDisplays,
@@ -195,6 +202,13 @@ const activeShortcuts: Partial<Record<ShortcutKind, string>> = {}
 let isQuitting = false
 
 const isMac = process.platform === 'darwin'
+
+// Panoramic Scrolling needs three things from a platform: a live display-media stream it can crop,
+// chrome it can keep outside that crop, and a readable cursor position to mask. Windows and macOS
+// both provide all three -- macOS through the same display-media grant and external control bar
+// that GIF recording already uses there. Everything else hides the action rather than offering a
+// capture that would silently produce nothing. See D-042.
+const panoramicCaptureSupported = process.platform === 'win32' || isMac
 const isSmokeInstance = process.env.CAPTURO_CAPTURE_ON_START === '1'
 const isGifSmokeInstance = process.env.CAPTURO_GIF_ON_START === '1'
 const isPickerSmokeInstance = process.env.CAPTURO_PICKER_ON_START === '1'
@@ -798,7 +812,7 @@ function buildPayload(
       bottom: Math.max(0, area.y + area.height - (display.workArea.y + display.workArea.height))
     },
     cursor: localCursor,
-    rollingCaptureAvailable: process.platform === 'win32'
+    rollingCaptureAvailable: panoramicCaptureSupported
   }
 }
 
@@ -1661,8 +1675,8 @@ function registerIpc(): void {
       if (!active || active.mode !== 'screenshot' || !entry || entry.payload.role !== 'editor') {
         return { started: false, error: 'This capture is no longer available.' }
       }
-      if (process.platform !== 'win32') {
-        return { started: false, error: 'Panoramic capture is currently available on Windows only.' }
+      if (!panoramicCaptureSupported) {
+        return { started: false, error: 'Panoramic capture is not available on this platform.' }
       }
       if (focusExistingDetachedEditor()) {
         return { started: false, error: 'Close the existing full editor before starting a panoramic capture.' }
@@ -2219,6 +2233,12 @@ function createChromeWindow(rect: Rect, bodyStyle: string, protectFromCapture = 
     show: false,
     skipTaskbar: true,
     hasShadow: false,
+    // macOS clamps an ordinary window into the screen's visible frame, which would slide chrome
+    // requested over the menu bar or the Dock back inside the work area. A panoramic outline is
+    // drawn just outside the recorded crop, so that slide would move the painted band into the
+    // crop and stitch it into the output. Opting out keeps every ring exactly where it was asked
+    // for. macOS-only in Electron; ignored elsewhere. See D-029 and D-042.
+    enableLargerThanScreen: isMac,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
   // BrowserWindow construction may expand a transparent frameless window on Windows. Reapply
@@ -2261,26 +2281,22 @@ function regionInDip(display: Electron.Display, crop: CropRect): Rect {
   }
 }
 
+// The area a floating control bar may occupy on this display. Windows may use the whole display,
+// but macOS must stay inside the work area: AppKit pushes a window requested over the menu bar or
+// the Dock back into the visible frame, and for a panoramic session that reflow can drop the bar
+// inside the recorded crop. See D-029 and D-042.
+function controlBarBounds(display: Electron.Display): Rect {
+  return isMac ? display.workArea : display.bounds
+}
+
 // Puts the control bar just above the region, else just below, else inside its top edge.
-// It is always horizontally centred on the region and kept on the display.
+// It is always horizontally centred on the region and kept within the usable bounds.
 function placeControlBar(display: Electron.Display, region: Rect, width: number, height: number): Point {
-  const bounds = display.bounds
-  const margin = 8
-  const x = Math.round(
-    Math.max(bounds.x + margin, Math.min(bounds.x + bounds.width - width - margin, region.x + region.width / 2 - width / 2))
-  )
-  const above = region.y - height - margin
-  if (above >= bounds.y + margin) return { x, y: Math.round(above) }
-  const below = region.y + region.height + margin
-  if (below + height <= bounds.y + bounds.height - margin) return { x, y: Math.round(below) }
-  return { x, y: Math.round(Math.min(region.y + margin, bounds.y + bounds.height - height - margin)) }
+  return controlBarPlacement(controlBarBounds(display), region, width, height)
 }
 
 function placeControlBarOutside(display: Electron.Display, region: Rect, width: number, height: number): Point | null {
-  const point = placeControlBar(display, region, width, height)
-  const outside = point.y + height <= region.y || point.y >= region.y + region.height ||
-    point.x + width <= region.x || point.x >= region.x + region.width
-  return outside ? point : null
+  return controlBarPlacementOutside(controlBarBounds(display), region, width, height)
 }
 
 // A thin red ring around the region. Transparent centre, click-through, content-protected, so

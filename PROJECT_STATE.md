@@ -97,7 +97,13 @@ retracing do not duplicate pixels. Weak, unchanged, and ambiguous frames remain 
 corruption boundary. Output is limited to 30,000 pixels per axis and 120 million pixels and remains
 PNG when a two-dimensional route leaves transparent holes. Full Tab now includes zoom buttons,
 percentage/Fit, Ctrl/Cmd zoom shortcuts, pointer-centered Ctrl/Cmd-wheel zoom, and wheel panning.
-macOS still hides Panoramic Scrolling pending equivalent live-stream validation.
+Unreleased work since 0.30.0 enables Panoramic Scrolling on macOS as well: the gate is now one
+predicate covering both platforms, the control bar is placed against the macOS work area so AppKit
+cannot slide capturable chrome into the recorded crop, and the viewport outline opts out of the same
+clamp. The stitching, masking, and bounds logic is unchanged. A macOS hands-on pass has not been
+done yet, so it is documented as available and less proven than on Windows. Settings also keeps a
+**Manage Permissions** button on the Screen recording row in every state, so the Screen Recording
+pane stays reachable after the permission is granted.
 
 The 2026-08-25 Windows validation exercised a live forward/reverse route in Notepad: revisiting the
 captured span left the panorama fixed at 1170×837 and reported **Already captured here** in both
@@ -535,6 +541,13 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 - The hands-on matrix in TESTING.md has not been walked end to end by a second person.
 
 ## Open follow-up
+
+- Hands-on Panoramic Scrolling pass on macOS: the feature is enabled there but has never been run
+  on hardware. Confirm a viewport pressed against the menu bar and the Dock places the control bar
+  fully inside the work area, that a work-area-filling viewport refuses to start, that no outline or
+  control-bar pixel reaches the PNG at 1:1 on a Retina display, and whether the control bar taking
+  focus disturbs keyboard scrolling in the target application. Until this is done, macOS Panoramic
+  Scrolling is available but less proven than on Windows. See D-042.
 
 - Hands-on text smoke on Windows for the placement rules: click-away commit from inside the selection, outside it, and onto the toolbar; the two-step Escape; and the enlarged resize grip. Exercised through a stubbed-preload harness only; not driven by hand or over CDP in the packaged app.
 - Highlighter was driven by real mouse input on a dark capture after the 52% source-over change and was visibly bright while text stayed readable. A light-background packaged-build pass and manual Size-slider feel remain to be checked before release.

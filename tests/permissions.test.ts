@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   normalizeScreenAccessStatus,
@@ -37,10 +38,27 @@ describe('screen access presentation', () => {
     expect(presentation.tone).toBe('ok')
   })
 
-  it('offers no action once the permission is granted', () => {
-    expect(present('granted').actions).toEqual([])
+  it('asks nothing of the user once the permission is granted', () => {
     expect(present('granted').tone).toBe('ok')
     expect(present('granted').summary).toBe('Granted')
+    // Nothing to fix: no request, no relaunch. Managing it is not a remediation step.
+    expect(actionKinds('granted')).toEqual(['open-settings'])
+  })
+
+  it('always offers a way into System Settings on a platform that gates capture', () => {
+    // A permission is not a one-way door. Granted included, the user must be able to reach the
+    // pane to review or revoke it; hiding the route once the answer was yes left the Settings
+    // row reporting a status with no way to act on it.
+    for (const status of ['granted', 'not-determined', 'denied', 'restricted', 'unknown'] as const) {
+      for (const previouslyGranted of [false, true]) {
+        expect(actionKinds(status, previouslyGranted)).toContain('open-settings')
+      }
+    }
+  })
+
+  it('names that action for what it does rather than where it goes', () => {
+    const manage = present('granted').actions.find((action) => action.kind === 'open-settings')
+    expect(manage?.label).toBe('Manage Permissions')
   })
 
   it('still offers the request on denied, because macOS reports a never-asked app that way', () => {
@@ -102,5 +120,31 @@ describe('screen access presentation', () => {
     for (const status of ['granted', 'not-determined', 'denied', 'restricted', 'unknown'] as const) {
       expect(present(status).summary.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('screen access settings row', () => {
+  const html = readFileSync(new URL('../src/renderer/settings.html', import.meta.url), 'utf8')
+  const renderer = readFileSync(new URL('../src/renderer/settings.ts', import.meta.url), 'utf8')
+
+  it('labels the settings button the way the presentation names it', () => {
+    expect(html).toContain('id="screen-access-open"')
+    expect(html).toMatch(/id="screen-access-open"[^>]*>Manage Permissions</)
+  })
+
+  it('still explains where the button goes', () => {
+    expect(html).toMatch(/id="screen-access-open"[^>]*title="Open System Settings at Privacy [^"]*Screen Recording"/)
+  })
+
+  it('opens the pane through the main process rather than a renderer-side URL', () => {
+    expect(renderer).toContain('window.capturoPermissions.openScreenSettings()')
+    expect(renderer).not.toContain('x-apple.systempreferences')
+  })
+
+  // Managing the permission is offered even when nothing is wrong, so the row must not treat the
+  // presence of a button as evidence that the user has something to fix.
+  it('draws the callout from tone, not from the number of actions', () => {
+    expect(renderer).toContain("screenAccessRow.classList.toggle('needs-action', presentation.tone !== 'ok')")
+    expect(renderer).not.toContain("'needs-action', presentation.actions.length > 0")
   })
 })

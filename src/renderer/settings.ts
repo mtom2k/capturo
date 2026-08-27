@@ -195,8 +195,10 @@ function renderScreenAccess(state: ScreenAccessState): void {
   screenAccessStatus.classList.toggle('error', presentation.tone === 'error')
 
   // A permission that needs nothing from the user is not worth a callout; one that blocks every
-  // capture is, so the row only grows into one while there is something to do.
-  screenAccessRow.classList.toggle('needs-action', presentation.actions.length > 0)
+  // capture is, so the row only grows into one while there is something to do. Managing the
+  // permission is offered in every state, so the action count no longer answers that question --
+  // tone does.
+  screenAccessRow.classList.toggle('needs-action', presentation.tone !== 'ok')
   screenAccessRow.classList.toggle('pending', presentation.tone === 'pending')
 
   const buttons = [
