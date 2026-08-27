@@ -89,7 +89,7 @@ display: the 1512×982 logical display produced a 3024×1964 sampling canvas, a 
 selection copied the exact displayed value, and `Command+Shift+9` plus `Esc` opened and cancelled
 the normal-profile picker.
 
-Version 0.30.0 adds **Panoramic Scrolling** on Windows (D-042). A normal screenshot selection now
+Version 0.30.0 adds **Panoramic Scrolling** on Windows and macOS (D-042). A normal screenshot selection now
 becomes one direction-free live session. Every accepted frame infers up, down, left, or right;
 Capturo tracks the viewport in two-dimensional coordinates, removes already-captured intersections,
 and displays the growing mosaic and current viewport in a compact preview. Direction changes and
@@ -97,7 +97,7 @@ retracing do not duplicate pixels. Weak, unchanged, and ambiguous frames remain 
 corruption boundary. Output is limited to 30,000 pixels per axis and 120 million pixels and remains
 PNG when a two-dimensional route leaves transparent holes. Full Tab now includes zoom buttons,
 percentage/Fit, Ctrl/Cmd zoom shortcuts, pointer-centered Ctrl/Cmd-wheel zoom, and wheel panning.
-Unreleased work since 0.30.0 enables Panoramic Scrolling on macOS as well: the gate is now one
+Version 0.30.0 enables Panoramic Scrolling on macOS as well: the gate is one
 predicate covering both platforms, the control bar is placed against the macOS work area so AppKit
 cannot slide capturable chrome into the recorded crop, and the viewport outline opts out of the same
 clamp. The stitching, masking, and bounds logic is unchanged. A macOS hands-on pass has not been
@@ -203,7 +203,7 @@ unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and un
 - [x] Region selection, move, and resize
 - [x] Clipboard copy and native Save As
 - [x] Move a selected screenshot into one independent normal full-editor window, then continue editing, copying, OCRing, or saving while the desktop is free
-- [x] Windows Panoramic Scrolling with four-direction inference, captured-area preview, unique-coverage assembly, bounded output, and Full Tab handoff
+- [x] Panoramic Scrolling on Windows and macOS with four-direction inference, captured-area preview, unique-coverage assembly, bounded output, and Full Tab handoff
 - [x] Windows Copy text OCR beside image Copy, with local in-memory recognition and a text-clipboard shortcut
 - [x] macOS Copy text through Apple's Vision framework, local and in-memory, sharing the Windows request protocol
 - [x] Escape cancellation
