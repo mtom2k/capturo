@@ -23,7 +23,7 @@ describe('panoramic capture workflow', () => {
     expect(main).toContain('solid rgba(56,189,248,0.9)')
     // The last argument is protectFromCapture: the outline must stay capturable, because a
     // content-protected window can stall the display-media stream this session reads.
-    expect(main).toMatch(/openScrollingOutline[\s\S]{0,400}?false\n  \)/)
+    expect(main).toMatch(/openScrollingOutline[\s\S]{0,400}?false\r?\n  \)/)
     expect(main).toContain('closeScrollingOutline()')
   })
 
@@ -103,6 +103,6 @@ describe('panoramic capture on macOS', () => {
   // The outline is drawn just outside the crop, so the same clamp would slide its painted band
   // into the output. Chrome windows opt out of it the way the capture overlays already do.
   it('keeps the viewport outline clear of that clamp too', () => {
-    expect(main).toMatch(/enableLargerThanScreen: isMac,\n    webPreferences: \{ sandbox: true/)
+    expect(main).toMatch(/enableLargerThanScreen: isMac,\r?\n    webPreferences: \{ sandbox: true/)
   })
 })
