@@ -200,8 +200,18 @@
 
     </div>
 
+    <div id="editor-dock" hidden></div>
     <textarea id="text-editor" aria-label="Screenshot text" placeholder="Type text…" hidden></textarea>
-    <div id="text-editor-resize" aria-hidden="true" title="Drag to resize the text box" hidden></div>
+    <div id="text-editor-resize" aria-hidden="true" hidden>
+      <div data-text-resize="north-west" title="Resize top left"></div>
+      <div data-text-resize="north" title="Resize top"></div>
+      <div data-text-resize="north-east" title="Resize top right"></div>
+      <div data-text-resize="east" title="Resize right"></div>
+      <div data-text-resize="south-east" title="Resize bottom right"></div>
+      <div data-text-resize="south" title="Resize bottom"></div>
+      <div data-text-resize="south-west" title="Resize bottom left"></div>
+      <div data-text-resize="west" title="Resize left"></div>
+    </div>
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
     <script type="module" src="./editor.ts"></script>

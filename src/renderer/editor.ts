@@ -37,6 +37,7 @@ const context = canvas.getContext('2d')!
 const hint = document.querySelector<HTMLElement>('#hint')!
 const dimensions = document.querySelector<HTMLElement>('#dimensions')!
 const editorUi = document.querySelector<HTMLElement>('#editor-ui')!
+const editorDock = document.querySelector<HTMLElement>('#editor-dock')!
 const optionsBar = document.querySelector<HTMLElement>('#options-bar')!
 const toolbar = document.querySelector<HTMLElement>('#toolbar')!
 const colorOptions = document.querySelector<HTMLElement>('#color-options')!
@@ -102,6 +103,7 @@ type Interaction =
 let payload: CapturePayload | null = null
 let role: OverlayRole = 'editor'
 let canvasViewport: Rect = { x: 0, y: 0, width: 1, height: 1 }
+let canvasSurface: Rect = { x: 0, y: 0, width: 1, height: 1 }
 let sourceImage: HTMLCanvasElement | null = null
 let selection: Rect | null = null
 let annotations: Annotation[] = []
@@ -134,7 +136,7 @@ let ignoreTextBlur = false
 // A manual resize wins over the height the box picks for itself, otherwise the next keystroke
 // would snap the box back and the drag would look like it did nothing.
 let textSizeLocked = false
-let textResize: { pointerId: number; startX: number; startY: number; width: number; height: number } | null = null
+let textResize: { pointerId: number; startX: number; startY: number; original: Rect; handle: ResizeHandle } | null = null
 let busy = false
 let transparencyTarget: RgbColor = { r: 255, g: 255, b: 255 }
 let transparencyTolerance = 12
@@ -174,7 +176,23 @@ function pointFromEvent(event: Pick<PointerEvent, 'clientX' | 'clientY'>): Point
 }
 
 function imageBounds(): Rect {
-  return { x: 0, y: 0, width: canvas.width, height: canvas.height }
+  return { x: 0, y: 0, width: payload?.imageWidth ?? 1, height: payload?.imageHeight ?? 1 }
+}
+
+function previewTransform(): { a: number; d: number; e: number; f: number } | undefined {
+  if (role !== 'detached') return undefined
+  const scale = imageScale()
+  const dx = canvas.width / canvasSurface.width
+  const dy = canvas.height / canvasSurface.height
+  return {
+    a: dx / scale.x, d: dy / scale.y,
+    e: (canvasViewport.x - canvasSurface.x) * dx,
+    f: (canvasViewport.y - canvasSurface.y) * dy
+  }
+}
+
+function detachedWorkspaceTop(): number {
+  return editorDock.getBoundingClientRect().bottom + 24
 }
 
 function styleSnapshot(): AnnotationStyle {
@@ -182,7 +200,7 @@ function styleSnapshot(): AnnotationStyle {
   const pixelScale = (scale.x + scale.y) / 2
   return {
     color,
-    lineWidth: (activeTool === 'highlight' ? highlightWidth : lineWidth) * pixelScale,
+    lineWidth: (activeTool === 'highlight' ? highlightWidth : activeTool === 'step' ? 4 : lineWidth) * pixelScale,
     effectIntensity,
     effectScale: pixelScale,
     fontFamily,
@@ -209,17 +227,17 @@ function hasTransparency(): boolean {
 
 function drawTransparencySeed(): void {
   if (draft?.type !== 'transparent') return
-  const radius = Math.max(5, 5 * imageScale().x)
+  const radius = 5 * imageScale().x
   context.save()
   context.beginPath()
   context.arc(draft.seed.x, draft.seed.y, radius, 0, Math.PI * 2)
   context.fillStyle = 'rgba(15, 23, 42, 0.72)'
   context.fill()
   context.strokeStyle = '#ffffff'
-  context.lineWidth = Math.max(1, imageScale().x)
+  context.lineWidth = imageScale().x
   context.stroke()
   context.beginPath()
-  context.arc(draft.seed.x, draft.seed.y, Math.max(1.5, radius * 0.28), 0, Math.PI * 2)
+  context.arc(draft.seed.x, draft.seed.y, radius * 0.3, 0, Math.PI * 2)
   context.fillStyle = '#38bdf8'
   context.fill()
   context.restore()
@@ -238,25 +256,27 @@ function drawSplitPreview(): void {
     selection,
     selectedAnnotation: selectedAnnotation(),
     shade: true,
-    uiScale: imageScale().x
+    uiScale: imageScale().x,
+    transform: previewTransform()
   })
   const divider = selection.x + selection.width * transparencySplit / 100
   context.save()
   context.beginPath()
   context.rect(selection.x, selection.y, Math.max(0, divider - selection.x), selection.height)
   context.clip()
+  context.resetTransform()
   context.drawImage(beforeCanvas, 0, 0)
   context.restore()
   context.save()
   context.strokeStyle = '#38bdf8'
-  context.lineWidth = Math.max(1, 1.5 * imageScale().x)
+  context.lineWidth = 1.5 * imageScale().x
   context.beginPath()
   context.moveTo(divider, selection.y)
   context.lineTo(divider, selection.y + selection.height)
   context.stroke()
   context.fillStyle = '#38bdf8'
   context.beginPath()
-  context.arc(divider, selection.y + selection.height / 2, Math.max(4, 5 * imageScale().x), 0, Math.PI * 2)
+  context.arc(divider, selection.y + selection.height / 2, 5 * imageScale().x, 0, Math.PI * 2)
   context.fill()
   context.restore()
 }
@@ -271,14 +291,20 @@ function redraw(): void {
   const pendingTransparency = draft?.type === 'transparent'
   const shownDraft = pendingTransparency && transparencyPreview === 'before' ? null : draft
   canvas.classList.toggle('transparency-preview', hasTransparency() && transparencyPreview !== 'before')
-  renderScene(context, sourceImage, annotations, shownDraft, {
+  const visibleAnnotations = textEditor.hidden ? annotations : annotations.filter((item) => item.id !== textEditingId)
+  renderScene(context, sourceImage, visibleAnnotations, shownDraft, {
     selection,
-    selectedAnnotation: selectedAnnotation(),
+    selectedAnnotation: textEditor.hidden ? selectedAnnotation() : null,
     shade: true,
-    uiScale: imageScale().x
+    uiScale: imageScale().x,
+    transform: previewTransform()
   })
+  context.save()
+  const transform = previewTransform()
+  if (transform) context.setTransform(transform.a, 0, 0, transform.d, transform.e, transform.f)
   if (pendingTransparency && transparencyPreview === 'split') drawSplitPreview()
   drawTransparencySeed()
+  context.restore()
   if (role === 'filler') return
   updateUiPosition()
   undoButton.disabled = annotations.length === 0
@@ -307,18 +333,22 @@ function toCssRect(rect: Rect): Rect {
 
 function layoutCanvas(): void {
   if (!payload) return
+  // Commit using the old view's coordinates before window resizing or zoom changes the mapping.
+  if (!textEditor.hidden) closeTextEditor(true)
   if (role === 'detached') {
+    const top = detachedWorkspaceTop()
     const fit = detachedEditorCanvasRect(
       { width: payload.imageWidth, height: payload.imageHeight },
-      { width: window.innerWidth, height: window.innerHeight }
+      { width: window.innerWidth, height: window.innerHeight },
+      top
     )
     const width = fit.width * detachedZoom
     const height = fit.height * detachedZoom
     const workspace = {
       left: 24,
-      top: 76,
+      top,
       right: Math.max(25, window.innerWidth - 24),
-      bottom: Math.max(77, window.innerHeight - 24)
+      bottom: Math.max(top + 1, window.innerHeight - 24)
     }
     const availableWidth = workspace.right - workspace.left
     const availableHeight = workspace.bottom - workspace.top
@@ -345,22 +375,34 @@ function layoutCanvas(): void {
         height: payload.captureSize.height
       }
   }
-  canvas.style.left = `${canvasViewport.x}px`
-  canvas.style.top = `${canvasViewport.y}px`
-  canvas.style.width = `${canvasViewport.width}px`
-  canvas.style.height = `${canvasViewport.height}px`
+  canvasSurface = role === 'detached'
+    ? { x: 0, y: editorDock.getBoundingClientRect().bottom, width: Math.max(1, window.innerWidth),
+        height: Math.max(1, window.innerHeight - editorDock.getBoundingClientRect().bottom) }
+    : canvasViewport
+  if (role === 'detached') {
+    const dpr = window.devicePixelRatio || 1
+    const width = Math.max(1, Math.round(canvasSurface.width * dpr))
+    const height = Math.max(1, Math.round(canvasSurface.height * dpr))
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+  }
+  canvas.style.left = `${canvasSurface.x}px`
+  canvas.style.top = `${canvasSurface.y}px`
+  canvas.style.width = `${canvasSurface.width}px`
+  canvas.style.height = `${canvasSurface.height}px`
 }
 
 function setDetachedZoom(nextZoom: number, anchor?: Point): void {
   if (role !== 'detached' || !payload) return
   const next = Math.max(MIN_DETACHED_ZOOM, Math.min(MAX_DETACHED_ZOOM, nextZoom))
   if (Math.abs(next - detachedZoom) < 0.0001) return
-  const focus = anchor ?? { x: window.innerWidth / 2, y: (76 + window.innerHeight - 24) / 2 }
+  const focus = anchor ?? { x: window.innerWidth / 2, y: (detachedWorkspaceTop() + window.innerHeight - 24) / 2 }
   const relativeX = (focus.x - canvasViewport.x) / Math.max(1, canvasViewport.width)
   const relativeY = (focus.y - canvasViewport.y) / Math.max(1, canvasViewport.height)
   const fit = detachedEditorCanvasRect(
     { width: payload.imageWidth, height: payload.imageHeight },
-    { width: window.innerWidth, height: window.innerHeight }
+    { width: window.innerWidth, height: window.innerHeight },
+    detachedWorkspaceTop()
   )
   detachedZoom = next
   detachedPan = {
@@ -400,6 +442,7 @@ function updateUiPosition(): void {
   editorUi.hidden = false
   dimensions.hidden = false
   dimensions.textContent = `${Math.round(selection.width)} × ${Math.round(selection.height)}`
+  if (role === 'detached') return
 
   const dimensionWidth = dimensions.offsetWidth
   dimensions.style.left = `${Math.max(8, Math.min(window.innerWidth - dimensionWidth - 8, rect.x))}px`
@@ -584,15 +627,19 @@ function selectAnnotation(annotation: Annotation | null): void {
   const scale = imageScale()
   const pixelScale = (scale.x + scale.y) / 2
   color = annotation.style.color
-  lineWidth = annotation.style.lineWidth / pixelScale
+  if (['pen', 'line', 'arrow', 'rectangle', 'ellipse'].includes(annotation.type)) {
+    lineWidth = annotation.style.lineWidth / pixelScale
+  }
   effectIntensity = annotation.style.effectIntensity ?? 50
   smoothing = annotation.style.smoothing
-  fontFamily = annotation.style.fontFamily
-  fontSize = annotation.style.fontSize / scale.y
+  if (annotation.type === 'text') {
+    fontFamily = annotation.style.fontFamily
+    fontSize = annotation.style.fontSize / scale.y
+    fontWeight = annotation.style.fontWeight
+    fontStyle = annotation.style.fontStyle
+  }
   if (annotation.type === 'step') stepSize = annotation.style.fontSize / scale.y
   if (annotation.type === 'highlight') highlightWidth = annotation.style.lineWidth / pixelScale
-  fontWeight = annotation.style.fontWeight
-  fontStyle = annotation.style.fontStyle
   for (const swatch of document.querySelectorAll<HTMLElement>('[data-color]')) {
     swatch.classList.toggle('selected', swatch.dataset.color === color)
   }
@@ -711,7 +758,7 @@ function nextStepNumber(): number {
 function openTextEditor(origin: Point, editing: Extract<Annotation, { type: 'text' }> | null = null): void {
   textOrigin = origin
   textEditingId = editing?.id ?? null
-  const css = toCssRect({ x: origin.x, y: origin.y, width: 0, height: 0 })
+  const css = toCssRect(editing ? annotationBounds(editing) : { ...origin, width: 0, height: 0 })
   textEditor.value = editing?.text ?? ''
   textEditor.style.left = `${css.x}px`
   textEditor.style.top = `${css.y}px`
@@ -721,11 +768,13 @@ function openTextEditor(origin: Point, editing: Extract<Annotation, { type: 'tex
   textEditor.style.fontStyle = fontStyle
   textEditor.style.color = color
   textEditor.hidden = false
-  textEditor.style.width = `${Math.max(140, Math.min(320, window.innerWidth - css.x - 12))}px`
-  textSizeLocked = false
+  textEditor.style.width = `${editing ? css.width : Math.max(12, Math.min(320, window.innerWidth - css.x - 12))}px`
+  textEditor.style.height = `${editing ? css.height : 38}px`
+  textSizeLocked = Boolean(editing)
   fitTextEditorHeight()
   textResizeHandle.hidden = false
   positionTextResizeHandle()
+  redraw()
   setStatus('Type text · click away or Ctrl+Enter to apply · Esc to discard')
   requestAnimationFrame(() => {
     textEditor.focus()
@@ -736,26 +785,33 @@ function openTextEditor(origin: Point, editing: Extract<Annotation, { type: 'tex
 function fitTextEditorHeight(): void {
   if (textSizeLocked) return
   textEditor.style.height = 'auto'
-  textEditor.style.height = `${Math.max(38, textEditor.scrollHeight)}px`
+  textEditor.style.height = `${Math.min(window.innerHeight - textEditor.getBoundingClientRect().top - 4, Math.max(38, textEditor.scrollHeight))}px`
 }
 
 function positionTextResizeHandle(): void {
   if (textEditor.hidden) return
   const box = textEditor.getBoundingClientRect()
-  // Overhang the corner so the grip is reachable from outside the box as well as inside it.
-  textResizeHandle.style.left = `${box.right - 12}px`
-  textResizeHandle.style.top = `${box.bottom - 12}px`
+  for (const grip of textResizeHandle.querySelectorAll<HTMLElement>('[data-text-resize]')) {
+    const handle = grip.dataset.textResize!
+    const x = handle.includes('west') ? box.left : handle.includes('east') ? box.right : box.left + box.width / 2
+    const y = handle.includes('north') ? box.top : handle.includes('south') ? box.bottom : box.top + box.height / 2
+    grip.style.left = `${x - 7}px`
+    grip.style.top = `${y - 7}px`
+  }
 }
 
 function closeTextEditor(commit: boolean): void {
   if (textEditor.hidden) return
   const text = textEditor.value.trimEnd()
   if (commit && text && textOrigin) {
+    const box = textEditor.getBoundingClientRect()
+    const scale = imageScale()
     const replacement: Extract<Annotation, { type: 'text' }> = {
       id: textEditingId ?? id(),
       type: 'text',
       style: styleSnapshot(),
-      origin: textOrigin,
+      origin: pointFromEvent({ clientX: box.left, clientY: box.top }),
+      box: { width: box.width * scale.x, height: box.height * scale.y },
       text
     }
     if (textEditingId) replaceAnnotation(textEditingId, replacement)
@@ -1193,6 +1249,8 @@ function initialize(nextPayload: CapturePayload): void {
   }
   if (role === 'detached') {
     document.body.classList.add('detached-editor')
+    editorDock.hidden = false
+    editorDock.append(dimensions, editorUi)
     document.title = 'Capturo — Full editor'
     hint.hidden = true
     openDetachedButton.hidden = true
@@ -1264,6 +1322,22 @@ window.addEventListener('resize', () => {
   layoutCanvas()
   redraw()
 })
+new ResizeObserver(() => {
+  if (role !== 'detached' || !sourceImage) return
+  layoutCanvas()
+  redraw()
+}).observe(editorDock)
+
+function watchDisplayResolution(): void {
+  window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => {
+    if (role === 'detached') {
+      layoutCanvas()
+      redraw()
+    }
+    watchDisplayResolution()
+  }, { once: true })
+}
+watchDisplayResolution()
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
   button.addEventListener('click', () => setTool(button.dataset.tool as Tool))
@@ -1405,6 +1479,8 @@ textEditor.addEventListener('blur', () => {
 
 textResizeHandle.addEventListener('pointerdown', (event) => {
   if (textEditor.hidden || event.button !== 0) return
+  const grip = (event.target as HTMLElement).closest<HTMLElement>('[data-text-resize]')
+  if (!grip) return
   event.stopPropagation()
   // Keeps focus in the text box, so the drag neither blurs nor commits it.
   event.preventDefault()
@@ -1414,8 +1490,8 @@ textResizeHandle.addEventListener('pointerdown', (event) => {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    width: box.width,
-    height: box.height
+    original: { x: box.x, y: box.y, width: box.width, height: box.height },
+    handle: grip.dataset.textResize as ResizeHandle
   }
   textSizeLocked = true
   textResizeHandle.setPointerCapture(event.pointerId)
@@ -1425,13 +1501,17 @@ textResizeHandle.addEventListener('pointerdown', (event) => {
 textResizeHandle.addEventListener('pointermove', (event) => {
   if (!textResize || event.pointerId !== textResize.pointerId) return
   event.stopPropagation()
-  const box = textEditor.getBoundingClientRect()
-  const maxWidth = Math.max(140, window.innerWidth - box.left - 4)
-  const maxHeight = Math.max(38, window.innerHeight - box.top - 4)
-  const width = textResize.width + (event.clientX - textResize.startX)
-  const height = textResize.height + (event.clientY - textResize.startY)
-  textEditor.style.width = `${Math.min(maxWidth, Math.max(140, width))}px`
-  textEditor.style.height = `${Math.min(maxHeight, Math.max(38, height))}px`
+  const { original, handle } = textResize
+  const edgeX = handle.includes('west') ? original.x : original.x + original.width
+  const edgeY = handle.includes('north') ? original.y : original.y + original.height
+  const box = resizeRect(original, handle, {
+    x: edgeX + event.clientX - textResize.startX,
+    y: edgeY + event.clientY - textResize.startY
+  }, { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }, 12)
+  textEditor.style.left = `${box.x}px`
+  textEditor.style.top = `${box.y}px`
+  textEditor.style.width = `${box.width}px`
+  textEditor.style.height = `${box.height}px`
   positionTextResizeHandle()
 })
 

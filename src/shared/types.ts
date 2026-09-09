@@ -82,6 +82,8 @@ export type TextAnnotation = AnnotationBase & {
   type: 'text'
   origin: Point
   text: string
+  // Source-pixel box, preserved through editing and export. Older commands may omit it.
+  box?: { width: number; height: number }
 }
 
 export type RgbColor = { r: number; g: number; b: number }

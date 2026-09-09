@@ -1,13 +1,19 @@
 import type { Annotation, Point, Rect, Smoothing } from '../shared/types'
 import { annotationBounds } from '../shared/annotations'
 import { removeConnectedColor } from '../shared/transparency'
+import { stepMetrics } from '../shared/step'
+import { textFont, TEXT_LINE_HEIGHT, wrapText } from '../shared/text'
 
 type RenderOptions = {
   selection?: Rect | null
   selectedAnnotation?: Annotation | null
   shade?: boolean
   uiScale?: number
+  // Source-image coordinates to the visible display-pixel canvas. Export omits this.
+  transform?: { a: number; d: number; e: number; f: number }
 }
+
+const previewEffectCanvases = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>()
 
 type TransparencyCacheEntry = {
   signature: string
@@ -304,13 +310,13 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
       context.stroke()
       break
     case 'step': {
-      const radius = Math.max(13, style.fontSize * 0.78)
+      const { radius, border } = stepMetrics(style)
       context.beginPath()
       context.arc(annotation.center.x, annotation.center.y, radius, 0, Math.PI * 2)
       context.fillStyle = style.color
       context.fill()
       context.strokeStyle = '#ffffff'
-      context.lineWidth = Math.max(2.5, style.lineWidth * 0.7)
+      context.lineWidth = border
       context.stroke()
       context.fillStyle = style.color === '#ffffff' ? '#111827' : '#ffffff'
       context.font = `bold ${Math.round(radius * 1.05)}px system-ui, sans-serif`
@@ -320,12 +326,28 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
       break
     }
     case 'text': {
-      context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize}px ${style.fontFamily}`
+      context.font = textFont(style)
       context.textAlign = 'left'
       context.textBaseline = 'top'
-      const lineHeight = style.fontSize * 1.25
-      for (const [index, line] of annotation.text.split('\n').entries()) {
-        context.fillText(line, annotation.origin.x, annotation.origin.y + index * lineHeight)
+      const lineHeight = style.fontSize * TEXT_LINE_HEIGHT
+      const lines = annotation.box
+        ? wrapText(annotation.text, annotation.box.width, (text) => context.measureText(text).width)
+        : annotation.text.split('\n')
+      let baseline = 0
+      if (annotation.box) {
+        // Match the textarea's CSS line box, including its half-leading. Canvas 'top' uses a
+        // different em-box anchor and otherwise makes text jump upward when editing ends.
+        context.textBaseline = 'alphabetic'
+        const metrics = context.measureText('Mg')
+        const ascent = metrics.fontBoundingBoxAscent
+        const descent = metrics.fontBoundingBoxDescent
+        baseline = (lineHeight - ascent - descent) / 2 + ascent
+        context.beginPath()
+        context.rect(annotation.origin.x, annotation.origin.y, annotation.box.width, annotation.box.height)
+        context.clip()
+      }
+      for (const [index, line] of lines.entries()) {
+        context.fillText(line, annotation.origin.x, annotation.origin.y + baseline + index * lineHeight)
       }
       break
     }
@@ -339,9 +361,8 @@ export function renderAnnotation(context: CanvasRenderingContext2D, annotation: 
   context.restore()
 }
 
-function drawSelection(context: CanvasRenderingContext2D, selection: Rect, uiScale: number): void {
-  const width = context.canvas.width
-  const height = context.canvas.height
+function drawSelection(context: CanvasRenderingContext2D, selection: Rect, uiScale: number, image: HTMLCanvasElement): void {
+  const { width, height } = image
   context.save()
   context.fillStyle = SHADE_FILL
   context.fillRect(0, 0, width, selection.y)
@@ -349,7 +370,7 @@ function drawSelection(context: CanvasRenderingContext2D, selection: Rect, uiSca
   context.fillRect(selection.x + selection.width, selection.y, width - selection.x - selection.width, selection.height)
   context.fillRect(0, selection.y + selection.height, width, height - selection.y - selection.height)
 
-  context.lineWidth = Math.max(1, uiScale)
+  context.lineWidth = uiScale
   context.strokeStyle = '#ffffff'
   context.strokeRect(selection.x + context.lineWidth / 2, selection.y + context.lineWidth / 2, selection.width - context.lineWidth, selection.height - context.lineWidth)
   context.setLineDash([4 * uiScale, 3 * uiScale])
@@ -393,7 +414,7 @@ function drawAnnotationSelection(context: CanvasRenderingContext2D, annotation: 
   ]
   context.save()
   context.strokeStyle = '#38bdf8'
-  context.lineWidth = Math.max(1, uiScale)
+  context.lineWidth = uiScale
   context.setLineDash([4 * uiScale, 3 * uiScale])
   context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height)
   context.setLineDash([])
@@ -413,7 +434,12 @@ export function renderScene(
   options: RenderOptions = {}
 ): void {
   context.save()
+  context.resetTransform()
   context.clearRect(0, 0, context.canvas.width, context.canvas.height)
+  if (options.transform) {
+    const { a, d, e, f } = options.transform
+    context.setTransform(a, 0, 0, d, e, f)
+  }
   // Background removal always runs against source pixels. This prevents a transparency
   // edit from punching holes in arrows, labels, or other annotations created earlier.
   const transparencyAnnotations = annotations.filter(
@@ -423,15 +449,53 @@ export function renderScene(
   const base = transparencyAnnotations.length > 0
     ? transparencyComposite(image, transparencyAnnotations)
     : image
-  context.drawImage(base, 0, 0, context.canvas.width, context.canvas.height)
-  for (const annotation of annotations) {
-    if (annotation.type !== 'transparent') renderAnnotation(context, annotation)
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(base, 0, 0)
+  const commands = draft ? [...annotations, draft] : annotations
+  let effectsLeft = options.transform
+    ? commands.filter((item) => item.type === 'blur' || item.type === 'pixelate').length : 0
+  let effectContext: CanvasRenderingContext2D | null = null
+  if (effectsLeft > 0) {
+    // Privacy effects operate on the source-resolution composite, as export does. Copy only
+    // their affected rectangles into the viewport so vectors elsewhere remain display-sharp.
+    let buffer = previewEffectCanvases.get(image)
+    if (!buffer) {
+      buffer = document.createElement('canvas')
+      buffer.width = image.width
+      buffer.height = image.height
+      previewEffectCanvases.set(image, buffer)
+    }
+    effectContext = buffer.getContext('2d')!
+    effectContext.clearRect(0, 0, buffer.width, buffer.height)
+    effectContext.drawImage(base, 0, 0)
   }
-  if (draft && draft.type !== 'transparent') renderAnnotation(context, draft)
+  context.save()
+  context.beginPath()
+  context.rect(0, 0, image.width, image.height)
+  context.clip()
+  for (const annotation of commands) {
+    if (annotation.type === 'transparent') continue
+    if (effectContext && effectsLeft > 0) renderAnnotation(effectContext, annotation)
+    if (effectContext && (annotation.type === 'blur' || annotation.type === 'pixelate')) {
+      // Copy a whole-pixel patch. Fractional source cropping would interpolate a second time
+      // and change both antialiased effect edges and the pixels protected by privacy tools.
+      const x = Math.max(0, Math.floor(annotation.rect.x))
+      const y = Math.max(0, Math.floor(annotation.rect.y))
+      const width = Math.min(image.width, Math.ceil(annotation.rect.x + annotation.rect.width)) - x
+      const height = Math.min(image.height, Math.ceil(annotation.rect.y + annotation.rect.height)) - y
+      if (width > 0 && height > 0) {
+        context.clearRect(x, y, width, height)
+        context.drawImage(effectContext.canvas, x, y, width, height, x, y, width, height)
+      }
+      effectsLeft--
+    } else renderAnnotation(context, annotation)
+  }
+  context.restore()
   if (options.shade !== false) {
     // With a selection, dim everything outside it; before one exists, dim the whole screen
     // so the frozen desktop reads as capture mode rather than the live desktop.
-    if (options.selection) drawSelection(context, options.selection, options.uiScale ?? 1)
+    if (options.selection) drawSelection(context, options.selection, options.uiScale ?? 1, image)
     else drawScreenDim(context)
   }
   if (options.selectedAnnotation && options.shade !== false) {

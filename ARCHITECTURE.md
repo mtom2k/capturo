@@ -46,6 +46,23 @@ Capturo currently selects within one display at a time. This is deliberate: span
 
 ## Annotation model
 
+Full Tab preview uses a workspace-sized canvas backed by device pixels (D-044), clipped below a
+fixed top dock. `canvasViewport` continues to describe the source image in CSS coordinates for
+pointer mapping; `canvasSurface` describes the visible canvas. A source-to-display transform
+replays vector annotations at the current zoom without enlarging a previously rasterized annotation.
+The preview allocation is bounded by the visible window even at maximum zoom. Display-density
+changes rebuild the backing store. Export still uses a separate canvas at original image dimensions.
+
+Blur and Pixelate must read the same source-resolution composite used for export. A reusable
+source-sized scratch canvas replays the command prefix through each effect; whole-pixel affected
+patches are copied into the transformed preview. Vectors outside those patches remain display-sharp,
+and overlapping effects retain command order. The scratch canvas is allocated only when needed.
+Never use the preview canvas dimensions as image/selection bounds.
+
+The detached toolbar and dimensions badge live in `#editor-dock`; its measured bottom plus 24px
+determines the fitted image's top reserve. The display canvas begins below the dock, so panning
+cannot place the image over the tools. Capture overlays retain their floating toolbar placement.
+
 Annotations are serializable commands rather than baked pixels. Each command contains a tool-specific geometry and its style at creation time. The renderer replays commands whenever selection, tool preview, undo, or export changes.
 
 Every command also exposes deterministic bounds and hit-testing through `src/shared/annotations.ts`. The Select tool searches commands from front to back, then uses those bounds for movement, eight-handle resizing, deletion, and property synchronization. Annotation coordinates are absolute source-image pixels: moving the crop frame never translates annotations.
@@ -64,6 +81,18 @@ The transparency command uses a four-neighbor flood fill, so only matching pixel
 The renderer caches at most two processed composites per frozen source: the current After result and its Before counterpart for split comparison. Slider changes replace old entries instead of retaining every state. This matters because replaying a connected fill over a large crop on every pointer redraw would make the rest of the editor sluggish.
 
 Text entry is a temporary DOM textarea because it provides native keyboard, IME, multiline, and selection behavior. It does not share pointer capture with the canvas. Committing converts its content into a replayable text command; double-clicking an existing text command reopens the textarea for editing.
+
+Text commands retain a source-pixel `box` alongside `origin` and original text (D-043). New and
+resized text has a box; older commands without one retain legacy bounds. Canvas layout measures
+glyph advances to wrap words and grapheme-safe long tokens, preserves explicit newlines, uses the
+textarea's 1.25 line height, and clips to the stored box. Preview and export share that layout.
+Text resizing changes box geometry rather than font size; all eight live textarea grips use the
+same directional `resizeRect` math. Editing hides the prior canvas text until commit/cancel.
+The textarea has no padding or border inside its stored dimensions.
+
+Step radius, white border, and hit bounds share `stepMetrics` and depend only on the step's
+font-size field and capture scale. Shape stroke width is never an input. Selecting an annotation
+updates only relevant size defaults, preserving other tools' stroke and text font sizes.
 
 The editor UI is a two-row stack anchored to the crop rectangle. The primary tool/action toolbar is always the first row. Tool-specific color, stroke, smoothing, step-size, and typography controls occupy a contextual second row underneath it.
 
@@ -197,8 +226,14 @@ The tray menu's **Color picker**, or its global shortcut, opens a separate `Colo
 It does not call the screenshot capture path and never gives the renderer a desktop image. On
 Windows one compact, transparent, content-protected 640×640 window follows the pointer; avoiding a
 monitor-sized Electron surface preserves Chromium hardware-video planes. On macOS the established
-display overlay remains. `picker-live.ts` requests one coalesced active-size live sample at a time. On
-Windows `sample-display` reads that grid from the cached
+display overlay remains. `picker-live.ts` requests one coalesced active-size live sample at a time
+and starts at most 30 preview samples per second. Desktop Duplication can report pointer-only
+frames at the mouse polling rate, and the non-Windows fallback captures a fresh screen source, so
+leaving this loop completion-driven can starve the very pointer/render work it serves. The newest
+requested point replaces any older pending point, while picking bypasses the preview cadence and
+rechecks the exact current point. Each returned RRGGBB/PNG grid is decoded into a tiny source bitmap
+and scaled into the device-pixel-backed aperture in one draw rather than repainting every cell
+separately. On Windows `sample-display` reads that grid from the cached
 FP16 Desktop Duplication surface, applies the same SDR-white normalization and HDR gamut map as a
 screenshot, and returns compact row-major RRGGBB bytes. Other platforms fall back to a newly read
 screen source cropped to the same small grid. The payload's source-image dimensions are derived

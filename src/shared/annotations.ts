@@ -1,5 +1,6 @@
 import type { Annotation, Point, Rect } from './types'
 import { pointInRect, translatePoint, translateRect } from './geometry'
+import { stepMetrics } from './step'
 
 function boundsFromPoints(points: Point[], padding = 0): Rect {
   const xs = points.map((point) => point.x)
@@ -38,7 +39,8 @@ export function annotationBounds(annotation: Annotation): Rect {
     case 'pixelate':
       return { ...annotation.rect }
     case 'step': {
-      const radius = Math.max(13, annotation.style.fontSize * 0.78) + Math.max(2, annotation.style.lineWidth / 2)
+      const metrics = stepMetrics(annotation.style)
+      const radius = metrics.radius + metrics.border / 2
       return {
         x: annotation.center.x - radius,
         y: annotation.center.y - radius,
@@ -47,6 +49,7 @@ export function annotationBounds(annotation: Annotation): Rect {
       }
     }
     case 'text': {
+      if (annotation.box) return { ...annotation.origin, ...annotation.box }
       const lines = annotation.text.split('\n')
       const longest = Math.max(1, ...lines.map((line) => line.length))
       return {
@@ -196,8 +199,8 @@ export function resizeAnnotation(annotation: Annotation, original: Rect, target:
     case 'text':
       return {
         ...annotation,
-        origin: mapPoint(annotation.origin, original, target),
-        style: { ...annotation.style, fontSize: annotation.style.fontSize * Math.max(0.2, scaleY) }
+        origin: { x: target.x, y: target.y },
+        box: { width: target.width, height: target.height }
       }
   }
 }

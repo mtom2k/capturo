@@ -15,6 +15,12 @@ import {
 } from '../src/shared/geometry'
 
 describe('detached editor canvas', () => {
+  it('reserves the measured dock height plus workspace padding', () => {
+    const rect = detachedEditorCanvasRect({ width: 900, height: 1600 }, { width: 800, height: 600 }, 126)
+    expect(rect.y).toBe(126)
+    expect(rect.y + rect.height).toBeLessThanOrEqual(576)
+    expect(rect.width / rect.height).toBeCloseTo(900 / 1600)
+  })
   it('fits and centers a wide capture below the toolbar reserve', () => {
     expect(detachedEditorCanvasRect(
       { width: 1600, height: 900 },

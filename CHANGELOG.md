@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.40.0 - 2026-09-09
+
+Windows x64 Setup and Portable packages are prepared for a GitHub release draft. This version
+also includes the Color Picker performance fix recorded under the local 0.31.1 build below.
+
+### Fixed
+
+- Full Tab renders editable text and shapes at display resolution instead of enlarging their
+  source-resolution bitmap. The toolbar and format row stay in a top dock above the image during
+  window resizing, zooming, and panning. Export resolution and source-based privacy effects remain
+  unchanged.
+
+- Text retains its box dimensions after placement, wraps to the available width in preview and
+  export, and reopens at the same size. Eight handles resize the live box; resizing placed text
+  moves only the requested edges and reflows text without scaling its font.
+- Numbered-step borders and bounds no longer inherit rectangle/ellipse stroke width. Selecting
+  a step also leaves the shape stroke and text font sizes unchanged.
+
+## 0.31.1 - 2026-09-02
+
+### Fixed
+
+- **Color Picker movement no longer stutters under high-rate mouse input.** Live preview sampling is
+  capped at 30 starts per second while retaining only the newest requested point, so Desktop
+  Duplication pointer updates and repeated full-screen fallback grabs cannot crowd out selector
+  movement. Each returned grid is uploaded to the magnifier as one tiny bitmap instead of hundreds
+  of individual canvas fills. Clicking still takes a fresh exact sample at the selected point.
+
 ## 0.31.0 - 2026-08-26
 
 The work first assembled as 0.24.0 and 0.30.0 ships here. 0.24.0 was built locally but never

@@ -2,6 +2,11 @@
 
 ## Start here
 
+The current source version is **0.40.0**, prepared for a Windows Setup and Portable release draft.
+The editor changes are documented in D-043/D-044; validation and packaging evidence live in
+`PROJECT_STATE.md`. The latest published stable release is 0.31.0. Keep the new release a draft
+until its remaining installed-app acceptance checks are complete.
+
 Read `PROJECT_STATE.md`, then run:
 
 ```powershell
@@ -66,6 +71,22 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
 
 ## Implementation map
 
+- Full Tab display quality/top dock (D-044): `canvasViewport` is source-image placement;
+  `canvasSurface` is the visible display-backed canvas. Keep pointer coordinates and exports in
+  source pixels. `previewTransform` feeds direct vector rendering; `renderScene` uses source-sized
+  scratch compositing only for Blur/Pixelate. The dock's measured height sets the image reserve;
+  `updateUiPosition` must return before floating placement for detached editors. Resize/DPI changes
+  rebuild the preview backing store. The annotation smoke runner verifies sharp zoomed edges,
+  four window shapes, 150% DPI, and source-aligned preview/export equality with overlapping effects.
+
+- Text sizing/wrapping and step independence (D-043): `src/shared/text.ts` performs measured
+  wrapping; `TextAnnotation.box` stores source-pixel dimensions; `resizeAnnotation` changes
+  dimensions without scaling the font. `editor.ts` preserves them on commit/reopen and supplies
+  eight live grips in `#text-editor-resize`, superseding the single corner grip. Keep opposite
+  edges fixed and preserve click-away/Ctrl+Enter/Escape ordering. `src/shared/step.ts` supplies
+  `stepMetrics` for both painting and bounds; it must never read a shape's `lineWidth`.
+  The desktop fixture and CDP regression runner are documented in `TESTING.md`.
+
 - Native lifecycle and OS integrations: `src/main/index.ts`
 - Renderer API boundary: `src/preload/index.ts`
 - Capture/editor controller: `src/renderer/editor.ts`
@@ -86,8 +107,11 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   The Windows picker must remain one compact floating surface rather than a monitor-sized
   transparent BrowserWindow: the latter corrupts paused and playing Chromium video planes. It
   must remain content-protected or the magnifier can enter its own Desktop Duplication sample.
-  Pointer requests stay coalesced to one in flight plus the newest point, and a
-  click rechecks the exact current point. The owned-point displacement must bleed off during coarse
+  Pointer requests stay coalesced to one in flight plus the newest point and preview starts stay
+  capped at 30 per second; Desktop Duplication can otherwise answer pointer-only frames near the
+  mouse polling rate and crowd out rendering. A click bypasses that cadence and rechecks the exact
+  current point. Upload a returned grid as one tiny bitmap rather than restoring the per-cell
+  canvas-fill loop. The owned-point displacement must bleed off during coarse
   movement so an edge is never stranded (D-032), and RGB must never round-trip through integer HSL
   (D-033). The floating surface constrains excess zoom displacement to the actual room around the
   physical pointer, recentres on the physical/owned screen-space midpoint before either reaches its guard, and reinitializes its display

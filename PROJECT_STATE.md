@@ -1,14 +1,39 @@
 # Project State
 
-Last updated: 2026-08-25
+Last updated: 2026-09-09
+
+## 0.40.0 Full Tab fixes
+
+The editor renders vectors directly at display density in a viewport-sized canvas, preserving
+source coordinates and output dimensions. A fixed top dock holds tools and formatting above
+the image across resizing and zoom/pan. Blur/Pixelate still compose at source resolution (D-044).
+Strict type checking, 282 tests, and the production build pass. The desktop fixture verifies
+sharp rectangle edges at about 8x zoom on 150% DPI (one partially covered edge pixel), a top dock
+at four window sizes, and byte-identical 1:1 preview/export image pixels with overlapping Blur
+and Pixelate. Screenshot/export images were visually inspected. Installed app and macOS checks
+remain release acceptance work before publishing the Windows release draft.
+
+## 0.40.0 annotation fixes
+
+Text preserves source-pixel box dimensions, wraps automatically in preview/export, and reopens
+at the same size. Eight live handles and placed-text handles resize the box without scaling its
+font. Step border/bounds now depend only on step size and capture scale (D-043).
+
+Validation: strict type checking, 281 Vitest tests, and production build passed. Native mouse
+input in the real Electron editor on a generated image verified live top-edge resizing,
+committed width/top resizing, unchanged 18px font, reflow, and reopening. The CDP fixture runner
+also checks edit cancellation, independent step/shape/text sizes, and PNG export. The generated
+PNG was visually inspected, including its first-line glyphs. The fixture uses a white image and
+isolated profile; installed clipboard and macOS checks remain release acceptance work.
+These changes are included in the 0.40.0 Windows release preparation.
 
 ## Phase
 
-`0.31.0` is the current source version. The latest published stable release
-remains `0.22.3` until the new artifacts are uploaded; it publishes Windows x64 Setup and Portable
-executables plus Apple Silicon DMG and ZIP previews. Windows x64 remains the only *supported*
-platform; the macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under
-macOS state.
+`0.40.0` is the current source version, prepared as a Windows x64 Setup and Portable release draft.
+The latest published stable release is `0.31.0` (verified on GitHub on 2026-09-09).
+No 0.40.0 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
+older macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS
+state.
 
 The first real macOS pass shipped in 0.20.0, and it went considerably further than expected: capture, annotation, save, clipboard, GIF recording and copy, the menu-bar flow, `Esc` cancellation, the Screen Recording permission flow, and start-at-login all work on macOS 26.2 (arm64). macOS artifacts are attached to the published 0.20.0 but macOS is not a supported platform. The blocker is an Apple Developer ID Application certificate, without which a build cannot be notarized and Gatekeeper refuses it on any machine that downloads it — and an ad-hoc signature also makes the Screen Recording grant lapse on every code change. HDR-correct capture stays Windows-only because it runs through the native helper's FP16 pipeline. **Copy text** is no longer Windows-only: it now runs on macOS through Apple's Vision framework behind a dedicated helper (D-036). See the macOS section below and D-027 through D-030.
 
@@ -21,6 +46,12 @@ reads. Windows asks the HDR-aware native helper only for that small live grid an
 picker windows from capture. Wheel zoom provides five precision levels and the arrow keys nudge one
 pixel. Picking copies the colour to the clipboard and opens a colour window with HEX/RGB/HSL
 controls. See D-032 through D-034 and D-041.
+
+The current picker path also bounds live preview work to 30 sample starts per second and keeps only
+the newest pending point. This prevents high-polling-rate pointer updates—and the heavier macOS
+screen-source fallback—from monopolizing the renderer/helper loop and making the owned selector
+stutter. Returned grids are uploaded as one bitmap; the exact pick path remains uncapped and always
+rechecks the current point. See the latest D-041 amendment.
 
 **The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; it now uses a vivid 52% translucent `source-over` marker blend so every palette colour remains clear over both dark and light captures while the content beneath stays readable. Shift or Ctrl locks it straight, and it keeps its own width and slider range separate from the Pen's. See D-035.
 
@@ -186,13 +217,41 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
-The package version is `0.31.0`. The latest published stable release
-remains v0.22.3 until 0.31.0 is uploaded; it contains Windows Setup and Portable executables plus
-Apple Silicon DMG and ZIP previews. The intermediate `0.24.0` was built and exercised locally but
+The 2026-09-09 `0.40.0` Windows packaging run passed strict type checking, all 282 automated
+tests, and the production build. Both x64 EXEs report file/product version `0.40.0` and
+Authenticode status `NotSigned`:
+
+- Setup: 99,966,554 bytes; SHA-256
+  `d21eb0cfe85e07c93c04483182568e4564bc0a6b52e21173032882b73169c6e1`.
+- Portable: 99,715,165 bytes; SHA-256
+  `db57dea3a3aaaf8e5a1c995c9e2c496bec072f28a3ccf9d7e21a4dd6c15bf12e`.
+
+Extracted `app.asar` and native capture helper files match byte-for-byte across Setup, Portable,
+and `win-unpacked`. The packaged helper's tone-map self-test passed. The desktop annotation
+fixture loaded the packaged renderer/preload and passed text/step regressions, sharp zoomed edges
+at 150% DPI, fixed top docking at four window sizes, and byte-identical 1:1 preview/export pixels
+with overlapping Blur/Pixelate. Packaging checks do not constitute an installed-app acceptance
+pass: installer/portable end-to-end capture, real clipboard, and upgrade checks remain before
+publication. No macOS build was made. The release is prepared as a draft, with both EXEs and a
+version-specific SHA-256 file; the anonymous latest-release endpoint still returns `v0.31.0`.
+
+`release/BUILD-INFO.txt` inventories the current directory, including retained older artifacts.
+Use `release/SHA256SUMS-0.40.0.txt` for the two files attached to the 0.40.0 draft.
+
+The package version is `0.40.0`. The latest published stable release remains v0.31.0. The
+intermediate `0.24.0` was built and exercised locally but
 never published, and `0.30.0` was tagged and briefly published before being withdrawn because its
 macOS artifact post-dated its tag; the contents of both ship as part of `0.31.0`, and neither tag
 exists. Windows binaries are not Authenticode-signed and may trigger an
 unknown-publisher warning; macOS packages are ad-hoc signed, unnotarized, and unsupported.
+
+The 2026-09-02 `0.31.1` Windows packaging run passed strict type checking, all 266 automated tests,
+and the production main/preload/renderer build before producing fresh x64 Setup and Portable
+executables. Both report product/file version `0.31.1` and are unsigned. Setup SHA-256 is
+`1eb0c628a1bfe859df06f2103b9e8b59f79af90b76d5933219b639556112b576`; Portable is
+`30e97d61d331b509bc99f8921269df48e0f63aa08602ae3326d2e2fbbae0be56`.
+At that time, `release/BUILD-INFO.txt` inventoried only those two executables. No tag, publication, or macOS
+package was created.
 
 `0.1.0` through `0.11.0` are superseded. `0.1.0` was never released, and the duplicate `release-update/` directory has been deleted.
 

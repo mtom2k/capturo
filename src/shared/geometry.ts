@@ -15,14 +15,14 @@ export function integerRect(rect: Rect): Rect {
 }
 
 // Fits a captured image into the normal detached editor window. The top reserve gives the
-// floating toolbar a stable home, while equal side/bottom padding keeps the image visually
+// toolbar a stable home, while equal side/bottom padding keeps the image visually
 // centered in the remaining workspace. Returned coordinates are CSS pixels.
 export function detachedEditorCanvasRect(
   image: { width: number; height: number },
-  viewport: { width: number; height: number }
+  viewport: { width: number; height: number },
+  topReserve = 76
 ): Rect {
   const sidePadding = 24
-  const topReserve = 76
   const bottomPadding = 24
   const imageWidth = Math.max(1, image.width)
   const imageHeight = Math.max(1, image.height)

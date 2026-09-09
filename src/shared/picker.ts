@@ -29,6 +29,19 @@ export const PICKER_ZOOM_LEVELS = [
 ] as const
 export const DEFAULT_PICKER_ZOOM_INDEX = 0
 
+// Live preview samples cannot be displayed more often than the selector is painted, and desktop
+// capture may report pointer-only updates at the mouse's polling rate. Bound the expensive
+// main/helper round trip so those updates never starve the renderer's pointer and animation work.
+// A click still requests its exact point immediately in picker-live.ts.
+export const PICKER_SAMPLE_INTERVAL_MS = 1000 / 30
+
+/** Remaining delay before another live preview sample may start. */
+export function pickerSampleDelay(lastStartedAt: number, now: number): number {
+  if (!Number.isFinite(lastStartedAt)) return 0
+  const elapsed = Number.isFinite(now) ? Math.max(0, now - lastStartedAt) : 0
+  return Math.max(0, PICKER_SAMPLE_INTERVAL_MS - elapsed)
+}
+
 /**
  * Converts Electron's display size from DIP units to source-image pixels.
  *

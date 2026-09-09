@@ -8,7 +8,37 @@ Run the complete non-GUI gate with:
 npm run build
 ```
 
-This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering, settings normalization, and screen-permission routing.
+This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering—including the 30 Hz live-sample cadence and single-bitmap grid upload—settings normalization, and screen-permission routing.
+
+## Text boxes and independent step sizes (D-043)
+
+Run `npm run build`, then launch the generated-image desktop fixture:
+
+```powershell
+node_modules/electron/dist/electron.exe tests/fixtures/annotation-app.cjs --remote-debugging-port=9235 --inspect=9236
+node tests/fixtures/annotation-smoke.mjs
+```
+
+The fixture uses the actual built editor/preload with a white image, isolates its profile under
+`tmp-annotation-smoke`, and writes generated test exports there. The runner checks live north-edge
+resizing, placed width resizing, font/box persistence, Escape cancellation, step/shape/text size
+independence, and PNG export. Inspect `tmp-annotation-smoke/save.png` for wrapping and unclipped
+first-line glyphs. It does not prove installed clipboard behavior or native screen capture.
+
+The same runner covers D-044: near-8x zoom must show a sharp rectangle edge with at most two
+partially covered device pixels; the backing-store ratio must match devicePixelRatio. It resizes
+the window to 720x520, 1500x950, 820x900, and 1100x744, checking both tool rows stay inside the
+top dock and the canvas stays below it. At 1:1 it compares preview against exported PNG pixels,
+including overlapping Blur/Pixelate, and verifies the output stays 1000x620. It saves a preview
+in `tmp-annotation-smoke/editor.png`. Also exercise maximizing, panning, and moving the window
+between monitors with different DPI; existing screenshot pixels cannot gain detail under zoom.
+
+For the desktop pass, type a paragraph without Enter, resize each edge/corner while editing and
+with Select after placement, and verify only those edges move. Widening recombines lines; the
+font-size menu alone changes lettering size. Reopen with a double-click, edit, click away, and
+compare the PNG. Repeat at scaled DPI and Full Tab zoom. Make a box too short, then enlarge it
+and verify all text returns. Set rectangle/ellipse stroke to 1 and 24px and place steps after
+each: their size and border must match. Selecting a step must preserve shape stroke and text size.
 
 ## Diagnosing a washed or over-saturated capture on HDR
 
@@ -72,7 +102,7 @@ Verify on at least 100% and one scaled DPI setting:
 6. Add text in every font family and size, including bold, italic, multiple lines, Escape cancel, and `Ctrl+Enter` commit.
     - **Clicking away places the text.** Type into a text box and click elsewhere inside the selection: the text must be placed at its original point and a fresh empty box must open where you clicked. Repeat clicking outside the selection and clicking a toolbar button; both must place the text and close the box. A box holding only whitespace must place nothing.
     - **Escape unwinds one level.** With a text box open and text typed, one Escape must discard that text and leave the capture, the selection, and every other annotation intact. Only a second Escape cancels the capture. Verify this from a box opened by double-clicking existing text as well as a new one.
-    - **Resize grip.** The corner grip must be easy to grab without precise aiming, including from just outside the box, and must resize on drag without placing or closing the text. Keep typing after a manual resize and confirm the box keeps the size you dragged rather than snapping back to fit the content.
+    - **Resize grips.** All eight edge/corner grips must be reachable, including from just outside the box, and resize without placing or closing the text. Each edge moves only its own side. Keep typing after a manual resize and confirm the box keeps its size rather than snapping back to fit the content.
 7. Apply Blur and Pixelate over fine text. Each tool must show **Intensity**, never **Size**, as a live 1-100% slider with a clear hover explanation. At 1%, text should be only lightly obscured; at 50%, the effect should be visibly stronger; at 100%, Blur should use its widest radius and Pixelate its largest blocks. Select each existing region and confirm its percentage is restored, then change it and confirm both the preview and exported image (not only the selection overlay) match the new strength.
 8. Verify `Ctrl+C`, `Ctrl+S`, toolbar Copy, toolbar Save, Undo, and Escape.
     - **Open in full tab.** Confirm the cyan action is exactly between **Copy text** and **Save**.
@@ -158,8 +188,11 @@ Verify on at least 100% and one scaled DPI setting:
       picker window lost content protection. Move rapidly and confirm the magnifier catches the
       newest point rather than replaying a long backlog of old positions.
     - Keep the pointer moving in large circles for at least five seconds. The magnifier must remain
-      visible and centred throughout motion, not disappear until the pointer stops. Its placement
-      should update on every movement while the grid refreshes at the live sampler's cadence.
+      visible, centred, and smooth throughout motion, not disappear or stutter until the pointer
+      stops. Its placement should update on every display frame while the grid refreshes at the live
+      sampler's cadence. Repeat with a high-polling-rate mouse if available: preview sample work is
+      capped at 30 starts per second and must not slow selector motion; clicking must still return
+      the exact current pixel rather than the latest cadence-limited preview.
     - The system cursor must disappear and the magnifier take its place, **centred on the pixel it is reading**, with that pixel outlined in the middle of the aperture and the hex below. Move the physical mouse as fast as possible at every zoom level and confirm the arrow never flashes through. Cancel and pick normally, confirming the cursor is restored on both exit paths. Check the outline stays visible over both white and black areas.
     - **The magnifier must be on the pointer the instant the picker opens, before the mouse is moved at all.** Park the pointer somewhere distinctive, invoke the picker, and confirm the aperture is centred there rather than in the middle of the screen. Repeat near each screen edge and corner: the centre must stay on the pixel even where that means the magnifier is clipped by the edge — it must never slide inwards to fit, because that would put its centre on a different pixel than the one it reports.
     - Hover a known color (a saturated app icon, pure white, pure black) and confirm the hex is exactly right rather than approximately right. Compare against the same pixel in a saved screenshot.
@@ -336,3 +369,8 @@ npm run dist:mac
 ```
 
 Install and launch the packaged binary; do not treat a development preview as sufficient release validation.
+
+For the 0.40.0 editor regression runner, set `CAPTURO_ANNOTATION_APP_ROOT` to the absolute
+`release/win-unpacked/resources/app.asar` path before launching `annotation-app.cjs`. This loads
+the packaged renderer and preload with the generated-image fixture. It checks shipped editor
+assets, but does not replace installer acceptance or the real clipboard/export workflow.

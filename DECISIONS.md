@@ -1,5 +1,41 @@
 ﻿# Decision Log
 
+## D-043: Text retains its box; numbered steps own their border size
+
+**Status:** accepted, 2026-09-09
+
+Text retains its source-pixel box dimensions, origin, and original text. Wrapping is measured
+layout, not inserted newlines, so widening recombines lines. Explicit newlines and graphemes
+survive. Canvas preview/export share wrapping, CSS-compatible 1.25 line height, and box clipping;
+a short box retains hidden text for later enlargement. The textarea reopens the same box.
+Its eight handles and placed-text handles move only the requested edges. Font size changes
+through its menu, never as a side effect of resizing. Legacy commands without a box remain
+readable until edited/resized. This supersedes the single corner grip described in D-031;
+its commit/cancel focus rules remain in force.
+
+Step size was already separate, but its white stroke and hit bounds read the shared shape
+`lineWidth`. Step radius/border now share one function driven by step size and capture scale.
+Selecting step, text, or highlighter must not overwrite another tool's size defaults.
+
+## D-044: Full Tab has a display-resolution preview and a fixed top dock
+
+**Status:** accepted, 2026-09-09
+
+The source-resolution canvas was being enlarged with CSS in Full Tab, magnifying rasterized
+annotation edges and softening small captures on scaled displays. Keep source geometry and
+export resolution separate from a viewport-sized, device-pixel preview. Replay vectors directly
+under the source-to-display transform; only screenshot pixels and already-flattened edits remain
+bitmaps. Zoom must never allocate a canvas as large as the entire magnified screenshot.
+
+Privacy effects use a source-sized scratch composite and copy whole-pixel patches into preview,
+preserving source sampling, annotation order, and export behavior. Display-sized canvas bounds
+must never replace source-image bounds in interaction math.
+
+The capture overlay's below/above-selection toolbar algorithm is inappropriate for a normal
+editor window. Full Tab uses a fixed top dock for both tool rows, with measured height and image
+padding. It clips the preview surface below the dock regardless of zoom or pan. This amends
+D-039's fitted editor layout; the transfer/lifecycle contract remains unchanged.
+
 ## D-001: Electron with a framework-free renderer
 
 **Status:** accepted
@@ -826,6 +862,17 @@ nothing on macOS even though type checking and the Windows path passed. The pick
 display's source-image width and height, not a converted desktop origin; those dimensions now come
 from `Display.size × Display.scaleFactor`. Windows-only native-helper calls may still use the
 screen conversion API for physical output origins, but no shared or macOS picker path may do so.
+
+**Amended 2026-09-02: live preview work is cadence-bounded.** One-in-flight/latest-wins coalescing
+bounded queue length but not throughput. Desktop Duplication may complete on pointer-only updates,
+so a high-polling-rate mouse could drive the helper, IPC parsing, and magnifier rebuild far faster
+than the display could paint them. The fallback path was costlier still because each request reads
+a fresh screen source, explaining the intermittent form of the same stutter on macOS. Preview
+sampling now starts at most 30 times per second and still retains only the newest requested point;
+clicking bypasses that cadence and obtains an exact current-point sample. The returned grid is also
+uploaded to a tiny canvas as one bitmap and nearest-neighbour scaled into the aperture rather than
+issuing one canvas fill per source pixel. Selector movement remains frame-driven and independent of
+sample completion.
 
 ## D-042: Panoramic Scrolling is user-driven overlap stitching
 

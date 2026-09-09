@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.31.0-blue)
+![version](https://img.shields.io/badge/version-0.40.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -38,16 +38,20 @@ The 0.22.3 release publishes all four artifacts. Local copies are kept in `relea
 release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source is **0.31.0**. The newest published stable release is still **0.22.3** until the 0.31.0
-artifacts are uploaded to GitHub; that release publishes Windows x64 Setup and Portable executables
-plus ad-hoc-signed Apple Silicon DMG and ZIP previews. The Windows executables for 0.31.0 have not
-been built yet — the withdrawn 0.30.0 ones predate the macOS Panoramic Scrolling change and must not
-be reused under this version. Windows
-x64 remains the only supported platform — see [macOS](#-macos) before downloading the preview.
+Source is **0.40.0**, prepared as a Windows x64 Setup and Portable release draft. The newest
+published stable release is **0.31.0**; drafts are not offered by the in-app update checker.
+No 0.40.0 macOS package was produced by this Windows build. Windows x64 remains the only supported
+platform — see [macOS](#-macos) before downloading an older preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.31.0 adds direction-free **Panoramic Scrolling** on Windows and macOS, a live captured-area
+Version 0.40.0 adds persistent, automatically wrapping text boxes with directional resize handles,
+separates numbered-step sizing from shape stroke width, and renders editable text and shapes at
+display resolution in Full Tab. Tools and formatting stay in a fixed top dock above the capture
+when resizing or zooming. It also includes the local 0.31.1 improvement that makes the live
+**Color Picker** responsive under high-rate mouse input by bounding
+preview sampling work and drawing each sampled grid as a single bitmap. Exact click sampling remains
+uncapped. Version 0.31.0 adds direction-free **Panoramic Scrolling** on Windows and macOS, a live captured-area
 miniature with unique-coverage tracking, an outline marking the viewport being followed, and
 zoom/pan controls in Full Tab. Your mouse pointer stays visible throughout and is kept out of the
 stitched image rather than hidden from you. It also hardens HDR capture: the SDR white level the
@@ -146,6 +150,12 @@ The Full Tab toolbar includes zoom-out, percentage/Fit, and zoom-in controls. `C
 `Ctrl/Cmd+-`, and `Ctrl/Cmd+0` provide the same actions; Ctrl/Cmd-wheel zooms around the pointer and
 an ordinary wheel pans when the image is larger than the editor workspace.
 
+Full Tab keeps the toolbar and format row in a fixed top dock with space reserved below for the
+image. Resizing, maximizing, zooming, and panning do not move the tools beside or below the capture.
+Editable annotations render at the display's pixel density for sharp text and shapes while zooming.
+The screenshot itself (including edits already flattened before opening Full Tab) retains its
+original bitmap detail. Copy and Save keep the original image dimensions.
+
 ### Panoramic Scrolling
 
 On Windows, select the visible viewport you want to extend and choose the amber **Panoramic
@@ -176,7 +186,15 @@ menu bar or the Dock, because AppKit would otherwise slide it back into the visi
 capturable bar that moves into the selected viewport would be stitched into the image. Where a region
 leaves no room outside it, Capturo declines to start rather than record its own chrome.
 
-Text is placed by clicking away from the box or pressing `Ctrl/Cmd+Enter`; `Esc` discards it, and a second `Esc` cancels the capture. Drag the box's bottom-right corner to resize it, and double-click placed text with Select to edit it again.
+Text wraps automatically to its box width, including after placement and in the exported image.
+Click away or press `Ctrl/Cmd+Enter` to place it; `Esc` discards the edit, and a second `Esc`
+cancels the capture. Drag any of the eight edge/corner handles to resize the box. An edge moves
+only that side; resizing reflows text without changing its font size. Use the font-size menu to
+change lettering size. With Select, resize placed text directly or double-click to edit its contents
+in the same box. Text outside a box made too short is clipped; enlarge its height to reveal it.
+
+Numbered steps keep their own Size setting. Their white border and selection bounds are independent
+of the Pen, Rectangle, and Ellipse stroke widths.
 
 ### Copy text
 

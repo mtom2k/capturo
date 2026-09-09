@@ -14,6 +14,8 @@ import {
   magnifierRegion,
   nudgePointer,
   parseRgbHexGrid,
+  PICKER_SAMPLE_INTERVAL_MS,
+  pickerSampleDelay,
   pixelAt,
   pointDelta,
   stepPickerZoomIndex
@@ -29,6 +31,24 @@ describe('displayPixelSize', () => {
   it('rounds fractional scaled dimensions up and survives an invalid scale factor', () => {
     expect(displayPixelSize({ width: 1365, height: 768 }, 1.25)).toEqual({ width: 1707, height: 960 })
     expect(displayPixelSize({ width: 800, height: 600 }, Number.NaN)).toEqual({ width: 800, height: 600 })
+  })
+})
+
+describe('pickerSampleDelay', () => {
+  it('starts the first live sample immediately', () => {
+    expect(pickerSampleDelay(Number.NEGATIVE_INFINITY, 100)).toBe(0)
+  })
+
+  it('limits preview sampling to 30 starts per second', () => {
+    expect(PICKER_SAMPLE_INTERVAL_MS).toBeCloseTo(1000 / 30)
+    expect(pickerSampleDelay(100, 105)).toBeCloseTo(PICKER_SAMPLE_INTERVAL_MS - 5)
+    expect(pickerSampleDelay(100, 100 + PICKER_SAMPLE_INTERVAL_MS)).toBe(0)
+    expect(pickerSampleDelay(100, 1000)).toBe(0)
+  })
+
+  it('does not grant negative or invalid elapsed time extra sample capacity', () => {
+    expect(pickerSampleDelay(100, 90)).toBeCloseTo(PICKER_SAMPLE_INTERVAL_MS)
+    expect(pickerSampleDelay(100, Number.NaN)).toBeCloseTo(PICKER_SAMPLE_INTERVAL_MS)
   })
 })
 

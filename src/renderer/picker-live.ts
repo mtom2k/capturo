@@ -14,6 +14,7 @@ import {
   magnifierPlacement,
   nudgePointer,
   parseRgbHexGrid,
+  pickerSampleDelay,
   pointDelta,
   stepPickerZoomIndex
 } from '../shared/picker'
@@ -28,6 +29,11 @@ const canvasContext = canvas.getContext('2d')!
 // in one atomic frame, so Chromium never has a separately moving transparent layer to retain.
 const aperture = document.createElement('canvas')
 const apertureContext = aperture.getContext('2d')!
+// Upload each returned grid as one tiny bitmap, then scale it into the device-pixel-backed
+// aperture. Repainting hundreds of individual cells for every live sample can monopolize the
+// renderer precisely while it is also trying to process high-rate pointer input.
+const samplePixels = document.createElement('canvas')
+const samplePixelsContext = samplePixels.getContext('2d')!
 const status = document.querySelector<HTMLElement>('#status')!
 
 const MAGNIFIER_SIZE = 200
@@ -54,6 +60,8 @@ let sampled: SampledGrid | null = null
 let renderedSample: SampledGrid | null = null
 let desiredSample: DesiredSample | null = null
 let sampling = false
+let sampleTimer: number | null = null
+let lastSampleStartedAt = Number.NEGATIVE_INFINITY
 let zoomIndex = DEFAULT_PICKER_ZOOM_INDEX
 let picked = false
 let hasPointer = false
@@ -233,6 +241,17 @@ function setStatus(message: string): void {
 
 function drawMagnifier(grid: SampledGrid): void {
   const cell = MAGNIFIER_SIZE / grid.cells
+  if (samplePixels.width !== grid.cells || samplePixels.height !== grid.cells) {
+    samplePixels.width = grid.cells
+    samplePixels.height = grid.cells
+  }
+  // Copy into an ArrayBuffer-backed view: IPC/Blob decode types may permit SharedArrayBufferLike,
+  // while ImageData deliberately accepts only renderer-owned ArrayBuffer storage.
+  samplePixelsContext.putImageData(
+    new ImageData(new Uint8ClampedArray(grid.data), grid.cells, grid.cells),
+    0,
+    0
+  )
   apertureContext.clearRect(0, 0, MAGNIFIER_SIZE, MAGNIFIER_SIZE)
   apertureContext.save()
   apertureContext.beginPath()
@@ -240,13 +259,8 @@ function drawMagnifier(grid: SampledGrid): void {
   apertureContext.clip()
   apertureContext.fillStyle = '#050910'
   apertureContext.fillRect(0, 0, MAGNIFIER_SIZE, MAGNIFIER_SIZE)
-  for (let row = 0; row < grid.cells; row++) {
-    for (let column = 0; column < grid.cells; column++) {
-      const index = (row * grid.cells + column) * 4
-      apertureContext.fillStyle = `rgb(${grid.data[index]}, ${grid.data[index + 1]}, ${grid.data[index + 2]})`
-      apertureContext.fillRect(column * cell, row * cell, cell + 1, cell + 1)
-    }
-  }
+  apertureContext.imageSmoothingEnabled = false
+  apertureContext.drawImage(samplePixels, 0, 0, grid.cells, grid.cells, 0, 0, MAGNIFIER_SIZE, MAGNIFIER_SIZE)
   apertureContext.strokeStyle = 'rgba(0, 0, 0, 0.16)'
   apertureContext.lineWidth = 1
   for (let index = 1; index < grid.cells; index++) {
@@ -353,21 +367,35 @@ function paintBeforeWindowMove(): Promise<void> {
   })
 }
 
+async function sampleNext(): Promise<void> {
+  sampleTimer = null
+  if (sampling || !desiredSample || !payload || picked) return
+  const target = desiredSample
+  desiredSample = null
+  sampling = true
+  lastSampleStartedAt = performance.now()
+  try {
+    const next = await fetchSample(target.point, target.cells)
+    if (next && next.displayId === payload?.displayId && next.cells === activeZoom().cells) sampled = next
+    updateMagnifier()
+  } catch {
+    // The session may close while an IPC sample is in flight. There is nothing left to render.
+  } finally {
+    sampling = false
+    scheduleSample()
+  }
+}
+
+function scheduleSample(): void {
+  if (sampling || sampleTimer !== null || !desiredSample || !payload || picked) return
+  const delay = pickerSampleDelay(lastSampleStartedAt, performance.now())
+  sampleTimer = window.setTimeout(() => void sampleNext(), delay)
+}
+
 function queueSample(): void {
   desiredSample = { point: roundedPoint(pointer.point), cells: activeZoom().cells }
   updateMagnifier()
-  if (sampling) return
-  sampling = true
-  void (async () => {
-    while (desiredSample && payload && !picked) {
-      const target = desiredSample
-      desiredSample = null
-      const next = await fetchSample(target.point, target.cells)
-      if (next && next.displayId === payload?.displayId && next.cells === activeZoom().cells) sampled = next
-      updateMagnifier()
-    }
-    sampling = false
-  })()
+  scheduleSample()
 }
 
 function movePointer(event: PointerEvent): void {
@@ -531,6 +559,9 @@ function initialize(nextPayload: ColorPickerPayload): void {
   sampled = null
   renderedSample = null
   desiredSample = null
+  if (sampleTimer !== null) window.clearTimeout(sampleTimer)
+  sampleTimer = null
+  lastSampleStartedAt = Number.NEGATIVE_INFINITY
   floatingRegionOrigin = { ...nextPayload.regionOrigin }
   configureCanvasResolution()
   applySafeArea(nextPayload.safeArea)

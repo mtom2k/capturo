@@ -27,6 +27,14 @@ describe('live picker sampling continuity', () => {
     expect(pickerRenderer).toMatch(/next\.displayId === payload\?\.displayId/)
   })
 
+  it('bounds preview sampling and uploads each grid as one bitmap', () => {
+    expect(pickerRenderer).toMatch(/pickerSampleDelay\(lastSampleStartedAt, performance\.now\(\)\)/)
+    expect(pickerRenderer).toMatch(/sampleTimer = window\.setTimeout\(\(\) => void sampleNext\(\), delay\)/)
+    expect(pickerRenderer).toMatch(/samplePixelsContext\.putImageData\(\s*new ImageData/)
+    expect(pickerRenderer).toMatch(/apertureContext\.drawImage\(samplePixels/)
+    expect(pickerRenderer).not.toMatch(/for \(let row = 0; row < grid\.cells; row\+\+\)/)
+  })
+
   it('uses absolute screen positions so BrowserWindow recentering cannot corrupt pointer deltas', () => {
     expect(pickerRenderer).toMatch(/pointFromScreen\(event\.screenX, event\.screenY\)/)
     expect(pickerRenderer).toMatch(/const delta = pointDelta\(observedCursor, nextCursor\)/)

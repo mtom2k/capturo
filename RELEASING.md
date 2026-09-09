@@ -2,6 +2,11 @@
 
 ## Version and state
 
+The 0.40.0 Windows release is being prepared as a **draft** with Setup and Portable artifacts.
+Target the exact pushed release commit when creating the draft, attach both executables with
+their SHA-256 checksums, and verify `isDraft` after uploading. Publishing is a separate action;
+the latest stable release remains 0.31.0 until then.
+
 1. Update `version` in `package.json` and regenerate `package-lock.json` with `npm install`.
 2. Update `PROJECT_STATE.md` and any changed architectural decisions.
 3. Run `npm run build` and the platform desktop matrix in `TESTING.md`.
@@ -134,6 +139,10 @@ untestable and can appear to work when it will not for a real user.
 - Artifact names are distinct and include version and architecture.
 - Installed and portable launches are tested independently when both are intended for publication; otherwise the published target is stated consistently in the release notes and project documentation.
 - Tray/menu-bar icon is correct at standard and high DPI.
+- Full Tab annotations stay sharp at scaled DPI/zoom, and both toolbar rows stay docked above
+  the image after resizing/maximizing. Export dimensions and privacy-effect results must agree.
+- Text wraps consistently between editing, placement and PNG export; all eight resize handles
+  preserve font size and opposite edges. Step borders remain independent of shape stroke width.
 - No capture data is written unless the user chooses Save or explicitly copies an unsaved GIF.
 - Copy text uses the packaged local helper, requires no network, and reports missing/no-text cases without closing the editor.
 - No unexpected network traffic or telemetry is introduced; the optional GitHub release check must match the documented privacy boundary.
