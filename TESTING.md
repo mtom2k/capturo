@@ -10,6 +10,28 @@ npm run build
 
 This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering—including the 30 Hz live-sample cadence and single-bitmap grid upload—settings normalization, and screen-permission routing.
 
+## Pinned screenshots (D-045)
+
+`tests/pin.test.ts` exercises real manager logic with Electron mocks: decoded reveal, owner/frame
+isolation, opacity input validation, original-image copy, startup failure/crash/timeout cleanup,
+independent windows, capacity recovery, pixel limits, and placement on scaled/negative displays.
+
+For the actual Windows main/preload/editor workflow, build and launch an isolated development
+instance, then run the smoke script:
+
+```powershell
+$env:CAPTURO_CAPTURE_ON_START = '1'
+Start-Process node_modules/electron/dist/electron.exe -ArgumentList '.', '--remote-debugging-port=9235', '--inspect=9236' -WindowStyle Hidden
+node tests/fixtures/pin-smoke.mjs
+```
+
+The runner uses generated image content, copies it through the real clipboard and restores common
+text/HTML/RTF/image formats, verifies both editor entry paths and new-capture survival, and writes
+`tmp-pin-smoke/pin.png`. It quits that test app afterward. Set `CAPTURO_PIN_SMOKE_KEEP_OPEN=1`
+in the runner's environment to retain generated pins for a manual native drag/edge-resize pass.
+Verify transparency, 25%/100% opacity, Ctrl/Cmd+C, close buttons, keyboard focus, and moving across
+different-DPI displays. Repeat on macOS and in a packaged app before release.
+
 ## Text boxes and independent step sizes (D-043)
 
 Run `npm run build`, then launch the generated-image desktop fixture:

@@ -191,6 +191,7 @@ export type CapturoApi = {
   copyImage: (sessionId: string, dataUrl: string) => Promise<boolean>
   copyText: (sessionId: string, dataUrl: string) => Promise<CopyTextResult>
   openDetachedEditor: (sessionId: string, dataUrl: string, forcePng: boolean) => Promise<OpenDetachedEditorResult>
+  pinImage: (sessionId: string, dataUrl: string) => Promise<import('./pin').PinResult>
   saveImage: (sessionId: string, dataUrl: string, forcePng?: boolean) => Promise<SaveResult>
   cancelSession: (sessionId: string) => Promise<void>
 }

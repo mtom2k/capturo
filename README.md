@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.40.0-blue)
+![version](https://img.shields.io/badge/version-0.41.0-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -38,14 +38,15 @@ The 0.22.3 release publishes all four artifacts. Local copies are kept in `relea
 release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source is **0.40.0**, prepared as a Windows x64 Setup and Portable release draft. The newest
-published stable release is **0.31.0**; drafts are not offered by the in-app update checker.
-No 0.40.0 macOS package was produced by this Windows build. Windows x64 remains the only supported
+Source is **0.41.0**, prepared as a new Windows x64 Setup and Portable release draft with Pin to desktop.
+The older 0.40.0 GitHub release draft is separate; local packages and drafts are not offered by the
+in-app update checker. No 0.41.0 macOS package was produced by this Windows build. Windows x64 remains the only supported
 platform — see [macOS](#-macos) before downloading an older preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 
-Version 0.40.0 adds persistent, automatically wrapping text boxes with directional resize handles,
+Version 0.41.0 adds independent pinned screenshots with always-on-top, move/resize, adjustable
+opacity, and original-resolution Copy. Version 0.40.0 adds persistent, automatically wrapping text boxes with directional resize handles,
 separates numbered-step sizing from shape stroke width, and renders editable text and shapes at
 display resolution in Full Tab. Tools and formatting stay in a fixed top dock above the capture
 when resizing or zooming. It also includes the local 0.31.1 improvement that makes the live
@@ -113,6 +114,8 @@ Build it yourself with `npm run dist:mac`. Arm64 only unless you ask for `--x64`
 - Build long two-dimensional screenshots on Windows with **Panoramic Scrolling**, moving up, down,
   left, or right while Capturo maps only newly revealed pixels.
 - Draw with Pen, Highlighter, Line, Arrow, Rectangle, Ellipse, numbered Step, and Text tools.
+- Pin a screenshot above other windows as a movable, resizable reference with adjustable opacity
+  and original-resolution Copy.
 - Highlight with a vivid translucent marker stroke that remains visible on both light and dark
   captures while the marked content stays readable. Hold **Shift** or **Ctrl** to run it straight
   along a line of text.
@@ -155,6 +158,21 @@ image. Resizing, maximizing, zooming, and panning do not move the tools beside o
 Editable annotations render at the display's pixel density for sharp text and shapes while zooming.
 The screenshot itself (including edits already flattened before opening Full Tab) retains its
 original bitmap detail. Copy and Save keep the original image dimensions.
+
+### Pin to desktop
+
+Choose the **Pin** button beside Open in full tab to keep the selected, annotated image above
+other windows. Pinning from the capture overlay returns you to the desktop; pinning from Full Tab
+leaves the editor open. Each pin is a separate snapshot, so later edits do not change it.
+
+Drag the image or header to move the pin and drag a window edge/corner to resize it. The image
+keeps its proportions. Use **Opacity** (25–100%) to see through it. **Copy** or `Ctrl/Cmd+C`
+copies the original-resolution image regardless of the window's size or opacity. **×** or `Esc`
+closes the focused pin. Several pins can stay open while you start another capture.
+
+Pins are temporary and stay in memory; closing them or quitting Capturo discards them. They are
+ordinary visible desktop content and can appear in later screenshots. Up to eight pins are allowed,
+subject to image-memory limits. Pinning is included in 0.41.0.
 
 ### Panoramic Scrolling
 

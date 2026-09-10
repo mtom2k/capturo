@@ -44,6 +44,22 @@ That divisor is the whole frame's exposure, so it is resolved rather than guesse
 
 Capturo currently selects within one display at a time. This is deliberate: spanning displays with different scale factors requires a normalized virtual-desktop compositor and is outside the minimal first release.
 
+## Pinned screenshots
+
+`capture:pin` accepts a bounded PNG composite only from an active screenshot editor or the owned
+Full Tab editor, with session and main-frame validation. `PinManager` in `src/main/pins.ts` owns
+independent always-on-top, frameless, resizable windows, each with a sandboxed `pin.html` renderer.
+The renderer pulls PNG bytes and acknowledges successful image decoding before main reveals it.
+Only then may the originating overlay close; Full Tab remains editable. Pending text and
+transparency edits are committed before the Pin export.
+
+Pin IPC resolves the sender's own map entry and rejects child frames and other windows. Opacity
+accepts only finite values from 0.25 to 1. Copy decodes retained PNG bytes directly, independent
+of presentation size/opacity. Each pin owns its payload until close; renderer death, load failure,
+ten-second startup timeout, and app quit release it. There is no history, disk write, or external
+URL/file API. Eight pins, 40 million pixels per pin, and 80 million pixels in total bound retention.
+Pins are visible desktop content, not excluded capture overlays. See D-045.
+
 ## Annotation model
 
 Full Tab preview uses a workspace-sized canvas backed by device pixels (D-044), clipped below a

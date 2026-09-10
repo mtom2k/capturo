@@ -2,10 +2,14 @@
 
 ## Start here
 
-The current source version is **0.40.0**, prepared for a Windows Setup and Portable release draft.
-The editor changes are documented in D-043/D-044; validation and packaging evidence live in
-`PROJECT_STATE.md`. The latest published stable release is 0.31.0. Keep the new release a draft
-until its remaining installed-app acceptance checks are complete.
+Version **0.41.0** includes **Pin to desktop**, following the 0.40.0 draft. See D-045 and the
+pinned-screenshot section in `TESTING.md`. The Pin action is available in both editors; the
+new renderer/main manager are `pin.ts`/`pins.ts`. Local 0.41.0 Setup and Portable packages include it.
+
+The current source version is **0.41.0**, prepared as a new GitHub release draft with both Windows
+packages and checksums. The editor changes are documented in D-043/D-044/D-045;
+validation and packaging evidence live in `PROJECT_STATE.md`. The existing 0.40.0 GitHub draft
+does not include pinning. Complete the remaining installed-app acceptance checks before publication.
 
 Read `PROJECT_STATE.md`, then run:
 

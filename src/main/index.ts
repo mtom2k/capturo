@@ -18,6 +18,9 @@ import {
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { PinManager } from './pins'
+import type { PinResult } from '../shared/pin'
+
 import type {
   CapturePayload,
   CopyTextResult,
@@ -156,6 +159,7 @@ let systemCursorHiddenForPicker = false
 // destroy work that the user moved aside. A second detach focuses this editor instead of replacing
 // an unsaved image.
 let detachedEditor: DetachedEditorState | null = null
+let pins: PinManager | null = null
 let settingsWindow: BrowserWindow | null = null
 // The GIF recording control window, plus which display it records and how. The display id
 // drives setDisplayMediaRequestHandler so the renderer's getDisplayMedia targets it.
@@ -1367,6 +1371,31 @@ function fromSettingsWindow(event: Electron.IpcMainInvokeEvent): boolean {
 }
 
 function registerIpc(): void {
+  pins = new PinManager({
+    preload: path.join(__dirname, '../preload/index.js'), icon: taskbarIcon(),
+    load: (window) => {
+      const devUrl = rendererUrl()
+      return devUrl ? window.loadURL(`${devUrl}/pin.html`) : window.loadFile(path.join(__dirname, '../renderer/pin.html'))
+    }
+  })
+  ipcMain.handle('capture:pin', async (event, sessionId: string, dataUrl: unknown): Promise<PinResult> => {
+    const owner = validCaptureOwner(event, sessionId)
+    if (!owner || !pins || event.senderFrame !== event.sender.mainFrame) return { opened: false, error: 'This capture is no longer available.' }
+    if (owner.kind === 'overlay' && owner.session.overlays.get(event.sender.id)?.payload.role !== 'editor') {
+      return { opened: false, error: 'Select a screenshot before pinning it.' }
+    }
+    if (typeof dataUrl !== 'string' || dataUrl.length > MAX_DETACHED_IMAGE_DATA_URL_CHARS) {
+      return { opened: false, error: 'This selection is too large to pin.' }
+    }
+    const image = imageFromDataUrl(dataUrl)
+    if (!image) return { opened: false, error: 'Capturo could not prepare this selection.' }
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const display = window ? screen.getDisplayMatching(window.getBounds()) : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    const result = await pins.open(image, display)
+    // Keep Full Tab editable. Release overlays only once the pin has decoded and appeared.
+    if (result.opened && owner.kind === 'overlay') setImmediate(() => closeCaptureOwner(owner))
+    return result
+  })
   ipcMain.handle('settings:get', () => getSettings())
 
   // Renderer-owned initialization handshake. Returning the payload from an invoke means the
@@ -2741,6 +2770,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     isQuitting = true
     closeSession()
+    pins?.closeAll()
     closePickerSession()
     closeRecording()
     closeScrollingCapture()

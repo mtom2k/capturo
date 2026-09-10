@@ -1,6 +1,23 @@
 # Project State
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
+
+## 0.41.0: pinned screenshots
+
+After the 0.40.0 release draft, the editor now offers Pin to desktop (D-045). Each pin is an
+independent in-memory snapshot with always-on-top, native move/resize, 25–100% window opacity,
+and original-resolution Copy. Pinning an overlay frees the desktop; Full Tab remains open.
+Pins survive new captures and are discarded on close or app quit.
+
+Strict types, 290 tests, and the production build pass. The real Windows development app was
+driven over CDP using generated image content: toolbar Pin, sender rejection, decoded reveal,
+always-on-top, opacity, small/large resizing, 960×480 clipboard output, multiple-pin isolation,
+new-capture survival, overlay teardown, and Escape close passed. The pin screenshot was visually
+reviewed at 150% DPI. The existing annotation desktop regression also passed after adding Pin:
+text/step behavior, sharp zoomed edges, fixed dock at four sizes, and exact privacy-effect export.
+Native mouse-drag verification was inconclusive in the automation helper;
+manual move/edge-resize, macOS, and installed-package acceptance remain. This feature is included
+in the local 0.41.0 Windows packages; the existing 0.40.0 GitHub release draft is separate.
 
 ## 0.40.0 Full Tab fixes
 
@@ -29,9 +46,9 @@ These changes are included in the 0.40.0 Windows release preparation.
 
 ## Phase
 
-`0.40.0` is the current source version, prepared as a Windows x64 Setup and Portable release draft.
+`0.41.0` is the current source version, prepared as a new Windows x64 Setup and Portable release draft.
 The latest published stable release is `0.31.0` (verified on GitHub on 2026-09-09).
-No 0.40.0 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
+No 0.41.0 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
 older macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS
 state.
 
@@ -217,6 +234,26 @@ Version 0.15.1 adds a non-destructive Transparent background screenshot tool wit
 
 ## Current build
 
+The 2026-09-10 `0.41.0` Windows packaging run passed strict type checking, all 290 automated
+tests, and the production build. Both local x64 executables include Pin to desktop, report
+file/product version `0.41.0`, and have Authenticode status `NotSigned`:
+
+- Setup: 99,968,893 bytes; SHA-256
+  `775daa9ca1758a11be6eb02f155a3709b6b45855158c15cf18669be6b73f6258`.
+- Portable: 99,717,551 bytes; SHA-256
+  `0109e52f8d64028c8545b5b4971dc95e88e0178bad7855c2aeb40d5fd32e31ea`.
+
+Both executables contain identical application archives and native helpers. All 33 packaged
+production files match the build output, including the Pin page, renderer, and preload. The
+packaged native helper's tone-map self-test passed. `release/SHA256SUMS-0.41.0.txt` identifies
+these two artifacts; `BUILD-INFO.txt` also inventories retained older packages. Installation,
+upgrade, and manual pin dragging/edge-resizing remain acceptance checks. No macOS package was
+built. These exact artifacts are prepared for the new 0.41.0 GitHub draft, targeting the pushed
+release commit with both executables and their checksum file attached. The older 0.40.0 draft
+remains separate. Publication is not part of this release preparation.
+
+### Previous 0.40.0 build
+
 The 2026-09-09 `0.40.0` Windows packaging run passed strict type checking, all 282 automated
 tests, and the production build. Both x64 EXEs report file/product version `0.40.0` and
 Authenticode status `NotSigned`:
@@ -238,7 +275,8 @@ version-specific SHA-256 file; the anonymous latest-release endpoint still retur
 `release/BUILD-INFO.txt` inventories the current directory, including retained older artifacts.
 Use `release/SHA256SUMS-0.40.0.txt` for the two files attached to the 0.40.0 draft.
 
-The package version is `0.40.0`. The latest published stable release remains v0.31.0. The
+The package version is `0.41.0`. The latest published stable release was v0.31.0 at the last
+GitHub verification on 2026-09-09. The
 intermediate `0.24.0` was built and exercised locally but
 never published, and `0.30.0` was tagged and briefly published before being withdrawn because its
 macOS artifact post-dated its tag; the contents of both ship as part of `0.31.0`, and neither tag

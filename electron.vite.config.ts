@@ -16,6 +16,7 @@ export default defineConfig({
         // preview, the colour picker overlay, and the colour window. All emit into out/renderer.
         input: {
           index: resolve('src/renderer/index.html'),
+          pin: resolve('src/renderer/pin.html'),
           settings: resolve('src/renderer/settings.html'),
           gif: resolve('src/renderer/gif.html'),
           'gif-record': resolve('src/renderer/gif-record.html'),

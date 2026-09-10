@@ -9,6 +9,7 @@ import type { CapturoScrollApi } from './shared/scroll'
 declare global {
   interface Window {
     capturo: CapturoApi
+    capturoPin: import('./shared/pin').CapturoPinApi
     capturoSettings: CapturoSettingsApi
     capturoGif: CapturoGifApi
     capturoUpdates: CapturoUpdatesApi

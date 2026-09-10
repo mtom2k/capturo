@@ -61,6 +61,7 @@ const undoButton = document.querySelector<HTMLButtonElement>('#undo')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
 const copyTextButton = document.querySelector<HTMLButtonElement>('#copy-text')!
 const openDetachedButton = document.querySelector<HTMLButtonElement>('#open-detached')!
+const pinButton = document.querySelector<HTMLButtonElement>('#pin')!
 const scrollCaptureButton = document.querySelector<HTMLButtonElement>('#scroll-capture')!
 const saveButton = document.querySelector<HTMLButtonElement>('#save')!
 const cancelButton = document.querySelector<HTMLButtonElement>('#cancel')!
@@ -471,6 +472,7 @@ function setExportBusy(value: boolean): void {
   copyButton.disabled = value
   copyTextButton.disabled = value
   openDetachedButton.disabled = value
+  pinButton.disabled = value
   scrollCaptureButton.disabled = value
   saveButton.disabled = value
 }
@@ -1337,6 +1339,21 @@ function watchDisplayResolution(): void {
     watchDisplayResolution()
   }, { once: true })
 }
+
+async function pinImage(): Promise<void> {
+  if (busy || !payload) return
+  closeTextEditor(true)
+  commitTransparencyDraft()
+  const dataUrl = exportedImage()
+  if (!dataUrl) return
+  setExportBusy(true)
+  setStatus('Pinning screenshot…', 0)
+  try {
+    const result = await window.capturo.pinImage(payload.sessionId, dataUrl)
+    setStatus(result.opened ? 'Pinned to desktop' : result.error, 3000)
+  } catch { setStatus('Capturo could not pin this screenshot.', 3000) }
+  finally { setExportBusy(false) }
+}
 watchDisplayResolution()
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')) {
@@ -1399,6 +1416,7 @@ undoButton.addEventListener('click', () => {
 copyButton.addEventListener('click', () => void copyImage())
 copyTextButton.addEventListener('click', () => void copyText())
 openDetachedButton.addEventListener('click', () => void openDetachedEditor())
+pinButton.addEventListener('click', () => void pinImage())
 scrollCaptureButton.addEventListener('click', () => void startPanoramicCapture())
 saveButton.addEventListener('click', () => void saveImage())
 cancelButton.addEventListener('click', () => void cancelCapture())

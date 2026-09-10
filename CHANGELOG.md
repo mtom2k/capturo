@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.0 - 2026-09-10
+
+### Added
+
+- Pin a screenshot above other windows from the capture toolbar or Full Tab. Pins are independent,
+  resizable snapshots with drag-to-move, 25–100% opacity, original-resolution Copy, and Esc/Close.
+  Pinning an overlay returns to the desktop; Full Tab remains editable. Pins stay in memory until
+  closed or Capturo quits, with no automatic saving or history.
+
 ## 0.40.0 - 2026-09-09
 
 Windows x64 Setup and Portable packages are prepared for a GitHub release draft. This version

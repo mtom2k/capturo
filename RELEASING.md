@@ -2,10 +2,12 @@
 
 ## Version and state
 
-The 0.40.0 Windows release is being prepared as a **draft** with Setup and Portable artifacts.
-Target the exact pushed release commit when creating the draft, attach both executables with
-their SHA-256 checksums, and verify `isDraft` after uploading. Publishing is a separate action;
-the latest stable release remains 0.31.0 until then.
+The new 0.41.0 Windows Setup and Portable release draft includes Pin to desktop. It is separate
+from the existing 0.40.0 GitHub release draft. Both remain unpublished during this preparation.
+
+When preparing a new draft, target the exact pushed release commit and attach both executables with
+their SHA-256 checksums. Verify `isDraft` after uploading. Publishing is a separate action;
+the in-app update checker ignores local builds and drafts.
 
 1. Update `version` in `package.json` and regenerate `package-lock.json` with `npm install`.
 2. Update `PROJECT_STATE.md` and any changed architectural decisions.
@@ -137,6 +139,9 @@ untestable and can appear to work when it will not for a real user.
 ## Release acceptance
 
 - Artifact names are distinct and include version and architecture.
+- Pin from both capture and Full Tab; verify native dragging/edge resizing, scaled displays,
+  opacity, original-resolution clipboard with alpha, independent pins during another capture,
+  and cleanup on close/quit. Pins must not be described as saved projects or persistent history.
 - Installed and portable launches are tested independently when both are intended for publication; otherwise the published target is stated consistently in the release notes and project documentation.
 - Tray/menu-bar icon is correct at standard and high DPI.
 - Full Tab annotations stay sharp at scaled DPI/zoom, and both toolbar rows stay docked above

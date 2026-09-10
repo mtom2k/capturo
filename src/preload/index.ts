@@ -29,6 +29,7 @@ const api: CapturoApi = {
   captureFailed: (sessionId) => ipcRenderer.invoke('capture:failed', sessionId),
   claimSession: (sessionId) => ipcRenderer.invoke('capture:claim', sessionId),
   copyImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy', sessionId, dataUrl),
+  pinImage: (sessionId, dataUrl) => ipcRenderer.invoke('capture:pin', sessionId, dataUrl),
   copyText: (sessionId, dataUrl) => ipcRenderer.invoke('capture:copy-text', sessionId, dataUrl),
   openDetachedEditor: (sessionId, dataUrl, forcePng) =>
     ipcRenderer.invoke('capture:open-detached', sessionId, dataUrl, forcePng),
@@ -116,6 +117,14 @@ const scrollApi: CapturoScrollApi = {
 }
 
 contextBridge.exposeInMainWorld('capturo', api)
+const pinApi: import('../shared/pin').CapturoPinApi = {
+  initialize: () => ipcRenderer.invoke('pin:initialize'),
+  ready: () => ipcRenderer.invoke('pin:ready'),
+  opacity: (value) => ipcRenderer.invoke('pin:opacity', value),
+  copy: () => ipcRenderer.invoke('pin:copy'),
+  close: () => ipcRenderer.invoke('pin:close')
+}
+contextBridge.exposeInMainWorld('capturoPin', pinApi)
 contextBridge.exposeInMainWorld('capturoSettings', settingsApi)
 contextBridge.exposeInMainWorld('capturoGif', gifApi)
 contextBridge.exposeInMainWorld('capturoUpdates', updatesApi)

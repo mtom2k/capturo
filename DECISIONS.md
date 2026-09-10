@@ -1,5 +1,24 @@
 ﻿# Decision Log
 
+## D-045: Pins are independent temporary screenshot references
+
+**Status:** accepted, 2026-09-10
+
+Pinning transfers the selected composite into an independent always-on-top window. The capture
+overlay closes only after the pin has decoded its image; Full Tab stays editable. Repeated pins
+create independent snapshots. Pinning does not transfer annotation commands or write a history.
+
+Use native window dragging/resizing and a fixed 40px control row, preserving image proportions
+with `object-fit: contain`. Window opacity ranges from 25% to 100% so controls remain recoverable;
+Copy always uses original PNG pixels, including alpha. Esc/Close discards only that pin, and app
+quit destroys all pins. A sender/frame-validated narrow preload API owns every action. Startup
+failure cleans up rather than leaving an invisible pin consuming capacity. Limits apply to count
+and retained image pixels (8 pins, 40 MP each, 80 MP total). Pins may appear in later captures.
+
+Windows development smoke covers creation from both editors, real clipboard dimensions, native
+always-on-top/opacity state, resizing, multiple-pin independence, and close/teardown. macOS and
+installed-package acceptance remain to be performed before release.
+
 ## D-043: Text retains its box; numbered steps own their border size
 
 **Status:** accepted, 2026-09-09
