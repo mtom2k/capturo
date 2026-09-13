@@ -33,7 +33,7 @@ if not exist "%~dp0build" mkdir "%~dp0build"
 cl /nologo /std:c++17 /O2 /EHsc /W4 /DUNICODE /D_UNICODE ^
    /Fe:"%~dp0build\capturo-capture.exe" ^
    /Fo:"%~dp0build\\" ^
-   "%~dp0main.cpp"
+   "%~dp0main.cpp" "%~dp0picker_input.cpp"
 if errorlevel 1 exit /b 1
 
 "%~dp0build\capturo-capture.exe" --self-test

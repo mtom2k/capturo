@@ -1,4 +1,5 @@
 import './gif-record.css'
+import { setActionIcon } from './action-icons'
 import {
   canQueueGifFrame,
   countdownSecondsRemaining,
@@ -196,12 +197,16 @@ function togglePause(): void {
   if (paused) {
     paused = false
     activeSince = performance.now()
-    pauseButton.textContent = 'Pause'
+    setActionIcon(pauseButton, 'pause')
+    pauseButton.setAttribute('aria-label', 'Pause recording')
+    pauseButton.title = 'Pause recording'
     bar.classList.remove('paused')
   } else {
     paused = true
     accumulatedMs += performance.now() - activeSince
-    pauseButton.textContent = 'Resume'
+    setActionIcon(pauseButton, 'resume')
+    pauseButton.setAttribute('aria-label', 'Resume recording')
+    pauseButton.title = 'Resume recording'
     bar.classList.add('paused')
   }
   updateHud()

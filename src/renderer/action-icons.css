@@ -1,0 +1,54 @@
+button.app-action {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: #2a3039;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+button.app-action svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+button.app-action:hover { background: #334155; }
+button.app-action:focus-visible { outline: 2px solid #bae6fd; outline-offset: 2px; }
+button.app-action:disabled { opacity: 0.35; cursor: default; }
+
+button.app-action[data-action-tone="copy"],
+button.app-action[data-action-tone="record"] { background: #1677e8; color: #fff; }
+button.app-action[data-action-tone="copy"]:hover,
+button.app-action[data-action-tone="copy"]:focus-visible,
+button.app-action[data-action-tone="record"]:hover,
+button.app-action[data-action-tone="record"]:focus-visible { background: #0f6bd5; }
+
+button.app-action[data-action-tone="save"] { background: #16a34a; color: #fff; }
+button.app-action[data-action-tone="save"]:hover,
+button.app-action[data-action-tone="save"]:focus-visible { background: #15803d; }
+
+button.app-action[data-action-tone="transition"] { background: #0891b2; color: #fff; }
+button.app-action[data-action-tone="transition"]:hover,
+button.app-action[data-action-tone="transition"]:focus-visible { background: #0e7490; }
+
+button.app-action[data-action-tone="copy-text"] { background: #7c3aed; color: #fff; }
+button.app-action[data-action-tone="copy-text"]:hover,
+button.app-action[data-action-tone="copy-text"]:focus-visible { background: #6d28d9; }
+
+button.app-action[data-action-tone="scroll"] { background: #d97706; color: #fff; }
+button.app-action[data-action-tone="scroll"]:hover,
+button.app-action[data-action-tone="scroll"]:focus-visible { background: #b45309; }
+
+button.app-action[data-action-tone="cancel"] { background: rgba(220, 38, 38, 0.16); color: #fca5a5; }
+button.app-action[data-action-tone="cancel"]:hover,
+button.app-action[data-action-tone="cancel"]:focus-visible { background: rgba(185, 28, 28, 0.58); color: #fee2e2; }

@@ -7,6 +7,14 @@ import type { Rgb } from './color'
 export type Point = { x: number; y: number }
 export type Bounds = { width: number; height: number }
 export type OffsetLimits = { minX: number; maxX: number; minY: number; maxY: number }
+export type FloatingPickerMargins = {
+  cursorX: number
+  cursorY: number
+  selectorLeft: number
+  selectorRight: number
+  selectorTop: number
+  selectorBottom: number
+}
 
 // The tightest zoom level moves the sampled point by one eighth of physical pointer travel.
 // Precision is selected only by wheel zoom; keyboard modifiers do not alter pointer movement.
@@ -21,11 +29,11 @@ export const FLOATING_PICKER_MAX_SIZE = 640
 // tighter levels, how quickly Capturo's owned sample point moves. Start with the widest view and
 // let the user scroll up into precision. Every grid is odd so one source pixel is always centred.
 export const PICKER_ZOOM_LEVELS = [
-  { cells: 25, movementFactor: 1, maxSpeed: Number.POSITIVE_INFINITY },
-  { cells: 17, movementFactor: 1, maxSpeed: Number.POSITIVE_INFINITY },
-  { cells: 13, movementFactor: 1 / 2, maxSpeed: 720 },
-  { cells: 9, movementFactor: 1 / 4, maxSpeed: 240 },
-  { cells: 5, movementFactor: MAXIMUM_ZOOM_MOVEMENT_FACTOR, maxSpeed: 80 }
+  { cells: 25, movementFactor: 1 },
+  { cells: 17, movementFactor: 1 },
+  { cells: 13, movementFactor: 1 / 2 },
+  { cells: 9, movementFactor: 1 / 4 },
+  { cells: 5, movementFactor: MAXIMUM_ZOOM_MOVEMENT_FACTOR }
 ] as const
 export const DEFAULT_PICKER_ZOOM_INDEX = 0
 
@@ -131,8 +139,7 @@ export function advancePointerAtFactor(
   cursor: Point,
   delta: Point,
   movementFactor: number,
-  bounds: Bounds,
-  maxDistance = Number.POSITIVE_INFINITY
+  bounds: Bounds
 ): PointerState {
   const dx = finite(delta.x)
   const dy = finite(delta.y)
@@ -148,17 +155,10 @@ export function advancePointerAtFactor(
     // collapses a stale displacement safely when an image edge has clamped one side.
     const startX = cursorX - dx + state.offset.x
     const startY = cursorY - dy + state.offset.y
-    let stepX = dx * factor
-    let stepY = dy * factor
-    const requestedDistance = Math.hypot(stepX, stepY)
-    const allowedDistance = Number.isFinite(maxDistance) ? Math.max(0, maxDistance) : Number.POSITIVE_INFINITY
-    if (requestedDistance > allowedDistance && requestedDistance > 0) {
-      const scale = allowedDistance / requestedDistance
-      stepX *= scale
-      stepY *= scale
-    }
-    const x = clampAxis(startX + stepX, bounds.width)
-    const y = clampAxis(startY + stepY, bounds.height)
+    // Scale axes independently. A wall-clock speed ceiling would make a fast horizontal sweep
+    // consume the entire frame allowance and reduce simultaneous vertical motion below one pixel.
+    const x = clampAxis(startX + dx * factor, bounds.width)
+    const y = clampAxis(startY + dy * factor, bounds.height)
     return { point: { x, y }, offset: { x: x - cursorX, y: y - cursorY } }
   }
 
@@ -175,8 +175,8 @@ export function advancePointerAtFactor(
  *
  * Windows uses a compact floating picker surface so it does not interfere with hardware video
  * planes. Precision zoom deliberately lets the sample trail the cursor, so an unbounded offset can
- * eventually put the magnifier outside that surface. The renderer supplies the live, asymmetric
- * room on each side of the cursor; this clamps only when the selector would otherwise be clipped.
+ * eventually put the magnifier outside that surface. The renderer supplies limits for the next
+ * recentered surface; this clamps only when the selector would otherwise be clipped.
  */
 export function constrainPointerOffset(
   state: PointerState,
@@ -279,6 +279,24 @@ export function floatingPickerRegionOrigin(
 ): Point {
   const rect = floatingPickerRect(center, displayBounds, maxSize)
   return { x: rect.x - displayBounds.x, y: rect.y - displayBounds.y }
+}
+
+/**
+ * How far the owned point can trail the physical cursor in a window centred between them.
+ * Deriving these limits from the next window position, not its stale current position, keeps
+ * both axes moving while a rapid sweep is waiting for native setBounds to catch up.
+ */
+export function floatingPickerOffsetLimits(surface: Bounds, margins: FloatingPickerMargins): OffsetLimits {
+  const halfWidth = Math.max(0, surface.width) / 2
+  const halfHeight = Math.max(0, surface.height) / 2
+  const horizontalCursorRoom = Math.max(0, halfWidth - margins.cursorX)
+  const verticalCursorRoom = Math.max(0, halfHeight - margins.cursorY)
+  return {
+    minX: -2 * Math.max(0, Math.min(horizontalCursorRoom, halfWidth - margins.selectorLeft)),
+    maxX: 2 * Math.max(0, Math.min(horizontalCursorRoom, halfWidth - margins.selectorRight)),
+    minY: -2 * Math.max(0, Math.min(verticalCursorRoom, halfHeight - margins.selectorTop)),
+    maxY: 2 * Math.max(0, Math.min(verticalCursorRoom, halfHeight - margins.selectorBottom))
+  }
 }
 
 /** Reads one pixel out of RGBA image data, or null when the point lies outside it. */

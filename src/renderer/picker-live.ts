@@ -9,6 +9,7 @@ import {
   PICKER_ZOOM_LEVELS,
   advancePointerAtFactor,
   constrainPointerOffset,
+  floatingPickerOffsetLimits,
   floatingPickerRegionOrigin,
   initialPointerState,
   magnifierPlacement,
@@ -73,12 +74,13 @@ let pendingRecenter: {
   regionOrigin: { x: number; y: number }
 } | null = null
 let observedCursor = { x: 0, y: 0 }
-let observedClient = { x: 0, y: 0 }
-let lastMovementAt = performance.now()
+let lastDomMovementAt = Number.NEGATIVE_INFINITY
 // `window.screenX/Y` can lag a native BrowserWindow move by a compositor frame. Keep an explicit
 // origin that is advanced from the same recenter geometry as main before the move is requested.
 let floatingRegionOrigin = { x: 0, y: 0 }
 let renderScale = 1
+let cursorPollTimer: number | null = null
+let cursorPollInFlight = false
 
 function imageScale(): { x: number; y: number } {
   if (!payload) return { x: 1, y: 1 }
@@ -148,32 +150,54 @@ function movementFactor(): number {
   return activeZoom().movementFactor
 }
 
-function movementSpeed(): number {
-  return activeZoom().maxSpeed
-}
-
 function clientFromPoint(point: { x: number; y: number }): { x: number; y: number } {
   const scale = imageScale()
   const origin = currentRegionOrigin()
   return { x: point.x / scale.x - origin.x, y: point.y / scale.y - origin.y }
 }
 
+function clientFromScreen(point: { x: number; y: number }): { x: number; y: number } {
+  if (!payload) return { x: 0, y: 0 }
+  const origin = currentRegionOrigin()
+  return {
+    x: point.x - payload.displayOrigin.x - origin.x,
+    y: point.y - payload.displayOrigin.y - origin.y
+  }
+}
+
 function imageBounds(): { width: number; height: number } {
   return payload?.imageSize ?? { width: 1, height: 1 }
 }
 
-function constrainToFloatingSurface(
-  next: PointerState,
-  cursor: { x: number; y: number },
-  client: { x: number; y: number }
-): PointerState {
-  if (!payload?.floating) return next
+function floatingMargins(): {
+  cursorX: number; cursorY: number
+  selectorLeft: number; selectorRight: number; selectorTop: number; selectorBottom: number
+} {
+  const width = window.innerWidth
+  const height = window.innerHeight
+  const selectorX = Math.min(SELECTOR_SIDE_PADDING + SELECTOR_RECENTER_GUARD, width / 3)
+  return {
+    cursorX: Math.min(RECENTER_MARGIN, width / 3),
+    cursorY: Math.min(RECENTER_MARGIN, height / 3),
+    selectorLeft: selectorX,
+    selectorRight: selectorX,
+    selectorTop: Math.min(SELECTOR_TOP_PADDING + SELECTOR_RECENTER_GUARD, height / 3),
+    selectorBottom: Math.min(SELECTOR_BOTTOM_PADDING + SELECTOR_RECENTER_GUARD, height / 3)
+  }
+}
+
+function constrainToFloatingSurface(next: PointerState, cursor: { x: number; y: number }): PointerState {
+  if (!payload?.floating || payload.nativeInput) return next
   const scale = imageScale()
+  const limits = floatingPickerOffsetLimits(
+    { width: window.innerWidth, height: window.innerHeight },
+    floatingMargins()
+  )
   return constrainPointerOffset(next, cursor, {
-    minX: -Math.max(0, client.x - SELECTOR_SIDE_PADDING) * scale.x,
-    maxX: Math.max(0, window.innerWidth - SELECTOR_SIDE_PADDING - client.x) * scale.x,
-    minY: -Math.max(0, client.y - SELECTOR_TOP_PADDING) * scale.y,
-    maxY: Math.max(0, window.innerHeight - SELECTOR_BOTTOM_PADDING - client.y) * scale.y
+    minX: limits.minX * scale.x,
+    maxX: limits.maxX * scale.x,
+    minY: limits.minY * scale.y,
+    maxY: limits.maxY * scale.y
   }, imageBounds())
 }
 
@@ -398,33 +422,23 @@ function queueSample(): void {
   scheduleSample()
 }
 
-function movePointer(event: PointerEvent): void {
-  observedClient = { x: event.clientX, y: event.clientY }
-  const nextCursor = pointFromScreen(event.screenX, event.screenY)
+function movePointerAt(screenPoint: { x: number; y: number }): void {
+  const nextCursor = pointFromScreen(screenPoint.x, screenPoint.y)
   // BrowserWindow-relative event deltas can jump or reverse when that window recentres, even
   // though the physical cursor continued smoothly. Absolute screen points
   // stay stable across the move, so derive the only delta the precision model consumes from them.
   const delta = pointDelta(observedCursor, nextCursor)
   observedCursor = nextCursor
-  const now = Number.isFinite(event.timeStamp) ? event.timeStamp : performance.now()
-  // Cap elapsed credit as well as velocity. Returning to the picker after a pause must not bank a
-  // giant movement allowance that one fast event can spend in a single jump.
-  const elapsedMs = Math.min(50, Math.max(1, now - lastMovementAt))
-  lastMovementAt = now
-  const maxSpeed = movementSpeed()
-  const maxDistance = Number.isFinite(maxSpeed) ? maxSpeed * elapsedMs / 1000 : Number.POSITIVE_INFINITY
   pointer = advancePointerAtFactor(
     pointer,
     observedCursor,
     delta,
     movementFactor(),
-    imageBounds(),
-    maxDistance
+    imageBounds()
   )
-  // The compact Windows surface follows the real pointer, while precision zoom makes the sample
-  // trail it. Limit that displacement to the actual room currently available around the pointer
-  // so the complete 200px selector can never be clipped out of the window.
-  pointer = constrainToFloatingSurface(pointer, observedCursor, observedClient)
+  // Limit precision displacement to what the *next centred window* can hold. Constraining it to
+  // the old native bounds pins one axis during a sweep that outruns the setBounds round trip.
+  pointer = constrainToFloatingSurface(pointer, observedCursor)
   hasPointer = true
   queueSample()
 }
@@ -441,10 +455,11 @@ async function flushRecenter(active: ColorPickerPayload): Promise<void> {
       // it past the pointer until `window.screenX/Y` catches up and the next frame corrects it.
       floatingRegionOrigin = point.regionOrigin
       await paintBeforeWindowMove()
-      if (payload?.sessionId !== active.sessionId) break
+      if (payload?.sessionId !== active.sessionId || payload.displayId !== active.displayId) break
       const moved = await window.capturoColor.recenterPicker(active.sessionId, {
         cursor: point.cursor,
-        center: point.center
+        center: point.center,
+        displayId: active.displayId
       })
       if (!moved && payload?.sessionId === active.sessionId) {
         floatingRegionOrigin = {
@@ -456,24 +471,23 @@ async function flushRecenter(active: ColorPickerPayload): Promise<void> {
     }
   } finally {
     recentering = false
+    if (pendingRecenter && payload) void flushRecenter(payload)
   }
 }
 
-function maybeRecenter(event: PointerEvent): void {
+function maybeRecenterAt(screenPoint: { x: number; y: number }): void {
   const active = payload
   if (!active?.floating) return
-  const marginX = Math.min(RECENTER_MARGIN, window.innerWidth / 3)
-  const marginY = Math.min(RECENTER_MARGIN, window.innerHeight / 3)
-  const selectorMarginX = Math.min(SELECTOR_SIDE_PADDING + SELECTOR_RECENTER_GUARD, window.innerWidth / 3)
-  const selectorMarginTop = Math.min(SELECTOR_TOP_PADDING + SELECTOR_RECENTER_GUARD, window.innerHeight / 3)
-  const selectorMarginBottom = Math.min(SELECTOR_BOTTOM_PADDING + SELECTOR_RECENTER_GUARD, window.innerHeight / 3)
+  const clientPoint = clientFromScreen(screenPoint)
+  const margins = floatingMargins()
   const selectorClient = clientFromPoint(pointer.point)
-  if (
-    event.clientX >= marginX && event.clientX <= window.innerWidth - marginX &&
-    event.clientY >= marginY && event.clientY <= window.innerHeight - marginY &&
-    selectorClient.x >= selectorMarginX && selectorClient.x <= window.innerWidth - selectorMarginX &&
-    selectorClient.y >= selectorMarginTop && selectorClient.y <= window.innerHeight - selectorMarginBottom
-  ) return
+  const selectorFits =
+    selectorClient.x >= margins.selectorLeft && selectorClient.x <= window.innerWidth - margins.selectorRight &&
+    selectorClient.y >= margins.selectorTop && selectorClient.y <= window.innerHeight - margins.selectorBottom
+  const cursorFits =
+    clientPoint.x >= margins.cursorX && clientPoint.x <= window.innerWidth - margins.cursorX &&
+    clientPoint.y >= margins.cursorY && clientPoint.y <= window.innerHeight - margins.cursorY
+  if (selectorFits && (active.nativeInput || cursorFits)) return
   // Never discard the newest physical position while a previous window move is in flight. Fast
   // motion can cross the remaining margin inside one IPC round trip; processing the latest queued
   // point keeps the compact hit surface under the cursor instead of losing input at its edge.
@@ -486,15 +500,42 @@ function maybeRecenter(event: PointerEvent): void {
     y: active.displayOrigin.y + pointer.point.y / scale.y
   }
   const center = {
-    x: (event.screenX + selectorScreen.x) / 2,
-    y: (event.screenY + selectorScreen.y) / 2
+    // Main rounds this center before setBounds. Use the same integer now so predicted paint and
+    // native geometry agree even when a small display gives the floating window an odd width.
+    x: Math.round(active.nativeInput ? selectorScreen.x : (screenPoint.x + selectorScreen.x) / 2),
+    y: Math.round(active.nativeInput ? selectorScreen.y : (screenPoint.y + selectorScreen.y) / 2)
   }
   pendingRecenter = {
-    cursor: { x: event.screenX, y: event.screenY },
+    cursor: screenPoint,
     center,
     regionOrigin: floatingPickerRegionOrigin(center, displayBounds(), FLOATING_PICKER_MAX_SIZE)
   }
   void flushRecenter(active)
+}
+
+function observeScreenPoint(screenPoint: { x: number; y: number }): void {
+  const nextCursor = pointFromScreen(screenPoint.x, screenPoint.y)
+  if (hasPointer && samePoint(observedCursor, nextCursor)) return
+  movePointerAt(screenPoint)
+  maybeRecenterAt(screenPoint)
+}
+
+async function pollCursor(sessionId: string): Promise<void> {
+  if (cursorPollInFlight || payload?.sessionId !== sessionId) return
+  cursorPollInFlight = true
+  const requestedAt = performance.now()
+  try {
+    const point = await window.capturoColor.pickerCursor(sessionId)
+    const active = payload
+    // A DOM event received after this query began is fresher than the asynchronous response.
+    // Applying that response used to pull the picker backwards during fast motion.
+    if (!point || active?.sessionId !== sessionId || lastDomMovementAt >= requestedAt) return
+    observeScreenPoint(point)
+  } catch {
+    // The window can close while an IPC query is in flight.
+  } finally {
+    cursorPollInFlight = false
+  }
 }
 
 async function pick(): Promise<void> {
@@ -535,15 +576,14 @@ function handleKey(event: KeyboardEvent): void {
   if (!nudge) return
   event.preventDefault()
   pointer = nudgePointer(pointer, nudge, imageBounds())
-  pointer = constrainToFloatingSurface(pointer, observedCursor, observedClient)
+  pointer = constrainToFloatingSurface(pointer, observedCursor)
   hasPointer = true
   queueSample()
 }
 
-function handleWheel(event: WheelEvent): void {
-  if (!payload || event.deltaY === 0) return
-  event.preventDefault()
-  const next = stepPickerZoomIndex(zoomIndex, event.deltaY)
+function changeZoom(deltaY: number): void {
+  if (!payload || deltaY === 0) return
+  const next = stepPickerZoomIndex(zoomIndex, deltaY)
   if (next === zoomIndex) return
   zoomIndex = next
   // Keep the last valid grid visible until the differently sized replacement arrives. Picking
@@ -551,8 +591,18 @@ function handleWheel(event: WheelEvent): void {
   queueSample()
 }
 
+function handleWheel(event: WheelEvent): void {
+  event.preventDefault()
+  // The native input surface owns physical wheel events on Windows. A focused Chromium window
+  // can also receive the same wheel message, and using both would advance two zoom steps.
+  if (payload?.nativeInput) return
+  changeZoom(event.deltaY)
+}
+
 function initialize(nextPayload: ColorPickerPayload): void {
   payload = nextPayload
+  if (cursorPollTimer !== null) window.clearInterval(cursorPollTimer)
+  cursorPollTimer = null
   pendingRecenter = null
   // Never carry a grid across a monitor transition. Coordinates can coincide on two displays;
   // accepting an old grid by point and size alone could preview or even pick the other monitor.
@@ -572,26 +622,36 @@ function initialize(nextPayload: ColorPickerPayload): void {
     ? { x: seed.x * scale.x, y: seed.y * scale.y }
     : { x: Math.floor(nextPayload.imageSize.width / 2), y: Math.floor(nextPayload.imageSize.height / 2) })
   observedCursor = { ...pointer.point }
-  observedClient = clientFromPoint(pointer.point)
-  lastMovementAt = performance.now()
+  lastDomMovementAt = Number.NEGATIVE_INFINITY
   if (hasPointer) queueSample()
+  if (nextPayload.floating && !nextPayload.nativeInput) {
+    // A native position query keeps the magnifier alive if a transparent window misses motion.
+    cursorPollTimer = window.setInterval(() => void pollCursor(nextPayload.sessionId), 25)
+    void pollCursor(nextPayload.sessionId)
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => void window.capturoColor.pickerReady(nextPayload.sessionId)))
 }
 
 canvas.addEventListener('pointermove', (event) => {
-  movePointer(event)
-  maybeRecenter(event)
+  if (payload?.nativeInput) return
+  lastDomMovementAt = performance.now()
+  observeScreenPoint({ x: event.screenX, y: event.screenY })
 })
 canvas.addEventListener('pointerenter', (event) => {
+  if (payload?.nativeInput) return
   // Recentring the floating Windows surface can synthesize leave/enter at the same physical
   // pointer. Preserve zoom-scaled displacement across that window move.
   if (!payload?.floating || !hasPointer) {
     observedCursor = pointFromScreen(event.screenX, event.screenY)
-    observedClient = { x: event.clientX, y: event.clientY }
     pointer = initialPointerState(observedCursor)
+    hasPointer = false
   }
-  movePointer(event)
-  maybeRecenter(event)
+  lastDomMovementAt = performance.now()
+  observeScreenPoint({ x: event.screenX, y: event.screenY })
+})
+window.addEventListener('pagehide', () => {
+  if (cursorPollTimer !== null) window.clearInterval(cursorPollTimer)
+  cursorPollTimer = null
 })
 canvas.addEventListener('wheel', handleWheel, { passive: false })
 canvas.addEventListener('pointerleave', () => {
@@ -600,6 +660,7 @@ canvas.addEventListener('pointerleave', () => {
   updateMagnifier()
 })
 canvas.addEventListener('pointerdown', (event) => {
+  if (payload?.nativeInput) return
   if (event.button !== 0) return
   event.preventDefault()
   void pick()
@@ -611,3 +672,9 @@ window.addEventListener('resize', () => {
 })
 
 window.capturoColor.onPickerInitialize(initialize)
+window.capturoColor.onPickerInput((input) => {
+  if (!payload?.nativeInput) return
+  observeScreenPoint(input.point)
+  if (input.kind === 'wheel') changeZoom(input.deltaY ?? 0)
+  if (input.kind === 'pick') void pick()
+})

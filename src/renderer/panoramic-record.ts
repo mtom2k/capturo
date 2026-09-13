@@ -1,4 +1,5 @@
 import './scroll-record.css'
+import './action-icons'
 import {
   analyzePanoramicMovement,
   chooseHistoryAnchoredPanoramicMovement,

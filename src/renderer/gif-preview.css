@@ -127,39 +127,3 @@ p {
 .spacer {
   flex: 1;
 }
-
-.button {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 7px;
-  background: #202733;
-  color: #f8fafc;
-  cursor: pointer;
-}
-
-.button:hover,
-.button:focus-visible {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.18);
-  background: #2b3544;
-}
-
-.button.primary {
-  border-color: #2387ef;
-  background: #1677e8;
-}
-
-.button.primary:hover,
-.button.primary:focus-visible {
-  background: #0f6bd5;
-}
-
-.button.danger {
-  color: #f6aaa2;
-}
-
-.button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}

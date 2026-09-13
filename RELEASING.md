@@ -2,14 +2,22 @@
 
 ## Version and state
 
-The new 0.41.0 Windows Setup and Portable release draft includes Pin to desktop. It is separate
-from the existing 0.40.0 GitHub release draft. Both remain unpublished during this preparation.
+The 0.42.2 source and local Windows Setup and Portable packages include pin editing, shared action
+icons, a single live-capture launch gate, and the desktop-wide Windows Color Picker input fix. They
+have not been published.
+The documented 0.41.0 and 0.40.0 draft artifacts are older builds; verify their remote state before
+any upload. Before creating or publishing a 0.42.2 release, complete the installed and portable
+desktop acceptance in `TESTING.md`, especially
+fast Color Picker movement and cursor visibility at every zoom, cancellation, pin editing, and
+compact action buttons. The scripted native and Electron desktop smokes in `TESTING.md` verify
+input routing and teardown, but visual acceptance on installed/portable builds remains required.
 
 When preparing a new draft, target the exact pushed release commit and attach both executables with
 their SHA-256 checksums. Verify `isDraft` after uploading. Publishing is a separate action;
 the in-app update checker ignores local builds and drafts.
 
-1. Update `version` in `package.json` and regenerate `package-lock.json` with `npm install`.
+1. Update `package.json` and `package-lock.json` together with
+   `npm version <version> --no-git-tag-version` (or an equivalent lockfile regeneration).
 2. Update `PROJECT_STATE.md` and any changed architectural decisions.
 3. Run `npm run build` and the platform desktop matrix in `TESTING.md`.
 4. Publish a stable `vMAJOR.MINOR.PATCH` GitHub Release only after its Windows installer has
@@ -29,6 +37,14 @@ Run `npm run dist:win`. The current build configuration produces these x64 artif
 
 - `Capturo-Setup-<version>-x64.exe`
 - `Capturo-Portable-<version>-x64.exe`
+
+If a running Capturo has unsaved in-memory pins, package in an isolated staging directory and copy
+the verified artifacts into `release/`; do not replace its live `win-unpacked` directory. Keep the
+version-specific checksum file alongside the two executables and identify the staging build in
+`PROJECT_STATE.md`.
+The local `release/` directory retains only the newest Windows packages and version-specific
+checksums. Older executables and stale `latest.yml` metadata are purged when replacing local packages;
+notification-only updates do not require `latest.yml` for this local package.
 
 The NSIS installer is interactive and allows destination selection. Windows releases publish both the installer and the portable executable; the portable build is what someone who cannot or will not install gets. Both are therefore release artifacts and both must be verified before publication, not just the installer. Supply a Windows signing certificate through the release environment; local unsigned artifacts will trigger reputation warnings. Before publishing, verify the intended artifact with `Get-AuthenticodeSignature` rather than interpreting electron-builder's `signing with signtool.exe` log as proof that a certificate was applied.
 

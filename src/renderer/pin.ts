@@ -1,9 +1,11 @@
 import './pin.css'
+import './action-icons'
 
 const image = document.querySelector<HTMLImageElement>('#image')!
 const opacity = document.querySelector<HTMLInputElement>('#opacity')!
 const value = document.querySelector<HTMLOutputElement>('#opacity-value')!
 const status = document.querySelector<HTMLElement>('#status')!
+const editButton = document.querySelector<HTMLButtonElement>('#edit')!
 let statusTimer: ReturnType<typeof setTimeout>
 
 async function copy(): Promise<void> {
@@ -14,6 +16,18 @@ async function copy(): Promise<void> {
   statusTimer = setTimeout(() => { status.textContent = '' }, 2000)
 }
 document.querySelector('#copy')!.addEventListener('click', () => void copy())
+editButton.addEventListener('click', () => {
+  if (editButton.disabled) return
+  editButton.disabled = true
+  status.textContent = 'Opening full editor…'
+  clearTimeout(statusTimer)
+  void window.capturoPin.edit().then((result) => {
+    status.textContent = result.opened ? 'Opened in full editor' : result.error
+  }).catch(() => { status.textContent = 'Capturo could not open the full editor.' }).finally(() => {
+    editButton.disabled = false
+    statusTimer = setTimeout(() => { status.textContent = '' }, 3400)
+  })
+})
 document.querySelector('#close')!.addEventListener('click', () => void window.capturoPin.close())
 opacity.addEventListener('input', () => {
   value.value = `${opacity.value}%`

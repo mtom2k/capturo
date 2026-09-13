@@ -13,8 +13,9 @@
       <label for="opacity">Opacity</label>
       <input id="opacity" type="range" min="25" max="100" value="100" aria-label="Pin opacity" />
       <output id="opacity-value" for="opacity">100%</output>
-      <button id="copy" title="Copy original image (Ctrl/Cmd+C)">Copy</button>
-      <button id="close" aria-label="Close pin" title="Close pin (Esc)">×</button>
+      <button id="copy" class="app-action" data-action-icon="copy" data-action-tone="copy" aria-label="Copy pinned screenshot" title="Copy original image (Ctrl/Cmd+C)"></button>
+      <button id="edit" class="app-action" data-action-icon="edit" data-action-tone="transition" aria-label="Edit pinned screenshot" title="Open this image in the full editor"></button>
+      <button id="close" class="app-action" data-action-icon="cancel" data-action-tone="cancel" aria-label="Close pin" title="Close pin (Esc)"></button>
     </header>
     <main><img id="image" alt="Pinned screenshot" draggable="false" /></main>
     <p id="status" role="status" aria-live="polite"></p>

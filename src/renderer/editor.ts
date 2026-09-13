@@ -1,4 +1,5 @@
 import './styles.css'
+import './action-icons'
 import { applySafeArea } from './safe-area'
 import {
   clampPoint,

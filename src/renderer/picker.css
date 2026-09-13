@@ -1,6 +1,5 @@
-/* The picker overlay hides the system cursor and puts the magnifier in its place, centred on the
-   sampled pixel. The magnifier is the cursor, so there is never a question of which pixel is
-   being read: it is the one in the middle of the aperture. */
+/* Hide the pointer only while it is over this picker window. Never replace Windows' global
+   cursor images: those changes can survive an unexpected Capturo exit. */
 /* styles.css gives both html and body Capturo's navy application background. A transparent body
    still exposes the root html canvas, which made the packaged picker cover the desktop in navy.
    This stylesheet is picker-only, so clear both layers explicitly. */

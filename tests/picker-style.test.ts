@@ -6,6 +6,8 @@ const pickerRenderer = readFileSync(new URL('../src/renderer/picker-live.ts', im
 const pickerHtml = readFileSync(new URL('../src/renderer/picker.html', import.meta.url), 'utf8')
 const pickerMain = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const nativeHelper = readFileSync(new URL('../native/capturo-capture/main.cpp', import.meta.url), 'utf8')
+const nativePickerInput = readFileSync(new URL('../native/capturo-capture/picker_input.cpp', import.meta.url), 'utf8')
+const pickerInputOwner = readFileSync(new URL('../src/main/picker-input.ts', import.meta.url), 'utf8')
 
 describe('live picker transparency', () => {
   it('clears the root document, body, and hit canvas together', () => {
@@ -36,7 +38,7 @@ describe('live picker sampling continuity', () => {
   })
 
   it('uses absolute screen positions so BrowserWindow recentering cannot corrupt pointer deltas', () => {
-    expect(pickerRenderer).toMatch(/pointFromScreen\(event\.screenX, event\.screenY\)/)
+    expect(pickerRenderer).toMatch(/pointFromScreen\(screenPoint\.x, screenPoint\.y\)/)
     expect(pickerRenderer).toMatch(/const delta = pointDelta\(observedCursor, nextCursor\)/)
     expect(pickerRenderer).not.toMatch(/event\.movementX|event\.movementY/)
   })
@@ -83,13 +85,15 @@ describe('live picker chrome', () => {
     expect(pickerRenderer).not.toMatch(/querySelector<HTMLElement>\(['"]#hint['"]\)/)
   })
 
-  it('keeps the zoom-displaced selector inside the compact Windows surface', () => {
+  it('keeps fallback input bounded while native input lets the lens follow its owned point', () => {
     expect(pickerRenderer).toContain('constrainPointerOffset')
     expect(pickerRenderer).toMatch(/SELECTOR_RECENTER_GUARD = 48/)
     expect(pickerRenderer).toMatch(
-      /selectorClient\.x >= selectorMarginX[\s\S]*?selectorClient\.y <= window\.innerHeight - selectorMarginBottom/
+      /selectorClient\.x >= margins\.selectorLeft[\s\S]*?selectorClient\.y <= window\.innerHeight - margins\.selectorBottom/
     )
-    expect(pickerRenderer).toMatch(/x: \(event\.screenX \+ selectorScreen\.x\) \/ 2/)
+    expect(pickerRenderer).toMatch(/floatingPickerOffsetLimits\([\s\S]*?floatingMargins\(\)/)
+    expect(pickerRenderer).toMatch(/if \(!payload\?\.floating \|\| payload\.nativeInput\) return next/)
+    expect(pickerRenderer).toMatch(/active\.nativeInput \? selectorScreen\.x : \(screenPoint\.x \+ selectorScreen\.x\) \/ 2/)
     expect(pickerRenderer).toMatch(/SELECTOR_BOTTOM_PADDING = MAGNIFIER_SIZE \/ 2 \+ 64/)
   })
 
@@ -97,16 +101,16 @@ describe('live picker chrome', () => {
     expect(pickerHtml).not.toMatch(/magnifier-(?:zoom|fine)/)
     expect(pickerRenderer).not.toMatch(/\.label|magnifierZoom|magnifierFine/)
     expect(pickerRenderer).toMatch(/addEventListener\('wheel', handleWheel, \{ passive: false \}\)/)
-    expect(pickerRenderer).toMatch(/stepPickerZoomIndex\(zoomIndex, event\.deltaY\)/)
+    expect(pickerRenderer).toMatch(/stepPickerZoomIndex\(zoomIndex, deltaY\)/)
     expect(pickerRenderer).toMatch(/return activeZoom\(\)\.movementFactor/)
-    expect(pickerRenderer).toMatch(/maxSpeed \* elapsedMs \/ 1000/)
+    expect(pickerRenderer).not.toMatch(/maxSpeed|maxDistance|movementSpeed/)
     expect(pickerRenderer).not.toMatch(/event\.shiftKey|setFine|FINE_FACTOR/)
   })
 
   it('queues the newest recenter instead of dropping fast pointer positions', () => {
     expect(pickerRenderer).toMatch(/while \(pendingRecenter && payload\?\.sessionId === active\.sessionId\)/)
     expect(pickerRenderer).toMatch(
-      /pendingRecenter = \{[\s\S]*?cursor: \{ x: event\.screenX, y: event\.screenY \}/
+      /pendingRecenter = \{[\s\S]*?cursor: screenPoint/
     )
   })
 
@@ -123,6 +127,20 @@ describe('live picker chrome', () => {
 })
 
 describe('Windows video-plane compatibility', () => {
+  it('uses a no-redirection input-only HWND with bounded work and automatic teardown', () => {
+    expect(nativePickerInput).toContain('WS_EX_NOREDIRECTIONBITMAP')
+    expect(nativePickerInput).toMatch(/case WM_SETCURSOR:[\s\S]*?SetCursor\(nullptr\)/)
+    expect(nativePickerInput).toContain('kHeartbeatTimeoutMs = 3000')
+    expect(nativePickerInput).toContain('case WM_MOUSEWHEEL:')
+    expect(nativePickerInput).toContain('RegisterRawInputDevices')
+    expect(nativePickerInput).toContain('case WM_INPUT:')
+    expect(nativePickerInput).toContain('case WM_LBUTTONDOWN:')
+    expect(nativePickerInput).not.toMatch(/SetSystemCursor\(|ShowCursor\(|ClipCursor\(/)
+    expect(pickerInputOwner).toContain("child.stdin.write('ping\\n')")
+    expect(pickerMain).toContain('entry.window.setIgnoreMouseEvents(entry.payload.nativeInput)')
+    expect(pickerRenderer).toContain("window.capturoColor.onPickerInput")
+  })
+
   it('uses one compact floating picker instead of monitor-sized transparent windows', () => {
     expect(pickerMain).toContain('FLOATING_PICKER_MAX_SIZE')
     expect(pickerMain).toMatch(
@@ -135,12 +153,19 @@ describe('Windows video-plane compatibility', () => {
     expect(pickerMain).toMatch(
       /overlay\.setContentProtection\(app\.isPackaged \|\| process\.env\.CAPTURO_PICKER_VISUAL_SMOKE !== '1'\)/
     )
-    expect(pickerMain).toMatch(/setSystemCursorHidden\(true\)/)
-    expect(pickerMain).toMatch(/setSystemCursorHidden\(false\)/)
-    // The picker replaces the pointer with its own magnifier, so it is the one live tool that
-    // suppresses the system cursor. ShowCursor's per-thread counter cannot do that from a helper.
-    expect(nativeHelper).toContain('SetSystemCursor(transparent, cursorId)')
-    expect(nativeHelper).toContain('SystemParametersInfoW(SPI_SETCURSORS')
-    expect(nativeHelper).not.toContain('ShowCursor(')
+    // A killed helper cannot restore globally replaced cursor shapes. The window-scoped CSS
+    // cursor rule is safe even if Capturo terminates without running any cleanup path.
+    expect(pickerCss).toContain('cursor: none')
+    expect(pickerMain).not.toContain('setSystemCursorHidden')
+    expect(nativeHelper).not.toContain('SetSystemCursor(')
+    expect(nativeHelper).not.toContain('cursor-hidden')
+  })
+
+  it('reads the physical cursor when the transparent window misses pointer events', () => {
+    expect(pickerMain).toMatch(/ipcMain\.handle\('color:picker-cursor'[\s\S]*?validPicker\(event, sessionId\)[\s\S]*?screen\.getCursorScreenPoint\(\)/)
+    expect(pickerRenderer).toMatch(/cursorPollTimer = window\.setInterval\(\(\) => void pollCursor\(nextPayload\.sessionId\), 25\)/)
+    expect(pickerRenderer).toMatch(/window\.capturoColor\.pickerCursor\(sessionId\)/)
+    expect(pickerRenderer).toMatch(/lastDomMovementAt >= requestedAt/)
+    expect(pickerRenderer).toMatch(/observeScreenPoint\(point\)/)
   })
 })

@@ -1,4 +1,5 @@
 import './color.css'
+import './action-icons'
 import {
   clampAlpha,
   colorName,

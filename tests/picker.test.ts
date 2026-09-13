@@ -7,6 +7,7 @@ import {
   constrainPointerOffset,
   cursorForDisplay,
   displayPixelSize,
+  floatingPickerOffsetLimits,
   floatingPickerRect,
   floatingPickerRegionOrigin,
   initialPointerState,
@@ -256,34 +257,50 @@ describe('zoom-aware pointer movement', () => {
     expect(next.offset.x).toBeCloseTo(-60)
   })
 
-  it('caps an extreme maximum-zoom movement to the frame budget', () => {
-    const state = initialPointerState({ x: 500, y: 500 })
-    const fastest = PICKER_ZOOM_LEVELS[PICKER_ZOOM_LEVELS.length - 1]
-    const frameBudget = fastest.maxSpeed / 60
-    const next = advancePointerAtFactor(
-      state,
-      { x: 1500, y: 500 },
-      { x: 1000, y: 0 },
-      fastest.movementFactor,
-      bounds,
-      frameBudget
+  it('keeps both axes proportional during rapid diagonal movement at every precision zoom', () => {
+    const limits = floatingPickerOffsetLimits(
+      { width: 640, height: 640 },
+      {
+        cursorX: 160, cursorY: 160,
+        selectorLeft: 164, selectorRight: 164,
+        selectorTop: 164, selectorBottom: 212
+      }
     )
-    expect(next.point.x - state.point.x).toBeCloseTo(frameBudget)
-    expect(next.point.y).toBe(state.point.y)
+    for (const level of PICKER_ZOOM_LEVELS.slice(2)) {
+      let state = initialPointerState({ x: 500, y: 500 })
+      let cursor = { x: 500, y: 500 }
+      for (let event = 0; event < 6; event++) {
+        const nextCursor = { x: cursor.x + 40, y: cursor.y + 1 }
+        state = advancePointerAtFactor(
+          state,
+          nextCursor,
+          pointDelta(cursor, nextCursor),
+          level.movementFactor,
+          bounds
+        )
+        state = constrainPointerOffset(state, nextCursor, limits, bounds)
+        cursor = nextCursor
+      }
+      expect(state.point.x).toBeCloseTo(500 + 240 * level.movementFactor)
+      expect(state.point.y).toBeCloseTo(500 + 6 * level.movementFactor)
+    }
   })
 
-  it('does not cap normal movement at the wide zoom levels', () => {
-    const state = initialPointerState({ x: 500, y: 500 })
-    const widest = PICKER_ZOOM_LEVELS[0]
-    const next = advancePointerAtFactor(
-      state,
-      { x: 900, y: 500 },
-      { x: 400, y: 0 },
-      widest.movementFactor,
-      bounds,
-      widest.maxSpeed
-    )
-    expect(next.point.x).toBe(900)
+  it('responds immediately to a diagonal reversal without waiting for mouse motion to stop', () => {
+    for (const level of PICKER_ZOOM_LEVELS.slice(2)) {
+      let state = initialPointerState({ x: 500, y: 500 })
+      let cursor = { x: 500, y: 500 }
+      for (const delta of [
+        { x: 120, y: 3 },
+        { x: -40, y: 1 },
+        { x: -40, y: 1 }
+      ]) {
+        cursor = { x: cursor.x + delta.x, y: cursor.y + delta.y }
+        state = advancePointerAtFactor(state, cursor, delta, level.movementFactor, bounds)
+      }
+      expect(state.point.x).toBeCloseTo(500 + 40 * level.movementFactor)
+      expect(state.point.y).toBeCloseTo(500 + 5 * level.movementFactor)
+    }
   })
 
   it('derives movement from absolute screen points rather than window-relative event deltas', () => {
@@ -305,13 +322,7 @@ describe('zoom-aware pointer movement', () => {
     expect(PICKER_ZOOM_LEVELS.map((level) => level.cells)).toEqual([25, 17, 13, 9, 5])
     expect(PICKER_ZOOM_LEVELS.every((level) => level.cells % 2 === 1)).toBe(true)
     expect(PICKER_ZOOM_LEVELS.map((level) => level.movementFactor)).toEqual([1, 1, 1 / 2, 1 / 4, 1 / 8])
-    expect(PICKER_ZOOM_LEVELS.map((level) => level.maxSpeed)).toEqual([
-      Number.POSITIVE_INFINITY,
-      Number.POSITIVE_INFINITY,
-      720,
-      240,
-      80
-    ])
+    expect(PICKER_ZOOM_LEVELS.every((level) => !('maxSpeed' in level))).toBe(true)
     expect(PICKER_ZOOM_LEVELS.every((level) => !('label' in level))).toBe(true)
   })
 })
@@ -347,6 +358,64 @@ describe('constrainPointerOffset', () => {
     )
     expect(next.point.x).toBe(0)
     expect(next.offset.x).toBe(-10)
+  })
+})
+
+describe('floatingPickerOffsetLimits', () => {
+  const surface = { width: 640, height: 640 }
+  const margins = {
+    cursorX: 160, cursorY: 160,
+    selectorLeft: 164, selectorRight: 164,
+    selectorTop: 164, selectorBottom: 212
+  }
+
+  it('reserves room for both the physical cursor and the selector in the next window', () => {
+    expect(floatingPickerOffsetLimits(surface, margins)).toEqual({
+      minX: -312, maxX: 312, minY: -312, maxY: 216
+    })
+  })
+
+  it('keeps both axes moving after consecutive fast diagonal sweeps', () => {
+    const limits = floatingPickerOffsetLimits(surface, margins)
+    let state = initialPointerState({ x: 500, y: 500 })
+    let previousPoint = state.point
+    let previousCursor = { x: 500, y: 500 }
+    for (const cursor of [{ x: 1000, y: 800 }, { x: 1100, y: 900 }, { x: 300, y: 200 }]) {
+      const delta = pointDelta(previousCursor, cursor)
+      state = advancePointerAtFactor(state, cursor, delta, MAXIMUM_ZOOM_MOVEMENT_FACTOR, bounds)
+      state = constrainPointerOffset(state, cursor, limits, bounds)
+      if (delta.x > 0) expect(state.point.x).toBeGreaterThan(previousPoint.x)
+      else expect(state.point.x).toBeLessThan(previousPoint.x)
+      if (delta.y > 0) expect(state.point.y).toBeGreaterThan(previousPoint.y)
+      else expect(state.point.y).toBeLessThan(previousPoint.y)
+
+      const center = {
+        x: Math.round((cursor.x + state.point.x) / 2),
+        y: Math.round((cursor.y + state.point.y) / 2)
+      }
+      const rect = floatingPickerRect(center, { x: 0, y: 0, ...bounds })
+      const cursorClient = { x: cursor.x - rect.x, y: cursor.y - rect.y }
+      const selectorClient = { x: state.point.x - rect.x, y: state.point.y - rect.y }
+      expect(cursorClient.x).toBeGreaterThanOrEqual(margins.cursorX)
+      expect(cursorClient.y).toBeGreaterThanOrEqual(margins.cursorY)
+      expect(cursorClient.x).toBeLessThanOrEqual(surface.width - margins.cursorX)
+      expect(cursorClient.y).toBeLessThanOrEqual(surface.height - margins.cursorY)
+      expect(selectorClient.x).toBeGreaterThanOrEqual(margins.selectorLeft)
+      expect(selectorClient.y).toBeGreaterThanOrEqual(margins.selectorTop)
+      expect(selectorClient.x).toBeLessThanOrEqual(surface.width - margins.selectorRight)
+      expect(selectorClient.y).toBeLessThanOrEqual(surface.height - margins.selectorBottom)
+      previousPoint = state.point
+      previousCursor = cursor
+    }
+  })
+
+  it('returns finite non-inverted limits for a small surface', () => {
+    const limits = floatingPickerOffsetLimits({ width: 100, height: 100 }, margins)
+    expect(Object.values(limits).every(Number.isFinite)).toBe(true)
+    expect(limits.minX).toBeLessThanOrEqual(limits.maxX)
+    expect(limits.minY).toBeLessThanOrEqual(limits.maxY)
+    expect(Math.abs(limits.minX)).toBe(0)
+    expect(limits.maxY).toBe(0)
   })
 })
 

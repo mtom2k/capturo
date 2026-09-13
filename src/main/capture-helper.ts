@@ -63,6 +63,11 @@ function helperPath(): string | null {
   return null
 }
 
+/** The same packaged Windows binary also hosts the picker's input-only native window. */
+export function pickerInputHelperPath(): string | null {
+  return process.platform === 'win32' ? helperPath() : null
+}
+
 function helperAvailable(): boolean {
   const helper = helperPath()
   return helper !== null && existsSync(helper)
@@ -186,8 +191,8 @@ export function startCaptureHelper(): void {
 export function stopCaptureHelper(): void {
   const active = child
   if (!active) return
-  // Closing stdin lets the helper leave its serve loop and restore any balanced cursor-hide
-  // request before it exits. Keep a short kill fallback for a genuinely stuck helper.
+  // Closing stdin lets the helper leave its serve loop. Keep a short kill fallback for a
+  // genuinely stuck helper.
   try {
     active.stdin.end()
   } catch {
@@ -276,19 +281,6 @@ export async function sampleDisplayColor(request: DisplayColorSampleRequest): Pr
 export async function suppressWindowBorder(nativeHandle: bigint): Promise<boolean> {
   try {
     const [result] = await sendRequests([`window-border\t${nativeHandle.toString()}`], 1000)
-    return result?.ok === true
-  } catch {
-    return false
-  }
-}
-
-// Hides the Windows system cursor for live tools even if Chromium's CSS/display-media cursor
-// exclusion lags behind a fast physical movement. The native helper temporarily replaces standard
-// system cursor shapes and restores the user's scheme on exit; CSS remains the fallback elsewhere.
-export async function setSystemCursorHidden(hidden: boolean): Promise<boolean> {
-  if (process.platform !== 'win32') return false
-  try {
-    const [result] = await sendRequests([`cursor-hidden\t${hidden ? '1' : '0'}`], 1000)
     return result?.ok === true
   } catch {
     return false

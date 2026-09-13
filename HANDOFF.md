@@ -2,14 +2,39 @@
 
 ## Start here
 
-Version **0.41.0** includes **Pin to desktop**, following the 0.40.0 draft. See D-045 and the
-pinned-screenshot section in `TESTING.md`. The Pin action is available in both editors; the
-new renderer/main manager are `pin.ts`/`pins.ts`. Local 0.41.0 Setup and Portable packages include it.
+Version **0.42.2** includes Pin to desktop and adds **Edit** on each pin: the main process opens
+its retained PNG in Full Tab while the original pin stays unchanged. See D-045 and the pinned-image
+checks in `TESTING.md`; `pin.ts`/`pins.ts` own the renderer and main-process lifecycle.
+Action controls now share `src/renderer/action-icons.ts` and `action-icons.css` across screenshot,
+GIF, panoramic, color-result, and pin windows (D-046). Keep matching actions on the same
+`data-action-icon` and `data-action-tone`; every icon-only button needs `aria-label` and `title`.
+Live screenshot, GIF-selection, and Color Picker launches now share `AsyncGate` (D-047). Do not
+move session assignment back behind an unguarded asynchronous screen grab: simultaneous shortcut,
+tray, and second-instance triggers can orphan an overlay whose Cancel sender is no longer owned.
+Pins and Full Tab remain outside this gate and survive later captures.
+The Color Picker's rapid-motion correction in `picker-live.ts` ignores stale cursor-poll replies,
+computes both recenter guards from absolute screen points, and limits precision displacement for
+the next floating window's geometry (D-041). Verify fast diagonal sweeps in an interactive packaged
+build; the pure tests cannot prove compositor timing.
+The later zoom-motion fix removes the 720/240/80 source-pixel-per-second ceiling: it caused a fast
+movement on one axis to starve the other at the third zoom step and beyond. Movement now follows
+the 1/2, 1/4, or 1/8 factor on each axis; preview sampling remains limited to 30 starts per second.
+Windows now routes picker movement, wheel, and click through a desktop-wide input-only HWND in
+`native/capturo-capture/picker_input.cpp` and `src/main/picker-input.ts` (D-041). Keep the compact
+Electron lens content-protected and mouse-ignoring, and reveal it only after native readiness
+verifies cursor hiding. The HWND must stay non-activating so Escape and arrow keys reach the lens.
+The helper's pipe/heartbeat teardown is essential: it returns input on parent failure without
+changing Windows cursor images or global visibility counts. Rebuild the native helper before
+packaging; the native desktop and Electron smoke fixtures verify movement, four wheel steps,
+click, Escape, and null cursor readiness.
+The 0.42.2 Setup and Portable executables and `SHA256SUMS-0.42.2.txt` are in `release/`. Its
+`win-unpacked/` is also 0.42.2. Older local packages and temporary staging directories were
+purged; the installed app has not been replaced.
 
-The current source version is **0.41.0**, prepared as a new GitHub release draft with both Windows
-packages and checksums. The editor changes are documented in D-043/D-044/D-045;
-validation and packaging evidence live in `PROJECT_STATE.md`. The existing 0.40.0 GitHub draft
-does not include pinning. Complete the remaining installed-app acceptance checks before publication.
+The current source version is **0.42.2**; local Windows Setup and Portable packages have been built
+and verified. Validation and packaging evidence live in `PROJECT_STATE.md`. Older GitHub draft
+artifacts documented here predate these fixes; check their remote state before any upload.
+Complete the installed-app acceptance checks before creating or publishing a release.
 
 Read `PROJECT_STATE.md`, then run:
 
@@ -19,9 +44,13 @@ npm run build
 npm run dev
 ```
 
-Windows artifacts are always built into `release/`, and `release/BUILD-INFO.txt` records the version, build time, and a SHA-256 for each artifact. The running app reports its own version in the tray tooltip and tray menu, so an installed copy never has to be identified by guesswork.
+Windows artifacts are copied into `release/`, and `release/BUILD-INFO.txt` records the version,
+build time, and SHA-256 for each artifact. The running app reports its own version in the tray
+tooltip and tray menu, so an installed copy never has to be identified by guesswork.
 
-The earlier `release-update/` directory has been removed. It existed only because a running Capturo instance held `release/win-unpacked` open during a build, and keeping two directories of similarly named installers made it impossible to tell which build was current. Close any running Capturo before packaging instead of writing to a second directory.
+When Capturo has in-memory pins, leave the installed session running and package in an isolated
+staging directory. Do not overwrite a live `release/win-unpacked`; identify the versioned staging
+output and copy only the verified release artifacts into `release/`.
 
 ## Verifying a build without a person at the keyboard
 
@@ -108,6 +137,12 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   `sample-display` request in the Windows helper; pure pointer/grid helpers in
   `src/shared/picker.ts`; colour maths in `src/shared/color.ts`. Never route it back through
   `openSelectionOverlays`: the picker must not capture, paint, freeze, or shade a desktop image.
+  Never reintroduce a native `SetSystemCursor`/global cursor-hide request for Color Picker: a killed
+  helper leaves Windows' pointer invisible after Capturo exits. The desktop-wide input-only HWND
+  uses only window-owned `SetCursor(nullptr)` and must self-destruct on pipe or heartbeat loss.
+  Its `WM_MOUSEMOVE` and Raw Input wheel feed the renderer through validated IPC; the small Electron
+  lens ignores mouse hits. The legacy compact-input path still polls the physical pointer through
+  owner-validated IPC when the native helper is unavailable.
   The Windows picker must remain one compact floating surface rather than a monitor-sized
   transparent BrowserWindow: the latter corrupts paused and playing Chromium video planes. It
   must remain content-protected or the magnifier can enter its own Desktop Duplication sample.
@@ -117,15 +152,16 @@ broaden that lifecycle without another product decision recorded in `DECISIONS.m
   current point. Upload a returned grid as one tiny bitmap rather than restoring the per-cell
   canvas-fill loop. The owned-point displacement must bleed off during coarse
   movement so an edge is never stranded (D-032), and RGB must never round-trip through integer HSL
-  (D-033). The floating surface constrains excess zoom displacement to the actual room around the
-  physical pointer, recentres on the physical/owned screen-space midpoint before either reaches its guard, and reinitializes its display
+  (D-033). Native-input Windows constrains neither point to the compact window and recentres the
+  lens on the owned sample. The legacy compact-input path still constrains excess zoom displacement
+  and recentres on the physical/owned screen-space midpoint. Both paths reinitialize the display
   id, origin, scale, and HDR output when crossing a monitor seam. Picker movement must never read
   `shiftKey` or maintain a modifier-driven fine mode. Never restore raw
   `movementX/Y`: stable movement comes from consecutive absolute `screenX/Y` points because the
   floating BrowserWindow changes the relative coordinate frame. Wheel zoom uses the allow-listed
   25/17/13/9/5 grids, defaults to the widest grid, and automatically selects
-  1×/1×/1/2×/1/4×/1/8× movement; the three tight views also cap source-space speed at
-  720/240/80 pixels per second. An in-flight sample is valid only for its requested grid size.
+  1×/1×/1/2×/1/4×/1/8× movement on each axis without a time-based velocity cap. An in-flight
+  sample is valid only for its requested grid size.
   The UI deliberately shows no zoom badge. The aperture and hex are drawn onto the hit
   canvas in one `requestAnimationFrame` after replacing the complete prior bitmap with transparent
   pixels via `copy`. Both canvases require device-pixel backing stores and logical transforms or

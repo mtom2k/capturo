@@ -12,9 +12,9 @@
       <span id="timer" class="rec-timer">0:00</span>
       <span id="frames" class="rec-frames">Preparing…</span>
       <span class="rec-spacer"></span>
-      <button id="pause" class="rec-btn" aria-label="Pause recording" disabled>Pause</button>
-      <button id="stop" class="rec-btn primary" aria-label="Stop and open preview" title="Stop recording and review the GIF" disabled>Stop</button>
-      <button id="cancel" class="rec-btn" aria-label="Discard recording">Cancel</button>
+      <button id="pause" class="app-action" data-action-icon="pause" aria-label="Pause recording" title="Pause recording" disabled></button>
+      <button id="stop" class="app-action" data-action-icon="stop" data-action-tone="transition" aria-label="Stop and open preview" title="Stop recording and review the GIF" disabled></button>
+      <button id="cancel" class="app-action" data-action-icon="cancel" data-action-tone="cancel" aria-label="Discard recording" title="Discard recording (Esc)"></button>
     </div>
     <video id="video" muted playsinline></video>
     <script type="module" src="./gif-record.ts"></script>

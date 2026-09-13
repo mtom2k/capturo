@@ -1,5 +1,5 @@
 import { BrowserWindow, clipboard, ipcMain, nativeImage } from 'electron'
-import { MAX_PINS, MAX_PIN_PIXELS, MAX_TOTAL_PIN_PIXELS, pinBounds, type PinPayload, type PinResult } from '../shared/pin'
+import { MAX_PINS, MAX_PIN_PIXELS, MAX_TOTAL_PIN_PIXELS, pinBounds, type PinEditResult, type PinPayload, type PinResult } from '../shared/pin'
 
 type Pin = {
   window: BrowserWindow
@@ -16,6 +16,7 @@ export class PinManager {
     preload: string
     icon: Electron.NativeImage | string
     load: (window: BrowserWindow) => Promise<unknown>
+    edit: (payload: PinPayload, window: BrowserWindow) => Promise<PinEditResult>
   }) {
     const owner = (event: Electron.IpcMainInvokeEvent): Pin | undefined => {
       const pin = this.pins.get(event.sender.id)
@@ -41,6 +42,11 @@ export class PinManager {
       if (!pin) return false
       clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(pin.payload.png)))
       return true
+    })
+    ipcMain.handle('pin:edit', (event): Promise<PinEditResult> => {
+      const pin = owner(event)
+      if (!pin || !pin.ready) return Promise.resolve({ opened: false, error: 'This pin is no longer available.' })
+      return this.options.edit(pin.payload, pin.window)
     })
     ipcMain.handle('pin:close', (event) => owner(event)?.window.destroy())
   }

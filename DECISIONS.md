@@ -1,5 +1,42 @@
 ﻿# Decision Log
 
+## D-047: Live capture launches are single-flight; pins remain independent
+
+**Status:** accepted, 2026-09-13
+
+Screenshot, GIF selection, and Color Picker can all be triggered from the tray, shortcuts, app
+activation, or a second launch. A screenshot waits for permission and a native frame before it
+assigns its session. Two triggers during that wait could both create overlays; assigning the
+second session orphaned the first, leaving its Escape and Cancel IPC unable to identify an owner.
+Because Windows capture tiles a frozen desktop over both the work area and the taskbar strip, an
+orphan can also make the desktop and taskbar appear locked: the visible taskbar is Capturo's still
+image, and its topmost window intercepts input. This explains the reported symptom at the app
+level; it is not evidence that Windows Explorer or DWM itself stopped responding.
+
+One shared asynchronous launch gate now admits only the first trigger until its overlays finish
+loading or fail. Repeating the active mode keeps its current selection; selecting a different mode
+afterward replaces it through the existing close path. Failed loads close their owned windows, and
+a user cancel during loading does not produce a late capture-error dialog. Pins and Full Tab are
+independent snapshots and are not part of this gate, so they can stay open during a new GIF or
+screenshot capture.
+
+## D-046: Common actions share one icon system across modes
+
+**Status:** accepted, 2026-09-12
+
+The same action previously changed form between screenshot, GIF, color, and pin windows: Copy was
+sometimes a blue overlapping-pages icon and sometimes plain text, Save changed from a green disk
+to neutral text, and Cancel/Discard alternated between a red cross and neutral text. Each window
+also defined its own button sizing and hover colors. This made the meaning of a control depend on
+which mode the user entered.
+
+All compact action surfaces now use the same 30px button, SVG registry, and action tone styles.
+Equivalent Copy, Save, Cancel/Discard, and Full Tab actions reuse the same glyph and color; unique
+actions such as Record, Pause/Resume, Retake, and Pick again use that same button frame. HTML owns
+the accessible name and tooltip, while the shared module owns only trusted static glyphs. Pause
+and Resume update the icon, accessible name, and tooltip together. Settings keeps text labels for
+form actions, and the live transparent color picker keeps its unobscured keyboard/pointer flow.
+
 ## D-045: Pins are independent temporary screenshot references
 
 **Status:** accepted, 2026-09-10
@@ -18,6 +55,12 @@ and retained image pixels (8 pins, 40 MP each, 80 MP total). Pins may appear in 
 Windows development smoke covers creation from both editors, real clipboard dimensions, native
 always-on-top/opacity state, resizing, multiple-pin independence, and close/teardown. macOS and
 installed-package acceptance remain to be performed before release.
+
+**Amended 2026-09-12:** A pin's Edit action opens its retained PNG in the existing Full Tab editor.
+The pin remains unchanged so editing cannot silently replace a desktop reference; users can pin
+the edited result separately. The pin renderer sends no image bytes for this action. Main validates
+the owning frame and transfers its own retained PNG, preserving original pixels and alpha. The
+one-Full-Tab limit still applies, and the existing editor is focused if occupied.
 
 ## D-043: Text retains its box; numbered steps own their border size
 
@@ -813,8 +856,8 @@ fetches the current point before reporting it.
 **Amended 2026-08-24: the owned point must fit inside the compact surface.** Precision zoom
 intentionally makes the sampled point trail the physical cursor. Following only the cursor lets
 that displacement grow until the 200px magnifier is outside the 640px window and therefore appears
-to vanish. The renderer now constrains only the excess displacement, using the actual asymmetric
-space available on each side of the live pointer, and recentres when either the pointer or selector
+to vanish. The renderer constrains only the excess displacement to the space available after the
+next recenter, and recentres when either the pointer or selector
 approaches an edge. Maximum zoom remains one-eighth speed throughout its useful precision range;
 at the surface limit it follows rather than becoming invisible. The invocation instruction is also
 removed entirely, leaving only the selector and color readout over the live desktop.
@@ -849,9 +892,55 @@ history to display at an obsolete position.
 delta by one-eighth still produces a very large movement. The three precision zoom levels therefore
 add source-space velocity ceilings of 720, 240, and 80 pixels per second; the fully magnified
 five-pixel view is capped at 80 regardless of physical input speed. Wide views remain uncapped.
-Windows also asks the persistent native helper to hide the system cursor with balanced `ShowCursor`
-calls for the complete picker session and restores the same number on every exit path. CSS
-`cursor:none` remains a fallback, but no longer has to win a compositor race during fast movement.
+At this point Windows also asked the persistent native helper to hide standard cursor shapes for
+the complete picker session. That global approach is superseded by the amendment below.
+
+**Amended 2026-09-13: remove the velocity ceilings at precision zoom.** The ceiling above made
+owned-point movement depend on the time between DOM or cursor-poll events. A high-polling-rate mouse
+could produce almost no permitted movement per event; a fast horizontal component consumed nearly
+all of that allowance, leaving a simultaneous vertical component below one sampled pixel. This
+appeared as a frozen axis from the third wheel step onward. The picker now scales each absolute
+screen-space delta independently by the selected 1/2, 1/4, or 1/8 factor. Precision is therefore
+independent of event cadence and diagonal direction. The floating-window displacement constraint
+still keeps the physical cursor and owned selector visible during long sweeps. The 30 Hz limit
+applies only to expensive preview sampling, never pointer movement.
+
+**Amended 2026-09-12: never mutate global Windows cursors for the picker.** The native helper used
+`SetSystemCursor` to replace every standard cursor image with a transparent one. A killed helper
+cannot restore those images, so the user's pointer can remain invisible even after Capturo exits.
+At that stage the picker used only window-scoped `cursor:none`, and the helper's global cursor
+command was removed.
+The compact Windows picker also polls `screen.getCursorScreenPoint()` through sender-validated IPC
+every 25 ms. That independent position path moves and recentres the magnifier when a transparent
+window misses a DOM pointer event. A fast pointer can briefly expose the ordinary arrow outside
+the compact surface; preserving the system cursor on all exit paths took priority. The helper-backed
+Windows path supersedes this compact-input behavior in the 2026-09-13 amendment below.
+
+**Amended 2026-09-13: reconcile fast motion in screen space.** An asynchronous physical-cursor
+poll can complete after a newer DOM pointer event and pull the selector back to an obsolete point.
+Poll replies are now ignored when a DOM event arrived after the query began. The floating surface's
+selector limit is computed for the next window centred between the physical and owned points,
+instead of using the old window's client coordinates while `setBounds` is pending. Recenter guards
+also derive the physical pointer's client position from its absolute screen position and the same
+integer-rounded predicted origin used to paint the selector. This prevents a quick diagonal sweep
+from pinning an axis to a stale boundary or mixing coordinates from two window positions.
+
+**Amended 2026-09-13: separate Windows input from the compact visual surface.** The midpoint
+recenter and offset constraint above still left only a few hundred pixels of physical/owned-point
+separation inside the 640px BrowserWindow. At the 1/4 and 1/8 zoom factors, a fast sweep exhausted
+that room; the cursor could then leave the hit surface and the sample would appear stuck on one
+axis. A full-monitor transparent Electron window would repeat the Chromium video-plane regression.
+Windows now uses a separate topmost `WS_EX_NOREDIRECTIONBITMAP` Win32 window to hit-test the whole
+virtual desktop without painting any pixels, while the small protected Electron window only draws
+the magnifier. The owned point is no longer constrained by the compact window and it alone sets the
+lens centre. `WM_SETCURSOR` and `WM_MOUSEMOVE` set a null cursor for this window's input thread,
+including before the lens is revealed; no system cursor image or global visibility count is
+changed. A process exit, pipe EOF, or missed heartbeat destroys the hit surface, so desktop input
+returns even on failure. Mouse movement and clicks come from the input HWND. Raw Input delivers the
+wheel while the non-activating surface lets the Electron picker keep keyboard focus for Escape and
+exact pixel nudges. The legacy compact-input path remains for Windows without the native helper;
+macOS keeps its existing display overlay. The older offset and cursor-poll guidance in this
+decision applies only to that legacy path.
 
 **Amended 2026-08-24: recenter paint must lead the native window move.** The selector is drawn
 inside the same compact BrowserWindow that receives pointer input. Calling `setBounds` moves that

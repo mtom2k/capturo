@@ -1,4 +1,5 @@
 import './gif-preview.css'
+import './action-icons'
 import type { GifPreviewActionResult } from '../shared/gif'
 
 const preview = document.querySelector<HTMLImageElement>('#preview')!
@@ -69,6 +70,7 @@ async function saveGif(): Promise<void> {
       location.title = result.filePath
       openFolderButton.title = `Show ${result.filePath} in its folder`
       discardButton.title = 'Close this preview; the saved GIF will be kept (Esc)'
+      discardButton.setAttribute('aria-label', 'Close GIF preview')
       retakeButton.title = 'Close this preview and select a new GIF region; the saved GIF will be kept'
     }
     showResult(result, 'GIF saved')

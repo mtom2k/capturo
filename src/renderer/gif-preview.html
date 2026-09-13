@@ -26,12 +26,12 @@
       </div>
 
       <footer class="actions" aria-label="GIF preview actions">
-        <button id="copy" class="button primary" title="Copy the animated GIF file to the clipboard (Ctrl+C)">Copy</button>
-        <button id="save" class="button" title="Choose where to save the GIF file (Ctrl+S)">Save</button>
-        <button id="open-folder" class="button" disabled title="Save the GIF first, then open its folder">Open folder</button>
+        <button id="copy" class="app-action" data-action-icon="copy" data-action-tone="copy" aria-label="Copy GIF" title="Copy the animated GIF file to the clipboard (Ctrl/Cmd+C)"></button>
+        <button id="save" class="app-action" data-action-icon="save" data-action-tone="save" aria-label="Save GIF" title="Choose where to save the GIF file (Ctrl/Cmd+S)"></button>
+        <button id="open-folder" class="app-action" data-action-icon="folder" aria-label="Open saved GIF folder" disabled title="Save the GIF first, then open its folder"></button>
         <span class="spacer"></span>
-        <button id="retake" class="button" title="Discard this preview and select a new GIF region">Retake</button>
-        <button id="discard" class="button danger" title="Discard this preview without saving it (Esc)">Discard</button>
+        <button id="retake" class="app-action" data-action-icon="retake" aria-label="Retake GIF" title="Discard this preview and select a new GIF region"></button>
+        <button id="discard" class="app-action" data-action-icon="cancel" data-action-tone="cancel" aria-label="Discard GIF preview" title="Discard this preview without saving it (Esc)"></button>
       </footer>
     </main>
     <script type="module" src="./gif-preview.ts"></script>

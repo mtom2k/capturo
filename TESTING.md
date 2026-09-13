@@ -10,11 +10,35 @@ npm run build
 
 This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering—including the 30 Hz live-sample cadence and single-bitmap grid upload—settings normalization, and screen-permission routing.
 
+On an interactive Windows desktop, rebuild the native helper and run the picker input smokes:
+
+```powershell
+cmd /c native\capturo-capture\build.cmd
+node tests/fixtures/picker-native-smoke.mjs
+node tests/fixtures/picker-native-actions-smoke.mjs
+node tests/fixtures/picker-app-input-smoke.mjs
+```
+
+The first verifies a desktop-wide hit surface and null cursor before readiness, the second injects
+a physical wheel and click into the native HWND, and the last launches an isolated development app,
+steps through all four zoom changes, makes a wide mouse sweep, and checks that Escape closes the
+picker. The scripts briefly move or intercept the cursor and restore normal input on completion.
+They cannot prove that a one-frame cursor flash or video-plane artifact is absent; use the visual
+desktop checks below as well.
+
+`tests/action-icons.test.ts` checks that Copy, Save, Cancel/Discard, and Full Tab handoff controls
+declare identical glyph/tone pairs across modes and that every icon-only control has an accessible
+name and tooltip. In the desktop app, inspect the screenshot toolbar, GIF selection/recording/
+preview, panoramic bar, color result, and pin header at their compact window sizes. Check hover,
+focus, disabled states, and that Pause visibly changes to Resume with the correct accessible name.
+
 ## Pinned screenshots (D-045)
 
 `tests/pin.test.ts` exercises real manager logic with Electron mocks: decoded reveal, owner/frame
 isolation, opacity input validation, original-image copy, startup failure/crash/timeout cleanup,
 independent windows, capacity recovery, pixel limits, and placement on scaled/negative displays.
+It also checks that Edit can use only a decoded pin owned by the invoking main frame, passes the
+retained PNG to Full Tab, and leaves the source pin open.
 
 For the actual Windows main/preload/editor workflow, build and launch an isolated development
 instance, then run the smoke script:
@@ -31,6 +55,9 @@ text/HTML/RTF/image formats, verifies both editor entry paths and new-capture su
 in the runner's environment to retain generated pins for a manual native drag/edge-resize pass.
 Verify transparency, 25%/100% opacity, Ctrl/Cmd+C, close buttons, keyboard focus, and moving across
 different-DPI displays. Repeat on macOS and in a packaged app before release.
+The smoke runner also checks that Edit refuses to replace an occupied Full Tab, then opens a pin's
+original 960×480 PNG with forced PNG export after the prior editor closes. Check that annotations
+can be added in the new Full Tab and pinned as a separate snapshot without changing the source pin.
 
 ## Text boxes and independent step sizes (D-043)
 
@@ -187,6 +214,16 @@ Verify on at least 100% and one scaled DPI setting:
     - Test tolerance at 0%, a useful mid value, and 100%; test feather at 0px and 10px. Hex, RGB, and native color inputs must stay synchronized, and every control must explain itself on hover.
     - Check Before, After, and the draggable Split preview. Apply, then press `Ctrl+Z` and confirm the original pixels return. In separate captures, leave the preview pending and use `Ctrl+C`, toolbar Copy, `Ctrl+S`, and toolbar Save; each must automatically apply the preview before export. Configure JPEG in Settings and Save with a `.jpg` name: the resulting path and bytes must be PNG with an alpha channel. Paste Copy into an alpha-aware editor and confirm transparency is retained.
 9. Confirm copy, save, and cancel remove their owning overlay or detached-editor renderer but leave the tray process alive.
+    - Trigger New screenshot twice rapidly with the shortcut, then with a tray click and shortcut
+      close together. Wait for loading to finish. There must be one capture session (one editor and
+      its expected filler regions per display), and Escape and the Cancel button must each close
+      every overlay. Repeat with New GIF and Color Picker. A second trigger while the same mode is
+      already visible must keep that selection rather than create another. Switching modes should
+      close the prior selection. Cancel during a slow multi-display load and confirm no late
+      "Capture unavailable" dialog appears. After cancellation, click the live taskbar and open
+      another application to confirm no frozen taskbar filler or input-blocking overlay remains.
+    - Pin a screenshot, then start and cancel a GIF selection. The pin must remain visible and
+      functional throughout; its Escape/Close action should still close only that pin.
 10. With Select active, click every annotation type, drag it, resize all eight handles, change each applicable property, and press Delete.
 11. Move the crop frame after placing annotations and confirm the crop moves while annotations stay at their original desktop coordinates.
 12. Type new text, commit with `Ctrl+Enter`, edit it by double-clicking with Select, and verify text in the exported PNG. Repeat the commit by clicking away instead of `Ctrl+Enter` and confirm the exported PNG is identical.
@@ -215,13 +252,18 @@ Verify on at least 100% and one scaled DPI setting:
       sampler's cadence. Repeat with a high-polling-rate mouse if available: preview sample work is
       capped at 30 starts per second and must not slow selector motion; clicking must still return
       the exact current pixel rather than the latest cadence-limited preview.
-    - The system cursor must disappear and the magnifier take its place, **centred on the pixel it is reading**, with that pixel outlined in the middle of the aperture and the hex below. Move the physical mouse as fast as possible at every zoom level and confirm the arrow never flashes through. Cancel and pick normally, confirming the cursor is restored on both exit paths. Check the outline stays visible over both white and black areas.
+    - The Windows cursor should disappear across the whole desktop while the picker is active and the magnifier take its place, **centred on the pixel it is reading**, with that pixel outlined in the middle of the aperture and the hex below. Shake and sweep the physical mouse as fast as possible at every zoom level; no arrow may flash, including outside the compact visual window. Cancel, pick, and force-quit Capturo during a picker session, confirming the Windows cursor remains visible afterward in each case. Check the outline over both white and black areas.
+    - On Windows, move the pointer far outside the compact visual surface and back while the magnifier is visible. The magnifier should keep tracking and recentering from the native input HWND. Verify click, wheel, Escape, and monitor-seam behavior still work.
     - **The magnifier must be on the pointer the instant the picker opens, before the mouse is moved at all.** Park the pointer somewhere distinctive, invoke the picker, and confirm the aperture is centred there rather than in the middle of the screen. Repeat near each screen edge and corner: the centre must stay on the pixel even where that means the magnifier is clipped by the edge — it must never slide inwards to fit, because that would put its centre on a different pixel than the one it reports.
     - Hover a known color (a saturated app icon, pure white, pure black) and confirm the hex is exactly right rather than approximately right. Compare against the same pixel in a saved screenshot.
-    - At maximum wheel zoom, a full mouse sweep must move the sample only a short distance, enough to pick a one-pixel window border. Continue sweeping far enough to create a large gap between the physical pointer and owned sample: the complete magnifier must remain visible while moving and the compact Windows surface must follow before clipping it. Zoom back out and confirm the magnifier does not jump, then sweep normally and confirm it catches back up to the cursor within one sweep and can still reach all four screen edges.
-    - Repeat maximum-zoom movement with several fast diagonal sweeps that cross the compact surface's
-      recenter boundary. The selector must continue in the same direction at a consistent rate;
-      it must not reverse, jump, oscillate, or pause because the BrowserWindow moved underneath it.
+    - At maximum wheel zoom, a full mouse sweep must move the sample only a short distance, enough to pick a one-pixel window border. Continue sweeping far enough to create a large gap between the physical pointer and owned sample: the complete magnifier must remain visible while moving and the compact Windows surface must follow the owned point. Zoom back out and confirm the magnifier does not jump, then sweep normally and confirm it catches back up to the cursor within one sweep and can still reach all four screen edges.
+    - Repeat maximum-zoom movement with several fast diagonal sweeps that move the physical cursor
+      more than 400 pixels away from the owned point and cross the compact visual surface's edge.
+      The selector must continue in the same direction at a consistent rate; it must not reverse,
+      jump, oscillate, or pause because the BrowserWindow moved underneath it. After one rapid
+      sweep, immediately make another in both axes while the first window move may still be
+      pending; neither axis should stick at the old compact window edge. Repeat at the
+      widest zoom, where the selector should track the physical pointer one-to-one.
       Repeat at normal speed, reversing direction immediately after each guard
       crossing. Record at 60 fps or higher: no frame may show the selector one recenter distance
       beyond the pointer before returning. This specifically checks native-window bitmap carry.
@@ -231,8 +273,10 @@ Verify on at least 100% and one scaled DPI setting:
       three levels must move at approximately 1/2, 1/4, and 1/8 speed. Hold and release Shift at
       every level and confirm it never changes movement speed or placement. At both wheel limits,
       further scrolling must leave the level unchanged.
-      At maximum zoom, throw the mouse rapidly across the pad: selector motion must remain bounded
-      near 80 source pixels per second rather than inheriting the raw physical velocity.
+      At the 13-, 9-, and 5-cell levels, sweep rapidly at a shallow diagonal with one axis moving
+      much farther than the other, then reverse without pausing. Both axes must continue to follow
+      their respective pointer deltas at the selected 1/2, 1/4, or 1/8 factor; neither axis may
+      freeze until the mouse stops. The selector must remain inside the compact picker window.
     - Jerk the pointer quickly in alternating directions over both black and white backgrounds.
       Only one aperture may be visible in each frame: no duplicate rim, caption, or short-lived
       trail may remain at a prior selector position. Record this at high frame rate if a one-frame

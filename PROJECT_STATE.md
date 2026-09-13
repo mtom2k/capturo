@@ -1,6 +1,154 @@
 # Project State
 
-Last updated: 2026-09-10
+Last updated: 2026-09-13
+
+## 0.42.2 Windows packages
+
+The Windows Color Picker now has a desktop-wide input-only Win32 surface separate from its compact,
+content-protected Electron magnifier. The physical mouse can travel beyond the lens at the 1/4 and
+1/8 precision levels without exhausting a compact hit window; the native surface keeps the system
+arrow hidden across the desktop without replacing Windows cursor images. It forwards movement,
+clicks, and background Raw Input wheel events to the focused renderer. The surface verifies a null
+cursor before the lens is shown and exits on pipe EOF or heartbeat loss. The installed Capturo was
+left running, preserving in-memory pins.
+
+The rebuilt helper passed its tone-map self-test. `npm run build` passed type checking, all 300
+automated tests, and production bundling. Interactive Windows desktop smokes verified native
+hit-testing and null cursor at startup, physical movement/wheel/click routing, four successive
+zoom steps and a wide mouse sweep through the real Electron renderer, and Escape teardown. A
+separate watchdog check confirmed that the helper exits after three seconds without a heartbeat.
+Visual acceptance of fast physical shaking, the absence of a one-frame arrow flash, video-plane
+preservation, and installed/portable app behavior remains before publication.
+
+An isolated Windows x64 package build produced local artifacts:
+
+- Setup: 99,974,105 bytes; SHA-256
+  `84a345b6f578405d78ebe5e54c4d193353c11ce8ca8369ac07c91908792ba493`.
+- Portable: 99,722,776 bytes; SHA-256
+  `dff9b5dcdf075db5c85bae834c5e29e99dc33daa2908fb9b3291886243bbfe89`.
+
+Both EXEs report file/product version 0.42.2 and Authenticode status `NotSigned`. The packaged
+`app.asar` contains the 0.42.2 manifest and all 35 production files match the tested `out/`
+bundle byte-for-byte. The packaged native helper matches the rebuilt executable (SHA-256
+`2e4bd195641e148165f13e6d8af945f92015d5571e3552292a303a739d0923c4`). `release/` contains
+only the 0.42.2 Setup, Portable, blockmap, checksums, build manifest, and matching
+`win-unpacked/`; the 0.42.1 local packages were removed. No GitHub release or macOS package was
+made.
+
+## 0.42.1 Windows packages (superseded by 0.42.2)
+
+The Color Picker precision-zoom fix scales each pointer axis by the selected movement factor
+without the former time-based velocity ceiling. A regression reproduces rapid shallow diagonal
+input at all three precision levels and a reversal without a pause. `npm run build` passed type
+checking, all 299 automated tests, and production bundling. An isolated Windows x64 package build
+produced the following local artifacts:
+
+- Setup: 99,968,480 bytes; SHA-256
+  `91c72e06085fca41ba8da3ac16f53ac931edbe4b0147a2e6900ce783647cea82`.
+- Portable: 99,717,163 bytes; SHA-256
+  `c64e5233c8ac212d30f126455a726787a4c0ebd0bd9d29ef2863fc1dfc2839d8`.
+
+Both EXEs report file/product version 0.42.1 and Authenticode status `NotSigned`. The packaged
+`app.asar` contains the 0.42.1 manifest and all 35 production files match the tested `out/`
+bundle byte-for-byte. The packaged native helper matches the rebuilt executable and passed its
+tone-map self-test. At that time, `release/` contained only the 0.42.1 Setup, Portable, blockmap, checksums,
+build manifest, and matching `win-unpacked/`; the 0.42.0 local packages and temporary staging were
+removed. The running installed Capturo was not replaced, preserving any in-memory pins. Interactive
+Windows acceptance of fast picker movement, cancellation, pin editing, and compact action buttons
+remains before publication. No GitHub release or macOS package was made.
+
+## 0.42.0 Windows packages (superseded by 0.42.1)
+
+Source, `package.json`, and `package-lock.json` are at 0.42.0. The rebuilt Windows native helper
+passed its tone-map self-test; `npm run build` passed type checking, all 299 automated tests, and
+production bundling. Isolated Windows x64 packaging produced both executables, copied into
+`release/` with `SHA256SUMS-0.42.0.txt` and a refreshed `BUILD-INFO.txt`:
+
+- Setup: 99,968,648 bytes; SHA-256
+  `814ac8361a55a3c55fdecf4982890041bb4bbacfe459b8883ef00864fb46d78f`.
+- Portable: 99,717,334 bytes; SHA-256
+  `e477029a273fa16b79392d47b2e5d1161cad6a552430a8979ca60922e6f3f9e7`.
+
+Both EXEs report file/product version 0.42.0 and Authenticode status `NotSigned`. The packaged
+`app.asar` contains the 0.42.0 manifest and all 35 production files match the tested `out/`
+bundle byte-for-byte. The packaged helper matches the rebuilt executable and passed its self-test.
+At the time, the matching unpacked app was `release/win-unpacked/`. The local `release/` folder
+contained only 0.42.0 Setup and Portable packages, their blockmap and checksums, and
+`BUILD-INFO.txt`; its manifest listed exactly those two executables. Older 0.31.1/0.40.0/0.41.0 packages, obsolete staging and
+smoke-test files, and ten empty Windows spelling-cache folders were purged. No `latest.yml` is
+needed while updates remain notification-only. Neither a GitHub release nor an installed-app
+upgrade was performed. Interactive Windows acceptance of fast picker movement, cancellation,
+pin editing, and compact action buttons remains before publication. No macOS package was built.
+
+Historical sections below retain test results and hashes for previous versions; their old local
+artifact paths no longer exist after this cleanup.
+
+## 0.42.0 change: Color Picker fast-motion alignment
+
+The live picker now ignores cursor-poll replies overtaken by DOM movement, derives recenter guards
+from absolute screen coordinates, and bounds precision displacement against the next centred
+compact window rather than its previous bounds. This addresses selector jumps and momentary axis
+locking when the mouse outruns a Windows `setBounds` round trip. Pure regression tests cover a
+large diagonal jump followed by a second sweep and verify that the physical pointer and owned
+selector fit the new surface.
+
+Type checking, all 299 tests, and production bundling passed. An isolated 0.41.0 portable test
+build (SHA-256 `308DD6B095E467E9FD5B88EBE66D831366420CE16C7BA3B7C98416A84E0D01C4`) contained
+the correction and was superseded by the complete 0.42.0 pair above. Its temporary copy was removed
+during cleanup. Interactive Windows mouse and compositor acceptance remains pending; the installed
+Capturo was not replaced.
+
+## 0.42.0 change: one live capture launch at a time
+
+Rapid tray, shortcut, and app-activation triggers could overlap before the asynchronous screen
+grab assigned `CaptureSession`, leaving an older overlay orphaned and unable to cancel through
+owner-validated IPC. A shared launch gate now covers screenshot, GIF selection, and Color Picker;
+repeating the active mode keeps its selection. Overlay load failure closes its session, and a user
+cancel during loading cannot produce a late error dialog. Pins and Full Tab remain independent.
+The same orphan could cover the work area and taskbar with Capturo's topmost frozen image, making
+both appear locked. This is the supported app-level explanation; a separate Explorer/DWM hang has
+not been reproduced or ruled out.
+At the time, type checking, 296 tests (including delayed concurrent-trigger coverage), and the
+production bundle passed. A temporary 0.41.0 portable included the gate and prior cursor fix; it
+was removed after those changes were packaged in 0.42.0. Interactive desktop acceptance remains.
+
+## 0.42.0 change: Color Picker cursor recovery
+
+Windows' configured cursor images were restored successfully after a reported picker failure left
+them transparent beyond Capturo's exit. The picker no longer sends the native global cursor-hide
+command. It hides the cursor only inside its own window and polls the physical position through a
+session-validated IPC path so the compact magnifier can recover from missing pointer events.
+Native helper source and the local helper binary both remove the dangerous command. At the time,
+type checking, 294 tests, production bundling, and the helper self-test passed. A temporary 0.41.0
+portable verified the cursor poll route and absence of the global hide command; that copy was
+purged after 0.42.0 packaging. Interactive Windows verification of movement, click, zoom, monitor
+transitions, and forced quit remains.
+
+## 0.42.0 change: consistent action icons
+
+The capture toolbar, GIF selection/recording/preview, panoramic control bar, color result, and
+pinned-image header now use `action-icons.ts` and `action-icons.css` for icon-only action buttons.
+Copy, Save, Cancel/Discard, and the Full Tab handoff reuse the same glyph and tone everywhere they
+appear. Each icon-only control has an accessible name and tooltip; Pause changes both its glyph and
+name when it becomes Resume. The live transparent color picker retains its keyboard/click flow
+without floating buttons that would cover sampled content. The prior GIF preview documentation
+image is no longer embedded because it shows the retired text-button layout.
+
+Type checking, 293 tests, and the production build pass. The built GIF preview, recording bar,
+pin header, color result, and panoramic bar were visually inspected in a local browser preview.
+This does not replace acceptance in the Electron windows on an interactive desktop. The older
+0.41.0 draft artifacts predate these changes; the local 0.42.0 packages include them.
+
+## 0.42.0 change: edit a pinned screenshot
+
+Each pin now has an Edit action that opens its retained PNG in Full Tab through owner-validated
+IPC. The source pin remains unchanged; the editor can make a new pin after further annotation.
+Only one Full Tab may be open at a time. This source work postdated the 0.41.0 draft and is
+included in the local 0.42.0 packages.
+Type checking, 291 tests, and the production build pass. The desktop smoke runner now covers the
+handoff, but this sandbox could not start a capture overlay: Windows denied desktop access to the
+native helper and Chromium's fallback. Run the smoke and installed-app acceptance on an
+interactive desktop before publication.
 
 ## 0.41.0: pinned screenshots
 
@@ -46,9 +194,10 @@ These changes are included in the 0.40.0 Windows release preparation.
 
 ## Phase
 
-`0.41.0` is the current source version, prepared as a new Windows x64 Setup and Portable release draft.
+`0.42.2` is the current source version, with local Windows x64 Setup and Portable packages. It is
+not a published GitHub release.
 The latest published stable release is `0.31.0` (verified on GitHub on 2026-09-09).
-No 0.41.0 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
+No 0.42.2 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
 older macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS
 state.
 
@@ -69,6 +218,13 @@ the newest pending point. This prevents high-polling-rate pointer updates—and 
 screen-source fallback—from monopolizing the renderer/helper loop and making the owned selector
 stutter. Returned grids are uploaded as one bitmap; the exact pick path remains uncapped and always
 rechecks the current point. See the latest D-041 amendment.
+
+The latest precision-zoom correction removes the earlier 720/240/80 source-pixel-per-second
+movement ceilings. At the third wheel step and tighter, those ceilings made a rapid diagonal sweep
+advance one axis by less than a pixel until the mouse slowed. Owned-point motion now follows each
+physical axis by its 1/2, 1/4, or 1/8 factor, independent of event cadence; the compact-surface
+displacement guard still keeps both the cursor and magnifier in view. The 30 Hz preview-sampling
+limit remains in force. See the 2026-09-13 D-041 amendment.
 
 **The highlighter**, in the toolbar directly right of the Pen (`H`). Geometrically a pen stroke and sharing that code; it now uses a vivid 52% translucent `source-over` marker blend so every palette colour remains clear over both dark and light captures while the content beneath stays readable. Shift or Ctrl locks it straight, and it keeps its own width and slider range separate from the Pen's. See D-035.
 
@@ -91,9 +247,9 @@ direct Windows probe confirmed bare `PrintScreen` registers successfully. The OS
 refuse an accelerator it exclusively owns, and that genuine failure still preserves the previous
 working binding. See D-040.
 
-The current 0.22.3 patch also makes Color Picker motion compositor-safe: every selector frame fully
-replaces the transparent canvas, the Windows native helper keeps the system cursor hidden for the
-entire session, and the three tight zoom levels cap movement at 720/240/80 source pixels per second.
+The 0.22.3 patch also made Color Picker motion compositor-safe: every selector frame fully replaced
+the transparent canvas. Its global Windows cursor replacement and 720/240/80 source-pixel-per-second
+movement ceilings have since been removed; see the current picker status above and D-041.
 
 Version 0.22.3 separates Color Picker from screenshot capture. Invoking it now opens a transparent,
 content-protected live sampling surface rather than freezing and tinting the desktop. Windows uses
@@ -232,7 +388,7 @@ Version 0.16.0 gives Blur and Pixelate a dedicated 1-100% Intensity control whos
 
 Version 0.15.1 adds a non-destructive Transparent background screenshot tool with connected-pixel removal, sampled/hex/RGB target colors, perceptual tolerance, 0-10px feathering, checkerboard Before/After/Split preview, undo, automatic application on Copy/Save, and automatic PNG output. It also replaces the application and tray/menu-bar branding with the supplied purple Capturo artwork and disables Electron's unused spellchecker so Windows does not create malformed cache folders beside the source tree.
 
-## Current build
+## Previous 0.41.0 build
 
 The 2026-09-10 `0.41.0` Windows packaging run passed strict type checking, all 290 automated
 tests, and the production build. Both local x64 executables include Pin to desktop, report
@@ -245,8 +401,8 @@ file/product version `0.41.0`, and have Authenticode status `NotSigned`:
 
 Both executables contain identical application archives and native helpers. All 33 packaged
 production files match the build output, including the Pin page, renderer, and preload. The
-packaged native helper's tone-map self-test passed. `release/SHA256SUMS-0.41.0.txt` identifies
-these two artifacts; `BUILD-INFO.txt` also inventories retained older packages. Installation,
+packaged native helper's tone-map self-test passed. A version-specific checksum file identified
+these artifacts at the time; the older local files were purged after the 0.42.0 build. Installation,
 upgrade, and manual pin dragging/edge-resizing remain acceptance checks. No macOS package was
 built. These exact artifacts are prepared for the new 0.41.0 GitHub draft, targeting the pushed
 release commit with both executables and their checksum file attached. The older 0.40.0 draft
@@ -272,10 +428,11 @@ pass: installer/portable end-to-end capture, real clipboard, and upgrade checks 
 publication. No macOS build was made. The release is prepared as a draft, with both EXEs and a
 version-specific SHA-256 file; the anonymous latest-release endpoint still returns `v0.31.0`.
 
-`release/BUILD-INFO.txt` inventories the current directory, including retained older artifacts.
-Use `release/SHA256SUMS-0.40.0.txt` for the two files attached to the 0.40.0 draft.
+The earlier `BUILD-INFO.txt` inventoried the retained older artifacts. The local 0.40.0 packages
+and checksum file were removed during the 0.42.0 cleanup; the build hashes above remain in this
+historical record.
 
-The package version is `0.41.0`. The latest published stable release was v0.31.0 at the last
+At that point the package version was `0.41.0`. The latest published stable release was v0.31.0 at the last
 GitHub verification on 2026-09-09. The
 intermediate `0.24.0` was built and exercised locally but
 never published, and `0.30.0` was tagged and briefly published before being withdrawn because its

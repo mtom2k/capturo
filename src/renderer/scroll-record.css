@@ -99,24 +99,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   height: 100%;
 }
 
-.scroll-btn,
+.app-action,
 .scroll-spacer { -webkit-app-region: no-drag; }
-
-.scroll-btn {
-  height: 30px;
-  padding: 0 13px;
-  border: 0;
-  border-radius: 7px;
-  background: #2a3039;
-  font-size: 12px;
-}
-
-.scroll-btn:hover,
-.scroll-btn:focus-visible { outline: none; background: #334155; }
-.scroll-btn.primary { background: #0ea5e9; }
-.scroll-btn.primary:hover,
-.scroll-btn.primary:focus-visible { background: #0284c7; }
-.scroll-btn:disabled { opacity: 0.4; cursor: default; }
 
 #video {
   position: fixed;

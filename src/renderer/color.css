@@ -74,33 +74,6 @@ button {
   z-index: 1;
   top: 10px;
   right: 10px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 5px;
-  background: rgba(15, 23, 42, 0.72);
-  color: #f8fafc;
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.preview-action:hover,
-.preview-action:focus-visible {
-  outline: none;
-  background: rgba(15, 23, 42, 0.92);
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-.preview-action svg {
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .color-body-inner {
@@ -139,36 +112,6 @@ button {
 
 .value-field.invalid {
   border-color: #dc2626;
-}
-
-.icon-btn {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  display: grid;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 4px;
-  background: #1677e8;
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.icon-btn:hover,
-.icon-btn:focus-visible {
-  outline: none;
-  background: #0f6bd5;
-}
-
-.icon-btn svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .slider-grid {

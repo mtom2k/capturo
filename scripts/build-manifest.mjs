@@ -46,9 +46,9 @@ for (const name of installers) {
 
 if (unpackedDirectories.length > 0) {
   const named = unpackedDirectories.map((name) => `${name}/`).join(', ')
-  const verb = unpackedDirectories.length === 1 ? 'is the unpackaged app' : 'are the unpackaged apps'
-  lines.push(`${named} ${verb} used to produce the artifacts above.`)
-  lines.push('A build intermediate, not something to distribute.')
+  const verb = unpackedDirectories.length === 1 ? 'is an unpackaged app directory' : 'are unpackaged app directories'
+  lines.push(`${named} ${verb}.`)
+  lines.push("Check an unpacked app's version before testing; these intermediates are not for distribution.")
   lines.push('')
 }
 lines.push(`The running app reports its version in the tray tooltip and tray menu.`)

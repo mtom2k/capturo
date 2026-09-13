@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pinBounds, MAX_PINS } from '../src/shared/pin'
 
-const state = vi.hoisted(() => ({ handlers: new Map<string, Function>(), windows: [] as any[], copy: vi.fn() }))
+const state = vi.hoisted(() => ({ handlers: new Map<string, Function>(), windows: [] as any[], copy: vi.fn(), edit: vi.fn() }))
 vi.mock('electron', () => ({
   ipcMain: { handle: (name: string, fn: Function) => state.handlers.set(name, fn) },
   clipboard: { writeImage: state.copy },
@@ -26,7 +26,8 @@ const invoke = (name: string, sender: any, ...args: unknown[]) => state.handlers
 let manager: PinManager
 beforeEach(() => {
   vi.useFakeTimers(); state.windows.length = 0; state.handlers.clear(); state.copy.mockClear()
-  manager = new PinManager({ preload: 'preload', icon: 'icon', load: async () => {} })
+  state.edit.mockReset().mockResolvedValue({ opened: true })
+  manager = new PinManager({ preload: 'preload', icon: 'icon', load: async () => {}, edit: state.edit })
 })
 afterEach(() => { manager.closeAll(); vi.useRealTimers() })
 
@@ -43,28 +44,44 @@ describe('pinned screenshot ownership and lifecycle', () => {
     expect(window.setOpacity).toHaveBeenCalledWith(0.25)
     expect(invoke('pin:copy', sender)).toBe(true)
     expect(state.copy).toHaveBeenCalledWith(Buffer.from('original PNG'))
+    expect(await invoke('pin:edit', sender)).toEqual({ opened: true })
+    expect(state.edit).toHaveBeenCalledWith({ png: Buffer.from('original PNG'), width: 600, height: 300 }, window)
     expect(window.destroyed).toBe(false)
     invoke('pin:close', sender)
     expect(invoke('pin:initialize', sender)).toBeNull()
     expect(invoke('pin:copy', sender)).toBe(false)
+    expect((await invoke('pin:edit', sender)).opened).toBe(false)
   })
   it('rejects other windows and child frames, and refuses invalid opacity values', async () => {
     const opening = manager.open(image(), display), window = state.windows[0]
     const sender = event(window)
+    expect((await invoke('pin:edit', sender)).opened).toBe(false)
     for (const foreign of [{ sender: { id: 900, mainFrame: {} }, senderFrame: {} }, { ...sender, senderFrame: {} }]) {
       expect(invoke('pin:initialize', foreign)).toBeNull()
       expect(invoke('pin:ready', foreign)).toBe(false)
       expect(invoke('pin:copy', foreign)).toBe(false)
+      expect((await invoke('pin:edit', foreign)).opened).toBe(false)
       expect(invoke('pin:opacity', foreign, 0.5)).toBe(false)
       invoke('pin:close', foreign)
       expect(window.destroyed).toBe(false)
     }
+    expect(state.edit).not.toHaveBeenCalled()
     for (const value of [NaN, Infinity, -1, 0, 0.24, 1.01, '0.5', null]) expect(invoke('pin:opacity', sender, value)).toBe(false)
     manager.closeAll()
     expect((await opening).opened).toBe(false)
   })
+  it('keeps a pin available when the full editor fails, so Edit can be retried', async () => {
+    const opening = manager.open(image(), display)
+    const window = state.windows[0], sender = event(window)
+    invoke('pin:ready', sender)
+    await opening
+    state.edit.mockResolvedValueOnce({ opened: false, error: 'Could not open editor' })
+    expect(await invoke('pin:edit', sender)).toEqual({ opened: false, error: 'Could not open editor' })
+    expect(window.destroyed).toBe(false)
+    expect(await invoke('pin:edit', sender)).toEqual({ opened: true })
+  })
   it('times out a stalled load and recovers its slot', async () => {
-    manager = new PinManager({ preload: 'preload', icon: 'icon', load: () => new Promise(() => {}) })
+    manager = new PinManager({ preload: 'preload', icon: 'icon', load: () => new Promise(() => {}), edit: state.edit })
     const opening = manager.open(image(), display)
     await vi.advanceTimersByTimeAsync(10_000)
     expect((await opening).opened).toBe(false)
@@ -78,7 +95,7 @@ describe('pinned screenshot ownership and lifecycle', () => {
     expect((await b).opened).toBe(true)
     expect(state.windows[1].destroyed).toBe(false)
     manager.closeAll()
-    manager = new PinManager({ preload: 'preload', icon: 'icon', load: async () => { throw new Error('load failed') } })
+    manager = new PinManager({ preload: 'preload', icon: 'icon', load: async () => { throw new Error('load failed') }, edit: state.edit })
     expect((await manager.open(image(), display)).opened).toBe(false)
   })
   it('bounds pin count and releases capacity on close', async () => {

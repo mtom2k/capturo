@@ -6,10 +6,7 @@ header { height: 40px; display: flex; align-items: center; gap: 6px; padding: 4p
 input, button { -webkit-app-region: no-drag; }
 input { width: 62px; min-width: 40px; accent-color: #71d1ff; }
 output { min-width: 32px; font-variant-numeric: tabular-nums; }
-button { height: 28px; padding: 0 7px; border: 1px solid #445263; border-radius: 5px; background: #233142; color: inherit; cursor: pointer; }
-button:hover { background: #354c66; }
-button:focus-visible, input:focus-visible { outline: 2px solid #71d1ff; outline-offset: 1px; }
-#close { font-size: 21px; line-height: 20px; }
+input:focus-visible { outline: 2px solid #71d1ff; outline-offset: 1px; }
 main { height: calc(100% - 40px); padding: 2px; background: repeating-conic-gradient(#1b2530 0% 25%, #222e3b 0% 50%) 50% / 16px 16px; }
 img { width: 100%; height: 100%; object-fit: contain; -webkit-app-region: drag; user-select: none; }
 #status { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); margin: 0; padding: 5px 9px; border-radius: 4px; background: #111e; pointer-events: none; white-space: nowrap; }

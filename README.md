@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.41.0-blue)
+![version](https://img.shields.io/badge/version-0.42.2-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -24,7 +24,7 @@ Capturo is a fast, local screenshot and GIF tool. It lives in the notification a
 
 ## ⬇️ Download
 
-Download the current packages from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
+Download published packages from [GitHub Releases](https://github.com/mtom2k/capturo/releases/latest).
 
 | Artifact | Purpose |
 | --- | --- |
@@ -33,17 +33,30 @@ Download the current packages from [GitHub Releases](https://github.com/mtom2k/c
 | `Capturo-<version>-arm64.dmg` | Unsupported Apple Silicon macOS preview disk image |
 | `Capturo-<version>-arm64-mac.zip` | Unsupported Apple Silicon macOS preview archive |
 
-The 0.22.3 release publishes all four artifacts. Local copies are kept in `release/`, and
-`BUILD-INFO.txt` records their sizes and SHA-256 hashes. A local rebuild will not reproduce a
-release's checksums: electron-builder embeds build timestamps, so packaging is not byte-reproducible
+The 0.22.3 release published all four artifacts. The local `release/` directory now keeps only the
+current 0.42.2 Windows packages, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A
+local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps,
+so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source is **0.41.0**, prepared as a new Windows x64 Setup and Portable release draft with Pin to desktop.
-The older 0.40.0 GitHub release draft is separate; local packages and drafts are not offered by the
-in-app update checker. No 0.41.0 macOS package was produced by this Windows build. Windows x64 remains the only supported
-platform — see [macOS](#-macos) before downloading an older preview.
+Source is **0.42.2**. Local Windows x64 Setup and Portable packages include pin editing, consistent
+action buttons, and fixes for overlapping capture launches and Color Picker cursor tracking. These
+packages are local builds; they have not been published as a GitHub release. Local packages and
+drafts are not offered by the in-app update checker. No 0.42.2 macOS package was produced. Windows
+x64 remains the only supported platform — see [macOS](#-macos) before downloading an older preview.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
+
+Version 0.42.0 lets a pinned screenshot open in Full Tab for editing while the original pin stays
+visible. Matching Copy, Save, Cancel, and Full Tab actions now share icons and button styling across
+the capture, GIF, color, panoramic, and pin views. Repeated or overlapping capture triggers no longer
+open orphaned overlays, and Color Picker no longer changes Windows' global cursor images. Its
+floating magnifier follows the physical pointer after missed events and handles rapid diagonal
+movement without sticking to an old window boundary. Version 0.42.1 also removes the precision
+zoom speed ceiling that could make one axis pause during a rapid diagonal sweep. Version 0.42.2
+separates Windows desktop-wide mouse input from the compact magnifier, so even the tightest zoom
+level keeps tracking during a fast sweep and the Windows arrow stays hidden throughout the picker.
+Interactive visual acceptance on installed and portable builds remains before publication.
 
 Version 0.41.0 adds independent pinned screenshots with always-on-top, move/resize, adjustable
 opacity, and original-resolution Copy. Version 0.40.0 adds persistent, automatically wrapping text boxes with directional resize handles,
@@ -166,8 +179,11 @@ other windows. Pinning from the capture overlay returns you to the desktop; pinn
 leaves the editor open. Each pin is a separate snapshot, so later edits do not change it.
 
 Drag the image or header to move the pin and drag a window edge/corner to resize it. The image
-keeps its proportions. Use **Opacity** (25–100%) to see through it. **Copy** or `Ctrl/Cmd+C`
-copies the original-resolution image regardless of the window's size or opacity. **×** or `Esc`
+keeps its proportions. Use **Opacity** (25–100%) to see through it. The blue **Copy** icon or `Ctrl/Cmd+C`
+copies the original-resolution image regardless of the window's size or opacity. The cyan **Edit** icon opens
+the pinned image in Full Tab for further annotation. The pin remains unchanged; use Full Tab's
+**Pin** action to make a new pinned snapshot of the edited result. If another Full Tab is open,
+finish or close it before editing a pin. The red **Close** icon or `Esc`
 closes the focused pin. Several pins can stay open while you start another capture.
 
 Pins are temporary and stay in memory; closing them or quitting Capturo discards them. They are
@@ -228,11 +244,9 @@ Tolerance includes nearby tones, and Edge feather smooths the cutout from 0 to 1
 
 ## 🎬 GIF recording
 
-Choose **New GIF** from the tray or menu bar, or press `Ctrl/Cmd + Shift + 8`. Select a region, then press **Start Recording**. Capturo prepares the live stream and shows a protected countdown, 3 seconds by default, before active capture begins.
+Choose **New GIF** from the tray or menu bar, or press `Ctrl/Cmd + Shift + 8`. Select a region, then press the blue **Start Recording** button with the dot icon. Capturo prepares the live stream and shows a protected countdown, 3 seconds by default, before active capture begins.
 
-The recording bar supports Pause, Resume, Stop, a timer, and optional frame totals. Its red border, dimmed surroundings, and controls are excluded from the finished GIF. Playback timing follows real elapsed recording time, and encoder backpressure keeps memory bounded when a large region cannot sustain the requested frame rate.
-
-![Finished GIF preview](./docs/gif-preview.png)
+The recording bar supports Pause, Resume, Stop, a timer, and optional frame totals. Icon buttons share Capturo's Copy, Save, and red Cancel/Discard marks across screenshot, GIF, color, and pin windows; hover for a tooltip or use a screen reader for the accessible name. The recording bar's red border, dimmed surroundings, and controls are excluded from the finished GIF. Playback timing follows real elapsed recording time, and encoder backpressure keeps memory bounded when a large region cannot sustain the requested frame rate.
 
 The preview lets you Copy, Save, Open folder, Retake, or Discard. Copy places the animated `.gif` *file* on the clipboard rather than flattening it to a still image, on Windows through `CF_HDROP` and on macOS through a `public.file-url` pasteboard entry, so the animation survives the paste. An unsaved GIF is written to Capturo's temporary clipboard folder only after you explicitly choose Copy, and expired copies are cleaned during a later launch.
 
@@ -261,9 +275,10 @@ the magnifier remains visible through long precision sweeps.
 Use the **mouse wheel** over the picker for five-step magnification. It starts at the widest view;
 scroll up to magnify and down to zoom out. Tighter views automatically slow the owned selector, so
 precise picking is controlled entirely by the selected zoom level. Shift does not change picker
-movement. The tightest level is also velocity-limited, so a fast physical sweep cannot make the
-sample race across the screen; on Windows the system cursor remains hidden even if it briefly
-outruns the compact picker surface. Capturo keeps zoom state out of the readout so only the hex is
+movement. Fast diagonal movement stays proportional on both axes, including at the tightest view.
+On Windows, the pointer is hidden across the desktop while the picker is active. Capturo does not
+replace Windows cursor images, and the pointer returns when the picker closes or exits.
+Capturo keeps zoom state out of the readout so only the hex is
 shown.
 
 **Picking copies the color straight to your clipboard**, in whichever format you choose under

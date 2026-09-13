@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased
+
+## 0.42.2 - 2026-09-13
+
+### Fixed
+
+- Windows Color Picker keeps tracking at the 9- and 5-cell zoom levels during wide, fast mouse
+  sweeps. A desktop-wide input-only native surface receives movement, clicks, and wheel input while
+  the protected, compact Electron window paints the magnifier; precision is no longer limited by
+  the compact window's hit area.
+- The Windows arrow no longer flashes when a fast sweep leaves the compact magnifier. Cursor hiding
+  belongs to the temporary input window and is established before the magnifier appears; closing or
+  losing the picker process returns normal desktop input without replacing system cursor images.
+
+## 0.42.1 - 2026-09-13
+
+### Fixed
+
+- Color Picker precision zoom no longer stalls one axis during rapid diagonal mouse movement. The
+  13-, 9-, and 5-cell views scale each axis by its selected precision factor without an additional
+  time-based speed ceiling; the compact picker still limits displacement to keep the magnifier visible.
+
+## 0.42.0 - 2026-09-13
+
+### Fixed
+
+- Rapid or overlapping screenshot, GIF, and Color Picker triggers no longer create orphaned
+  capture overlays that ignore Escape and Cancel. Repeating an active mode keeps one selection;
+  pinned images remain open during later captures.
+
+- Color Picker no longer replaces Windows' global cursor images, which could leave the pointer
+  invisible after Capturo exited. Its compact Windows magnifier now follows an independently polled
+  cursor position when transparent-window pointer events are missed.
+
+- Color Picker movement no longer uses a stale compact-window position to limit the selector during
+  rapid sweeps. Late cursor-poll replies cannot override newer pointer events, and recenter checks
+  use one absolute screen coordinate frame so the magnifier continues moving on both axes.
+
+### Added
+
+- Pinned screenshots now have an **Edit** action that opens their original-resolution PNG in Full
+  Tab. The original pin stays visible and unchanged; edits can be pinned as a new snapshot.
+
+### Changed
+
+- Screenshot, GIF, color-result, panoramic, and pin actions now use one icon and button style for
+  shared actions. GIF recording and preview controls use labeled icon buttons, and the Pause icon
+  and accessible name change together when recording is paused.
+
 ## 0.41.0 - 2026-09-10
 
 ### Added

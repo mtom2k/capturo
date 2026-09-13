@@ -8,10 +8,7 @@
   </head>
   <body class="color-body">
     <div id="preview" class="color-preview">
-      <button id="pick-again" class="preview-action" type="button" title="Pick another color from the screen">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 3.2a1.8 1.8 0 012.5 2.5l-1.2 1.2-2.5-2.5zM11.4 5.3l3.3 3.3-6.6 6.6-3.9.6.6-3.9z"/></svg>
-        Pick again
-      </button>
+      <button id="pick-again" class="app-action preview-action" data-action-icon="pick" data-action-tone="transition" type="button" aria-label="Pick another color" title="Pick another color from the screen"></button>
     </div>
 
     <div class="color-body-inner">
@@ -24,9 +21,7 @@
             <option value="hsl">HSL</option>
           </select>
         </div>
-        <button id="copy" class="icon-btn" type="button" aria-label="Copy color" title="Copy (Ctrl/Cmd+C)">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="10" rx="1"/><path d="M5 13H4V4h9v1"/></svg>
-        </button>
+        <button id="copy" class="app-action" data-action-icon="copy" data-action-tone="copy" type="button" aria-label="Copy color" title="Copy (Ctrl/Cmd+C)"></button>
       </div>
 
       <div class="slider-grid">

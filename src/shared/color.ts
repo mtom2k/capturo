@@ -237,6 +237,9 @@ export type ColorPickerPayload = {
   // window, because the latter corrupts Chromium hardware-video planes. `displayOrigin` lets the
   // renderer translate global PointerEvent.screenX/screenY coordinates after that window moves.
   floating: boolean
+  // Windows uses a separate input-only native surface so the compact lens can follow its sampled
+  // point without keeping the physical cursor inside the same 640px window.
+  nativeInput: boolean
   displayOrigin: { x: number; y: number }
   // This overlay's origin inside the display, in CSS pixels. Windows tiles a display into a work
   // area plus system-edge strips, so every tile translates through the same display coordinate
@@ -257,11 +260,13 @@ export type ColorSample =
 export type CapturoColorApi = {
   onInitialize: (listener: (picked: PickedColor) => void) => () => void
   onPickerInitialize: (listener: (payload: ColorPickerPayload) => void) => () => void
+  onPickerInput: (listener: (event: { kind: 'move' | 'wheel' | 'pick'; point: { x: number; y: number }; deltaY?: number }) => void) => () => void
   sample: (sessionId: string, point: { x: number; y: number }, size: number) => Promise<ColorSample>
   pickerReady: (sessionId: string) => Promise<boolean>
+  pickerCursor: (sessionId: string) => Promise<{ x: number; y: number } | null>
   recenterPicker: (
     sessionId: string,
-    request: { cursor: { x: number; y: number }; center: { x: number; y: number } }
+    request: { cursor: { x: number; y: number }; center: { x: number; y: number }; displayId: string }
   ) => Promise<boolean>
   cancelPicker: (sessionId: string) => Promise<void>
   pick: (sessionId: string, color: Rgb) => Promise<boolean>

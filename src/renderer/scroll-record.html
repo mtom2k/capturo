@@ -17,8 +17,8 @@
       <div class="scroll-preview-wrap" title="Captured-area map; the cyan outline is the current viewport">
         <canvas id="preview" aria-label="Preview of the already-captured panoramic area"></canvas>
       </div>
-      <button id="finish" class="scroll-btn primary" disabled>Finish</button>
-      <button id="cancel" class="scroll-btn">Cancel</button>
+      <button id="finish" class="app-action" data-action-icon="finish" data-action-tone="transition" aria-label="Finish panoramic capture" title="Finish and open the full editor" disabled></button>
+      <button id="cancel" class="app-action" data-action-icon="cancel" data-action-tone="cancel" aria-label="Cancel panoramic capture" title="Cancel panoramic capture (Esc)"></button>
     </div>
     <video id="video" muted playsinline></video>
     <script type="module" src="./panoramic-record.ts"></script>

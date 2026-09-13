@@ -26,7 +26,20 @@ Capture renderer (temporary)
 
 The preload exposes only Capturo-specific methods. Renderers have no Node.js access and run with context isolation and sandboxing enabled.
 
+Action buttons in the capture, GIF, panoramic, color-result, and pin renderers declare an icon and
+tone in their HTML. `src/renderer/action-icons.ts` supplies the SVG glyphs, including the dynamic
+Pause/Resume swap, and `action-icons.css` supplies one size and color treatment for equivalent
+actions. The live transparent color picker has no floating action bar because it must leave the
+sampled desktop unobscured. Settings uses labeled form controls rather than icon-only actions.
+
 ## Capture flow
+
+All screenshot, GIF-selection, and Color Picker entry points share one asynchronous launch gate.
+Only the first trigger can pass through permission checks and frame capture while a launch is in
+progress; a repeated trigger cannot create an orphan overlay before `CaptureSession` exists.
+Repeating the active mode keeps its selection, while choosing another mode replaces that active
+selection. Pins and Full Tab are separate windows and remain available during later captures.
+See D-047.
 
 1. The main process hides any prior overlays and grabs each display's frozen desktop. On Windows this is the native FP16 helper (D-015), which runs as a persistent background process warmed at launch so a capture pays no device/duplication setup (D-017); other platforms, or a Windows machine without the helper, fall back to a `desktopCapturer` thumbnail. The helper captures the requested displays in one batch, and the fallback `desktopCapturer` sources, full-resolution grabs of every screen, are fetched only when a display actually needs them, never on the Windows happy path.
 2. It creates a borderless, always-on-top overlay over each display's regions and loads them concurrently. Once each renderer has installed its listeners it requests the frozen image plus the origin and size it needs through `capture:request-initialization`; this pull handshake cannot lose a page-load push before the module is ready. Every overlay is shown fully transparent while it loads so it paints without being visible and without stealing pointer input. How a display is divided into regions is platform-specific and lives in `overlayRegions` in `src/shared/geometry.ts`: Windows tiles an editor over the work area plus a filler per uncovered strip (D-013), while macOS uses a single window over the whole display created with `enableLargerThanScreen: true`, because AppKit otherwise clamps a window into the work area and leaves the menu bar and Dock uncovered (D-029).
@@ -52,6 +65,12 @@ independent always-on-top, frameless, resizable windows, each with a sandboxed `
 The renderer pulls PNG bytes and acknowledges successful image decoding before main reveals it.
 Only then may the originating overlay close; Full Tab remains editable. Pending text and
 transparency edits are committed before the Pin export.
+
+`pin:edit` accepts no renderer-supplied image. It validates the pin window and main frame, then
+decodes that pin's retained PNG in the main process and opens it through the existing Full Tab
+readiness handshake. The pin stays visible as an independent snapshot; Full Tab edits do not mutate
+its bytes. Another open Full Tab is focused rather than replaced. The transferred PNG forces PNG
+on Save so any baked-in transparency is preserved.
 
 Pin IPC resolves the sender's own map entry and rejects child frames and other windows. Opacity
 accepts only finite values from 0.25 to 1. Copy decodes retained PNG bytes directly, independent
@@ -240,9 +259,10 @@ For a distinct frame whose changed pixels cover at most 25% of the region, the e
 
 The tray menu's **Color picker**, or its global shortcut, opens a separate `ColorPickerSession`.
 It does not call the screenshot capture path and never gives the renderer a desktop image. On
-Windows one compact, transparent, content-protected 640×640 window follows the pointer; avoiding a
-monitor-sized Electron surface preserves Chromium hardware-video planes. On macOS the established
-display overlay remains. `picker-live.ts` requests one coalesced active-size live sample at a time
+Windows one compact, transparent, content-protected 640×640 Electron window paints the magnifier;
+avoiding a monitor-sized Electron surface preserves Chromium hardware-video planes. A separate
+desktop-wide Win32 input-only window receives physical pointer input without painting pixels. On
+macOS the established display overlay remains. `picker-live.ts` requests one coalesced active-size live sample at a time
 and starts at most 30 preview samples per second. Desktop Duplication can report pointer-only
 frames at the mouse polling rate, and the non-Windows fallback captures a fresh screen source, so
 leaving this loop completion-driven can starve the very pointer/render work it serves. The newest
@@ -262,15 +282,15 @@ that display and null on the displays it is not on, so the picker opens on the p
 the pointer and only the display holding it shows a magnifier. The reveal focuses that display's
 editor rather than whichever overlay painted last.
 
-The overlay hides the system cursor and puts the magnifier in its place, centred on the sampled
+The picker hides the cursor and puts the magnifier in its place, centred on the sampled
 pixel, at a point it owns rather than at the OS cursor position. That indirection is what lets tighter
 wheel zoom levels slow sampling without the operating system's pointer acceleration fighting it.
 The pointer model, including how the
 resulting displacement is bled off so the screen edges stay reachable, is pure and lives in
-`src/shared/picker.ts`. On the compact Windows surface, that displacement is additionally bounded
-by the live space around the physical pointer. Before either point reaches its guard, the surface
-recentres on their screen-space midpoint rather than on the cursor alone. This roughly doubles the
-usable precision separation while keeping the complete magnifier visible and its centre truthful.
+`src/shared/picker.ts`. On Windows the physical pointer no longer has to fit inside the magnifier
+window: its input-only window covers the virtual desktop. The compact lens recentres on the owned
+sampled point and precision displacement is limited only by the source image. The older compact-hit
+fallback retains its bounded offset if the native input path is unavailable.
 Movement is derived from consecutive absolute screen-space points, never the renderer's relative
 movement fields: those fields change coordinate frame when Windows recentres the BrowserWindow and
 can spike under fast input. Shift and other modifiers are deliberately ignored by picker movement;
@@ -285,18 +305,22 @@ phase, and only then requests `setBounds`. The selector's absolute position is a
 display/image coordinates, never fed back from the moving window. Main ignores identical bounds to
 avoid needless compositor transactions.
 
-On Windows CSS cursor hiding is reinforced by a balanced `cursor-hidden` request to the persistent
-native helper for the lifetime of the picker. This covers a fast physical pointer crossing outside
-the compact BrowserWindow between recenter operations; pick, cancel, replacement, and graceful
-helper shutdown restore the user's configured cursor scheme. The picker is the only live tool that
-does this. Panoramic Scrolling deliberately leaves the pointer visible and excludes it from output
-with a mask instead.
+The Windows input HWND is `WS_EX_NOREDIRECTIONBITMAP`, topmost, and non-activating. Its
+`WM_SETCURSOR`/`WM_MOUSEMOVE` handlers set a null cursor only while it owns the hit surface, without
+altering system cursor images or a global cursor count. It forwards coalesced absolute screen
+positions, clicks, and wheel input through a short-lived helper process to main. Wheel input uses
+Raw Input in the background because Windows sends ordinary wheel messages to the focused picker
+window. The small Electron lens ignores mouse hit tests but retains keyboard focus for Escape,
+Enter, Space, and arrow keys. The helper announces readiness only after its cursor and hit surface
+are verified; a pipe EOF, missing heartbeat, or helper exit destroys that surface and closes the
+picker. The legacy compact-input path still polls cursor position through session-validated IPC.
+Panoramic Scrolling leaves the pointer visible and excludes it from output with a mask.
 
 The wheel selects one of five odd-sized live grids: 25, 17, 13, 9, or 5 source pixels across the
 fixed 200px aperture, starting with the widest 25-pixel view. Odd grids preserve a true centre
-pixel. The tighter three levels also select 1/2, 1/4, or 1/8 owned-point movement. Those levels
-additionally cap owned-point velocity at 720,
-240, and 80 source pixels per second, so arbitrarily large physical deltas cannot defeat precision.
+pixel. The tighter three levels also select 1/2, 1/4, or 1/8 owned-point movement. Each physical
+axis is scaled by that factor, independent of event timing or motion on the other axis. On Windows
+the native input path does not impose the compact window's old displacement limit.
 Zoom state is not labeled in the UI. Sampling requests carry
 their grid size and stale in-flight results are accepted only when both point and active size still
 match. A grid also carries its display id; crossing a monitor clears the previous preview, and an

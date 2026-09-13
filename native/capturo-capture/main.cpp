@@ -14,7 +14,6 @@
 //   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin:
 //     "<originX>\t<originY>\t<outputPath>" captures a display and
 //     "sample-display\t<originX>\t<originY>\t<centerX>\t<centerY>\t<size>" reads a live grid and
-//     "cursor-hidden\t<0|1>" suppresses standard cursor shapes for the live colour picker and
 //     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome and
 //     "clipboard-file\t<absolutePath>" places that file on the clipboard as CF_HDROP.
 //     "ocr-png\t<base64Png>" recognizes text locally with Windows.Media.Ocr.
@@ -39,6 +38,7 @@
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.Ocr.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include "picker_input.h"
 
 #include <algorithm>
 #include <cmath>
@@ -82,44 +82,8 @@ constexpr double kAcquireBudgetMs = 100.0;
 constexpr double kPickerAcquireBudgetMs = 8.0;
 
 LARGE_INTEGER g_qpcFreq{};
-bool g_systemCursorsHidden = false;
 long long NowQpc() { LARGE_INTEGER t; QueryPerformanceCounter(&t); return t.QuadPart; }
 double MsBetween(long long a, long long b) { return (b - a) * 1000.0 / g_qpcFreq.QuadPart; }
-
-void SetCursorHidden(bool hidden) {
-    if (hidden && !g_systemCursorsHidden) {
-        // ShowCursor's display counter belongs to the calling GUI thread; changing it in this
-        // helper does not reliably hide the pointer owned by the application being captured.
-        // Replace the standard system cursor shapes with a transparent monochrome cursor instead.
-        // SetSystemCursor takes ownership of each handle, and SPI_SETCURSORS restores the user's
-        // configured cursor scheme as soon as the pointer leaves the panoramic viewport.
-        const int width = std::max(1, GetSystemMetrics(SM_CXCURSOR));
-        const int height = std::max(1, GetSystemMetrics(SM_CYCURSOR));
-        const size_t maskStride = static_cast<size_t>(((width + 15) / 16) * 2);
-        std::vector<BYTE> andMask(maskStride * static_cast<size_t>(height), 0xff);
-        std::vector<BYTE> xorMask(maskStride * static_cast<size_t>(height), 0x00);
-        // OCR_* is hidden by some Windows SDK WINVER guards, so use the documented resource IDs.
-        const DWORD cursorIds[] = {
-            32512, 32513, 32514, 32515, 32516,
-            32642, 32643, 32644, 32645, 32646,
-            32648, 32649, 32650, 32651, 32671, 32672
-        };
-        bool replacedAny = false;
-        for (const DWORD cursorId : cursorIds) {
-            HCURSOR transparent = CreateCursor(
-                GetModuleHandleW(nullptr), 0, 0, width, height, andMask.data(), xorMask.data());
-            if (!transparent) continue;
-            if (SetSystemCursor(transparent, cursorId)) replacedAny = true;
-            else DestroyCursor(transparent);
-        }
-        g_systemCursorsHidden = replacedAny;
-    } else if (!hidden && g_systemCursorsHidden) {
-        SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, 0);
-        g_systemCursorsHidden = false;
-    }
-    std::fputs(g_systemCursorsHidden == hidden ? "{\"ok\":true}\n" : "{\"ok\":false}\n", stdout);
-    std::fflush(stdout);
-}
 
 struct Options {
     std::wstring output;
@@ -1016,6 +980,9 @@ int wmain(int argc, wchar_t** argv) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     QueryPerformanceFrequency(&g_qpcFreq);
 
+    if (argc == 2 && std::wstring(argv[1]) == L"--picker-input") return RunPickerInputMode();
+    if (argc == 2 && std::wstring(argv[1]) == L"--picker-input-smoke") return RunPickerInputMode(true);
+
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) { std::printf("{\"ok\":false,\"stage\":\"CoInitializeEx\",\"hr\":\"0x%08lX\"}\n", static_cast<unsigned long>(hr)); return 1; }
 
@@ -1081,10 +1048,6 @@ int wmain(int argc, wchar_t** argv) {
             SuppressWindowBorder(handle);
             continue;
         }
-        if (t1 != std::string::npos && line.substr(0, t1) == "cursor-hidden") {
-            SetCursorHidden(line.substr(t1 + 1) == "1");
-            continue;
-        }
         if (t1 != std::string::npos && line.substr(0, t1) == "clipboard-file") {
             CopyFileToClipboard(Utf8ToWide(line.substr(t1 + 1)));
             continue;
@@ -1109,6 +1072,5 @@ int wmain(int argc, wchar_t** argv) {
         const std::wstring output = Utf8ToWide(line.substr(t2 + 1));
         CaptureOne(cap, ox, oy, output, 0.0f);
     }
-    if (g_systemCursorsHidden) SetCursorHidden(false);
     return 0;
 }

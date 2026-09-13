@@ -96,8 +96,14 @@ const colorApi: CapturoColorApi = {
     ipcRenderer.on('color:picker-initialize', handler)
     return () => ipcRenderer.removeListener('color:picker-initialize', handler)
   },
+  onPickerInput(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, input: { kind: 'move' | 'wheel' | 'pick'; point: { x: number; y: number }; deltaY?: number }): void => listener(input)
+    ipcRenderer.on('color:picker-input', handler)
+    return () => ipcRenderer.removeListener('color:picker-input', handler)
+  },
   sample: (sessionId, point, size) => ipcRenderer.invoke('color:sample', sessionId, point, size),
   pickerReady: (sessionId) => ipcRenderer.invoke('color:picker-ready', sessionId),
+  pickerCursor: (sessionId) => ipcRenderer.invoke('color:picker-cursor', sessionId),
   recenterPicker: (sessionId, point) => ipcRenderer.invoke('color:picker-recenter', sessionId, point),
   cancelPicker: (sessionId) => ipcRenderer.invoke('color:picker-cancel', sessionId),
   pick: (sessionId: string, color: Rgb) => ipcRenderer.invoke('color:pick', sessionId, color),
@@ -122,6 +128,7 @@ const pinApi: import('../shared/pin').CapturoPinApi = {
   ready: () => ipcRenderer.invoke('pin:ready'),
   opacity: (value) => ipcRenderer.invoke('pin:opacity', value),
   copy: () => ipcRenderer.invoke('pin:copy'),
+  edit: () => ipcRenderer.invoke('pin:edit'),
   close: () => ipcRenderer.invoke('pin:close')
 }
 contextBridge.exposeInMainWorld('capturoPin', pinApi)

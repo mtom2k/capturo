@@ -1,12 +1,14 @@
 import type { Rect } from './types'
 
 export type PinResult = { opened: true } | { opened: false; error: string }
+export type PinEditResult = { opened: true } | { opened: false; error: string }
 export type PinPayload = { png: Uint8Array; width: number; height: number }
 export type CapturoPinApi = {
   initialize: () => Promise<PinPayload | null>
   ready: () => Promise<boolean>
   opacity: (value: number) => Promise<boolean>
   copy: () => Promise<boolean>
+  edit: () => Promise<PinEditResult>
   close: () => Promise<void>
 }
 
