@@ -2,11 +2,14 @@
 
 ## Version and state
 
-The 0.42.3 local Windows Setup and Portable packages include pin editing, shared action
-icons, the live-capture launch gate, the desktop-wide Windows Color Picker input fix, and the HDR
-post-unlock capture correction. They have not been published.
+The 0.42.4 local Windows Setup and Portable test packages are staged in `release-0.42.4/`. They
+include pin editing, shared action icons, the live-capture launch gate, the desktop-wide Windows
+Color Picker input fix, the HDR post-unlock capture correction, window/IPC isolation, temporary
+capture cleanup, and editor drag repaint coalescing. They have not been installed or published;
+`release/` still holds the earlier 0.42.3 packages because its `win-unpacked/` must not be replaced
+while the installed 0.42.2 app is running with in-memory pins.
 The documented 0.41.0 and 0.40.0 draft artifacts are older builds; verify their remote state before
-any upload. Before creating or publishing a 0.42.3 release, complete the installed and portable
+any upload. Before creating or publishing a 0.42.4 release, complete the installed and portable
 desktop acceptance in `TESTING.md`, especially
 fast Color Picker movement and cursor visibility at every zoom, cancellation, pin editing, and
 compact action buttons. The scripted native and Electron desktop smokes in `TESTING.md` verify
@@ -15,6 +18,8 @@ input routing and teardown, but visual acceptance on installed/portable builds r
 The local 0.42.3 package passed the unsaved HDR selection smoke with normal GPU rendering. Run
 the first-capture-after-unlock multi-monitor HDR checks in `TESTING.md` before calling this build
 ready for publication. The installed 0.42.2 app remains running to preserve in-memory pins.
+The staged 0.42.4 package also passed the isolated native HDR overlay smoke; checksums and
+packaging evidence are recorded in `PROJECT_STATE.md` and `release-0.42.4/BUILD-INFO.txt`.
 
 When preparing a new draft, target the exact pushed release commit and attach both executables with
 their SHA-256 checksums. Verify `isDraft` after uploading. Publishing is a separate action;
@@ -168,7 +173,9 @@ untestable and can appear to work when it will not for a real user.
   the image after resizing/maximizing. Export dimensions and privacy-effect results must agree.
 - Text wraps consistently between editing, placement and PNG export; all eight resize handles
   preserve font size and opposite edges. Step borders remain independent of shape stroke width.
-- No capture data is written unless the user chooses Save or explicitly copies an unsaved GIF.
+- Native screenshot capture uses short-lived temporary PNGs that are removed after use; an
+  interrupted capture's abandoned PNG is removed on a later Windows launch after one hour.
+  No capture data is retained as user content unless the user chooses Save or copies a GIF.
 - Copy text uses the packaged local helper, requires no network, and reports missing/no-text cases without closing the editor.
 - No unexpected network traffic or telemetry is introduced; the optional GitHub release check must match the documented privacy boundary.
 - Documentation matches the released behavior and known constraints.

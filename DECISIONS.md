@@ -1,5 +1,30 @@
 ﻿# Decision Log
 
+## D-048: Frame ownership and exact display grants precede performance work
+
+**Status:** accepted, 2026-09-14
+
+The common preload is installed in every app window, so hiding a settings or recording button
+does not remove its IPC capability. A Settings write previously had no sender check, and the shared
+`setDisplayMediaRequestHandler` would grant the active screen without proving that the requester
+was the recording window. It also used the first enumerated display when the selected id vanished,
+which could record the wrong monitor without warning.
+
+`window-security.ts` validates the owning main frame. Main-owned app pages reject navigation and
+renderer-created windows; sensitive IPC requires the window that owns the action. Display media
+requires a video-only request from the current GIF or panoramic control window, with ownership
+rechecked after asynchronous source enumeration. Multi-monitor selection requires an exact display
+id. Electron may omit ids on some platforms, so a sole source remains usable only when one monitor
+is connected. A missing monitor or stale requester fails the stream request and follows the
+existing cancel/error path, rather than recording another display.
+
+Windows capture still uses temporary PNG files pending measured in-memory transfer work. Each
+normal capture removes its files after reading; on launch, only UUID-named Capturo PNGs older than
+one hour are removed to recover from interrupted captures. Rapid screenshot-editor pointer moves
+share one animation-frame redraw, but the source-resolution export path and painter ordering stay
+unchanged. A future transfer or render-cache change must first measure real desktop latency and
+preserve HDR verification, pixel effects, and multi-monitor geometry.
+
 ## D-047: Live capture launches are single-flight; pins remain independent
 
 **Status:** accepted, 2026-09-13

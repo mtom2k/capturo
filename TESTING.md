@@ -10,6 +10,21 @@ npm run build
 
 This performs strict type checking, Vitest tests, and a production build of main, preload, and renderer targets. The transparency suite verifies connected-component removal, tolerance, and feathered alpha. Highlight geometry tests cover bounds, hit testing, translation, resize remapping, and clamping. Blur/Pixelate tests verify monotonic 1-100% rendering bounds. OCR tests verify cleanup, spacing, blank lines, and rejection of empty results. Rolling-capture tests cover exact vertical/horizontal offsets, sticky leading content, sparse documents, unchanged/unrelated rejection, output growth and limits, whole-pixel pointer masking and the coverage it leaves behind, and an outline that paints clear of the crop; static tests pin the renderer entry, typed bridge, owner checks, the cursor-free stream request, the absence of any system-cursor suppression in the panoramic path, decoded-frame sampling, out-of-crop chrome, strip assembly, and toolbar entry. The remaining suites cover update semver, GIF timing/encoding, color conversion, picker movement and rendering—including the 30 Hz live-sample cadence and single-bitmap grid upload—settings normalization, and screen-permission routing.
 
+`tests/window-security.test.ts` verifies main-frame ownership, video-only display grants, exact
+multi-monitor matching, the one-monitor source exception, stale asynchronous request rejection,
+and navigation blocking.
+`tests/capture-temp.test.ts` creates old, recent, and unrelated files and confirms startup cleanup
+removes only the stale Capturo PNG. These checks never request the real desktop stream.
+
+For D-048 desktop acceptance, open Settings and change a harmless preference, then close and
+reopen Settings to prove its write came from the owning window. Start and finish a GIF and a
+panoramic capture on a non-primary display; verify each previews the selected display. Unplug or
+disable that display while a stream is starting: Capturo must fail or cancel, never record the
+other monitor. Rapidly drag, resize, and annotate a screenshot across the work-area/taskbar seam;
+the overlay and filler must stay synchronized, and Copy/Save pixels must match the preview. Repeat
+after lock/unlock on an HDR display. A source-only or mocked test cannot prove these compositor
+and display-media behaviors.
+
 On an interactive Windows desktop, rebuild the native helper and run the picker input smokes:
 
 ```powershell
@@ -123,14 +138,19 @@ without saving the image. The smoke cannot judge visual color and can be blocked
 that denies DXGI duplication; run it with normal desktop access before treating that failure as
 an application defect.
 
-To test the packaged 0.42.3 build across lock/unlock while keeping an installed 0.42.2 app and its
-in-memory pins alive, start `release/win-unpacked/Capturo.exe` with
+To test the packaged 0.42.4 build across lock/unlock while keeping an installed 0.42.2 app and its
+in-memory pins alive, start `release-0.42.4/win-unpacked/Capturo.exe` with
 `CAPTURO_CAPTURE_ON_START=1` and `CAPTURO_TIMING=1` in its environment. The smoke flag gives this
 instance a separate development profile. Cancel its first selection, lock and unlock Windows,
 then start the same executable with the same environment again: its `second-instance` handler
-starts a new selection in the already-running 0.42.3 process. Inspect the frozen image and
+starts a new selection in the already-running 0.42.4 process. Inspect the frozen image and
 metadata, then quit only that test instance from its tray menu. Do not install over the running
 0.42.2 app until its pins have been saved or intentionally discarded.
+
+The unattended first-selection check for this staged package is
+`node tests/fixtures/hdr-capture-app-smoke.mjs release-0.42.4/win-unpacked/Capturo.exe`.
+It verifies native frame metadata and overlay loading, then closes without saving. It does not
+replace the lock/unlock and visual color checks above.
 
 For color accuracy, use a chart whose sRGB values are known (including greys at
 `0/32/64/96/128/160/192/255`) and inspect the Capturo overlay before saving. A GDI capture is

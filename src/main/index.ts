@@ -103,6 +103,15 @@ import {
 } from './capture-helper'
 import { checkGithubForUpdate } from './updates'
 import { startPickerInput, type PickerInputController } from './picker-input'
+import { captureTempPath, cleanupAbandonedCaptureTemps } from './capture-temp'
+import {
+  isMainFrameSender,
+  isOnlyConnectedDisplay,
+  lockAppNavigation,
+  ownsDisplayMediaRequest,
+  ownsWindow,
+  permittedDisplayMediaSource
+} from './window-security'
 
 type OverlayEntry = {
   window: BrowserWindow
@@ -256,6 +265,12 @@ function logTiming(message: string): void {
   if (timingEnabled) console.error(`[timing] ${message}`)
 }
 
+function createAppWindow(options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
+  const window = new BrowserWindow(options)
+  lockAppNavigation(window)
+  return window
+}
+
 if (isSmokeInstance || isGifSmokeInstance || isPickerSmokeInstance || isGifRecordSmoke || isSettingsSmokeInstance || isGifPreviewSmokeInstance || ocrSmokeImagePath) {
   app.setPath('userData', path.join(app.getPath('temp'), 'capturo-development'))
 }
@@ -380,7 +395,7 @@ function validCaptureOwner(event: Electron.IpcMainInvokeEvent, sessionId: string
   if (active?.mode === 'screenshot') return { kind: 'overlay', session: active }
   const editor = detachedEditor
   if (editor && editor.id === sessionId && !editor.window.isDestroyed() &&
-      editor.window.webContents.id === event.sender.id) {
+      ownsWindow(event, editor.window)) {
     return { kind: 'detached', editor }
   }
   return null
@@ -568,7 +583,7 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
 
   // DXGI enumerates outputs in its own order, so each monitor is identified by its physical
   // desktop origin. dipToScreenRect performs the per-monitor scaling conversion.
-  const outputs = displays.map(() => path.join(app.getPath('temp'), `capturo-${randomUUID()}.png`))
+  const outputs = displays.map(() => captureTempPath(app.getPath('temp')))
   const requests = displays.map((display, index) => {
     const physical = screen.dipToScreenRect(null, display.bounds)
     return { originX: physical.x, originY: physical.y, output: outputs[index] }
@@ -845,7 +860,7 @@ function buildPayload(
 }
 
 function createOverlayWindow(area: Rect): BrowserWindow {
-  const overlay = new BrowserWindow({
+  const overlay = createAppWindow({
     x: area.x,
     y: area.y,
     width: area.width,
@@ -936,7 +951,7 @@ function buildPickerPayload(
 }
 
 function createPickerOverlayWindow(area: Rect): BrowserWindow {
-  const overlay = new BrowserWindow({
+  const overlay = createAppWindow({
     x: area.x,
     y: area.y,
     width: area.width,
@@ -1063,7 +1078,7 @@ async function openDetachedEditorWindow(
   const workArea = display.workArea
   const width = Math.max(640, Math.min(1400, workArea.width - 48))
   const height = Math.max(520, Math.min(920, workArea.height - 48))
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     x: Math.round(workArea.x + (workArea.width - width) / 2),
     y: Math.round(workArea.y + (workArea.height - height) / 2),
     width,
@@ -1329,12 +1344,12 @@ function startGifCapture(): Promise<void> {
 }
 
 function validSession(event: Electron.IpcMainInvokeEvent, sessionId: string): CaptureSession | null {
-  if (!session || session.id !== sessionId || !session.overlays.has(event.sender.id)) return null
+  if (!isMainFrameSender(event) || !session || session.id !== sessionId || !session.overlays.has(event.sender.id)) return null
   return session
 }
 
 function validPicker(event: Electron.IpcMainInvokeEvent, sessionId: string): ColorPickerSession | null {
-  if (!pickerSession || pickerSession.id !== sessionId || !pickerSession.overlays.has(event.sender.id)) return null
+  if (!isMainFrameSender(event) || !pickerSession || pickerSession.id !== sessionId || !pickerSession.overlays.has(event.sender.id)) return null
   return pickerSession
 }
 
@@ -1473,9 +1488,7 @@ function encodeCapture(image: Electron.NativeImage, filePath: string, settings: 
 // Update checks and permission actions are Settings-window affordances, not capabilities the
 // sandboxed capture overlays may reach for. Every one of those handlers proves its sender first.
 function fromSettingsWindow(event: Electron.IpcMainInvokeEvent): boolean {
-  return settingsWindow !== null &&
-    !settingsWindow.isDestroyed() &&
-    event.sender.id === settingsWindow.webContents.id
+  return ownsWindow(event, settingsWindow)
 }
 
 function registerIpc(): void {
@@ -1517,16 +1530,17 @@ function registerIpc(): void {
     if (result.opened && owner.kind === 'overlay') setImmediate(() => closeCaptureOwner(owner))
     return result
   })
-  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:get', (event) => fromSettingsWindow(event) ? getSettings() : null)
 
   // Renderer-owned initialization handshake. Returning the payload from an invoke means the
   // listener and module are already installed, unlike a did-finish-load push that can race the
   // renderer's onInitialize subscription and strand a hidden full editor.
   ipcMain.handle('capture:request-initialization', (event): CapturePayload | null => {
+    if (!isMainFrameSender(event)) return null
     const overlay = session?.overlays.get(event.sender.id)
     if (overlay && !overlay.window.isDestroyed()) return overlay.payload
     const editor = detachedEditor
-    if (editor && !editor.window.isDestroyed() && editor.window.webContents.id === event.sender.id) {
+    if (editor && ownsWindow(event, editor.window)) {
       return editor.payload
     }
     return null
@@ -1583,7 +1597,8 @@ function registerIpc(): void {
   // the global accelerator; if the OS rejects the new one, the stored shortcut and the live
   // registration are both rolled back to the previous working value and the reason is
   // returned so the settings window can show it.
-  ipcMain.handle('settings:update', (_event, update: SettingsUpdate): SettingsUpdateResult => {
+  ipcMain.handle('settings:update', (event, update: SettingsUpdate): SettingsUpdateResult | null => {
+    if (!fromSettingsWindow(event)) return null
     const before = getSettings()
     let next = updateSettings(update)
     let shortcutError: string | undefined
@@ -1626,8 +1641,7 @@ function registerIpc(): void {
       return true
     }
     const editor = detachedEditor
-    if (!editor || editor.id !== sessionId || editor.window.isDestroyed() ||
-        editor.window.webContents.id !== event.sender.id) return false
+    if (!editor || editor.id !== sessionId || !ownsWindow(event, editor.window)) return false
     if (!editor.revealed) {
       editor.revealed = true
       editor.window.show()
@@ -1640,7 +1654,7 @@ function registerIpc(): void {
   // Claiming closes the other displays, but not the fillers of the claimed display: those
   // cover its taskbar strip and remain part of the same capture surface.
   ipcMain.handle('capture:claim', (event, sessionId: string) => {
-    if (detachedEditor?.id === sessionId && detachedEditor.window.webContents.id === event.sender.id) return true
+    if (detachedEditor?.id === sessionId && ownsWindow(event, detachedEditor.window)) return true
     const active = validSession(event, sessionId)
     const claimed = active?.overlays.get(event.sender.id)
     if (!active || !claimed) return false
@@ -1655,7 +1669,7 @@ function registerIpc(): void {
 
   // The editor owns the scene; fillers repaint from it so their strips shade in step.
   ipcMain.on('capture:scene', (event, sessionId: string, scene: unknown) => {
-    if (!session || session.id !== sessionId) return
+    if (!isMainFrameSender(event) || !session || session.id !== sessionId) return
     const sender = session.overlays.get(event.sender.id)
     if (!sender || sender.payload.role !== 'editor') return
     for (const [webContentsId, entry] of session.overlays) {
@@ -1807,8 +1821,7 @@ function registerIpc(): void {
   // Only the colour window may copy, and only text. Nothing here can name a file or a format
   // other than plain text.
   ipcMain.handle('color:copy', (event, text: unknown) => {
-    if (!colorWindow || colorWindow.isDestroyed()) return false
-    if (event.sender.id !== colorWindow.webContents.id) return false
+    if (!ownsWindow(event, colorWindow)) return false
     if (typeof text !== 'string' || !text || text.length > 64) return false
     try {
       clipboard.writeText(text)
@@ -1819,8 +1832,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('color:pick-again', (event) => {
-    if (!colorWindow || colorWindow.isDestroyed()) return
-    if (event.sender.id !== colorWindow.webContents.id) return
+    if (!ownsWindow(event, colorWindow)) return
 
     // Hide the result window for the duration of the pick so the user can reach the pixels behind
     // it. The live picker does not take a frozen frame, so there is no compositor-settle delay.
@@ -1886,8 +1898,8 @@ function registerIpc(): void {
   )
 
   ipcMain.handle('scroll:request-initialization', (event): ScrollCapturePayload | null => {
-    if (!scrollingWindow || scrollingWindow.isDestroyed() || !scrollingPayload) return null
-    return event.sender.id === scrollingWindow.webContents.id ? scrollingPayload : null
+    if (!scrollingPayload || !ownsWindow(event, scrollingWindow)) return null
+    return scrollingPayload
   })
 
   // The pointer stays visible throughout a panoramic session: hiding it inside the selected
@@ -1897,8 +1909,7 @@ function registerIpc(): void {
   // one pointer radius past every edge, because a bitmap whose hotspot sits just outside the
   // region still paints into it. See D-042.
   ipcMain.handle('scroll:cursor-position', (event): PanoramicPointer | null => {
-    if (!scrollingWindow || scrollingWindow.isDestroyed() || !scrollingPayload ||
-        event.sender.id !== scrollingWindow.webContents.id) return null
+    if (!scrollingPayload || !ownsWindow(event, scrollingWindow)) return null
     const display = screen.getAllDisplays().find((candidate) => String(candidate.id) === scrollingTargetDisplayId)
     if (!display) return null
     const region = regionInDip(display, scrollingPayload.crop)
@@ -1916,7 +1927,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('scroll:finish', async (event, png: ArrayBuffer): Promise<FinishScrollCaptureResult> => {
-    if (!scrollingWindow || scrollingWindow.isDestroyed() || event.sender.id !== scrollingWindow.webContents.id) {
+    if (!ownsWindow(event, scrollingWindow)) {
       return { opened: false, error: 'The panoramic capture is no longer active.' }
     }
     if (!(png instanceof ArrayBuffer) || png.byteLength === 0 || png.byteLength > 512 * 1024 * 1024) {
@@ -1947,8 +1958,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('scroll:cancel', (event) => {
-    if (!scrollingWindow || scrollingWindow.isDestroyed()) return
-    if (event.sender.id === scrollingWindow.webContents.id) closeScrollingCapture()
+    if (ownsWindow(event, scrollingWindow)) closeScrollingCapture()
   })
 
   // The GIF selection overlay has a region and the user pressed Start Recording. Tear down
@@ -1985,7 +1995,7 @@ function registerIpc(): void {
   // The recording window finished encoding. Keep the bytes in memory and replace recording
   // chrome with a review window; saving and copying are now explicit preview actions.
   ipcMain.handle('gif:show-preview', async (event, bytes: ArrayBuffer): Promise<boolean> => {
-    if (!recordingWindow || event.sender.id !== recordingWindow.webContents.id) return false
+    if (!ownsWindow(event, recordingWindow)) return false
     const encoded = bytes instanceof ArrayBuffer ? Buffer.from(bytes) : Buffer.alloc(0)
     if (!hasGifSignature(encoded)) {
       closeRecording()
@@ -2106,7 +2116,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('gif:cancel', (event) => {
-    if (recordingWindow && event.sender.id === recordingWindow.webContents.id) {
+    if (ownsWindow(event, recordingWindow)) {
       if (isGifRecordSmoke) console.error('[gif-smoke] recording canceled (no frames or getDisplayMedia failed)')
       closeRecording()
     }
@@ -2295,8 +2305,7 @@ async function cleanupExpiredGifClipboardFiles(): Promise<void> {
 }
 
 function validGifPreview(event: Electron.IpcMainInvokeEvent): GifPreviewState | null {
-  if (!gifPreviewWindow || gifPreviewWindow.isDestroyed() || !gifPreviewState) return null
-  return event.sender.id === gifPreviewWindow.webContents.id ? gifPreviewState : null
+  return gifPreviewState && ownsWindow(event, gifPreviewWindow) ? gifPreviewState : null
 }
 
 function closeGifPreview(): void {
@@ -2310,7 +2319,7 @@ function openGifPreview(bytes: Buffer): void {
   closeGifPreview()
   gifPreviewState = { bytes, savedPath: null, clipboardPath: null }
 
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     width: 820,
     height: 620,
     minWidth: 620,
@@ -2386,7 +2395,7 @@ async function prepareRecordingChrome(window: BrowserWindow): Promise<void> {
 // no renderer entry is needed; no preload since it is purely visual.
 function createChromeWindow(rect: Rect, bodyStyle: string, protectFromCapture = true): BrowserWindow {
   const bounds = integerRect(rect)
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     ...bounds,
     frame: false,
     thickFrame: false,
@@ -2498,7 +2507,7 @@ function openScrollingWindow(display: Electron.Display, payload: ScrollCapturePa
   }
   const { x, y } = position
   const bounds = integerRect({ x, y, width, height })
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     ...bounds,
     frame: false,
     thickFrame: false,
@@ -2566,7 +2575,7 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
   const height = 46
   const { x, y } = placeControlBar(display, region, width, height)
   const bounds = integerRect({ x, y, width, height })
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     ...bounds,
     frame: false,
     thickFrame: false,
@@ -2624,19 +2633,25 @@ function openRecordingWindow(display: Electron.Display, payload: GifRecordPayloa
 // recorded, so there is no system picker and the stream is always the right screen.
 function registerDisplayMediaHandler(): void {
   electronSession.defaultSession.setDisplayMediaRequestHandler(
-    (_request, callback) => {
-      const displayId = recordingTargetDisplayId ?? scrollingTargetDisplayId
-      if (!displayId) {
+    (request, callback) => {
+      const owner = ownsDisplayMediaRequest(request, recordingWindow)
+        ? recordingWindow
+        : ownsDisplayMediaRequest(request, scrollingWindow) ? scrollingWindow : null
+      const displayId = owner === recordingWindow ? recordingTargetDisplayId :
+        owner === scrollingWindow ? scrollingTargetDisplayId : null
+      if (!owner || !displayId) {
         callback({})
         return
       }
-      desktopCapturer
-        .getSources({ types: ['screen'] })
-        .then((sources) => {
-          const source = sources.find((candidate) => candidate.display_id === displayId) ?? sources[0]
-          callback(source ? { video: source } : {})
-        })
-        .catch(() => callback({}))
+      void permittedDisplayMediaSource(
+        request,
+        owner,
+        displayId,
+        () => desktopCapturer.getSources({ types: ['screen'] }),
+        () => owner === recordingWindow && recordingTargetDisplayId === displayId ||
+          owner === scrollingWindow && scrollingTargetDisplayId === displayId,
+        () => isOnlyConnectedDisplay(screen.getAllDisplays(), displayId)
+      ).then((source) => callback(source ? { video: source } : {}))
     },
     { useSystemPicker: false }
   )
@@ -2760,7 +2775,7 @@ function openColorWindow(picked: PickedColor): void {
     return
   }
 
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     width: 340,
     height: 560,
     resizable: false,
@@ -2803,7 +2818,7 @@ function openSettings(): void {
     return
   }
 
-  const window = new BrowserWindow({
+  const window = createAppWindow({
     width: 460,
     height: 452,
     resizable: false,
@@ -2868,6 +2883,7 @@ if (!app.requestSingleInstanceLock()) {
       return
     }
     void cleanupExpiredGifClipboardFiles()
+    void cleanupAbandonedCaptureTemps(app.getPath('temp'))
     const loadedSettings = loadSettings()
     // Reconcile the OS login item on every packaged launch so uninstall/reinstall or a moved
     // executable cannot leave the persisted preference and the registered path out of sync.

@@ -2,6 +2,20 @@
 
 ## Start here
 
+Version **0.42.4** adds `src/main/window-security.ts` for main-frame ownership,
+navigation guards, and display-media selection, plus `src/main/capture-temp.ts` for cleanup
+of interrupted Windows capture PNGs. `settings:update` is now Settings-only, and the active GIF or
+panoramic control window alone may request its selected display. On multi-monitor systems, do not
+restore the first-display fallback; a sole source remains valid on one-monitor systems if Electron
+omits its display id. Screenshot-editor pointer moves coalesce redraws per frame in `editor.ts`;
+the synchronous export path is unchanged. These changes passed `npm run build`, the isolated
+annotation smoke, an isolated Settings render, a verified HDR screenshot launch, and a short GIF
+recording smoke. They have been packaged in isolated local Windows test builds, but not installed.
+Non-primary GIF and panoramic UI acceptance still needs the desktop matrix before release. See D-048.
+
+The current source version is **0.42.4**. Its Setup and Portable files are staged in
+`release-0.42.4/`; the files in `release/` contain the earlier 0.42.3 code.
+
 Version **0.42.3** includes Pin to desktop and **Edit** on each pin: the main process opens
 its retained PNG in Full Tab while the original pin stays unchanged. See D-045 and the pinned-image
 checks in `TESTING.md`; `pin.ts`/`pins.ts` own the renderer and main-process lifecycle.
@@ -32,8 +46,9 @@ The 0.42.3 Setup and Portable executables and `SHA256SUMS-0.42.3.txt` are in `re
 purged; the installed 0.42.2 app has not been replaced, preserving its in-memory pins. The HDR
 post-unlock correction is packaged but still awaits first-capture-after-unlock visual acceptance.
 
-The current source version is **0.42.3**; local Windows Setup and Portable packages have been built
-and verified. Validation and packaging evidence live in `PROJECT_STATE.md`. Older GitHub draft
+The current source version is **0.42.4**; local Windows Setup and Portable test packages have been
+built and verified in `release-0.42.4/`. Validation and packaging evidence live in
+`PROJECT_STATE.md`. Older GitHub draft
 artifacts documented here predate these fixes; check their remote state before any upload.
 Complete the installed-app acceptance checks before creating or publishing a release.
 
@@ -45,13 +60,14 @@ npm run build
 npm run dev
 ```
 
-Windows artifacts are copied into `release/`, and `release/BUILD-INFO.txt` records the version,
+Windows release artifacts are normally copied into `release/`, and `BUILD-INFO.txt` records the version,
 build time, and SHA-256 for each artifact. The running app reports its own version in the tray
 tooltip and tray menu, so an installed copy never has to be identified by guesswork.
 
 When Capturo has in-memory pins, leave the installed session running and package in an isolated
 staging directory. Do not overwrite a live `release/win-unpacked`; identify the versioned staging
-output and copy only the verified release artifacts into `release/`.
+output and copy only the verified release artifacts into `release/` when replacing the local release.
+The 0.42.4 test package remains in its isolated staging directory for user installation.
 
 ## Verifying a build without a person at the keyboard
 

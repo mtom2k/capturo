@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.42.4 - 2026-09-14
+
+### Improved
+
+- Rapid screenshot-editor drags now combine pointer updates into one canvas repaint per display
+  frame, reducing redundant full-canvas work while leaving export rendering unchanged.
+- App windows reject renderer-created windows and page navigation. Settings reads and writes require
+  the Settings main frame; live capture, color, GIF, and panoramic IPC also checks its owning main
+  frame. Screen-stream access is limited to the active recording window and its selected display;
+  a sole source is accepted only when one monitor is connected.
+- Windows cleans up abandoned native screenshot PNGs older than one hour on the next launch.
+
 ## 0.42.3 - 2026-09-13
 
 ### Fixed

@@ -315,6 +315,17 @@ function redraw(): void {
   publishScene()
 }
 
+let pointerRedrawPending = false
+
+function schedulePointerRedraw(): void {
+  if (pointerRedrawPending) return
+  pointerRedrawPending = true
+  requestAnimationFrame(() => {
+    pointerRedrawPending = false
+    redraw()
+  })
+}
+
 // Fillers cover the strips this window does not, and paint from what the editor sends so
 // a selection crossing into them shades and highlights in step.
 function publishScene(): void {
@@ -933,7 +944,7 @@ function pointerMove(event: PointerEvent): void {
     transparencySplit = Math.round(Math.max(0, Math.min(100, (rawPoint.x - selection.x) / selection.width * 100)))
     splitPositionSlider.value = String(transparencySplit)
     splitPositionValue.textContent = `${transparencySplit}%`
-    redraw()
+    schedulePointerRedraw()
     return
   }
   if (!interaction) {
@@ -994,7 +1005,7 @@ function pointerMove(event: PointerEvent): void {
       draft = { ...draft, rect: normalizeRect(interaction.start, point) }
     }
   }
-  redraw()
+  schedulePointerRedraw()
 }
 
 function pointerUp(event: PointerEvent): void {

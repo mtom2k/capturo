@@ -1,5 +1,6 @@
 import { BrowserWindow, clipboard, ipcMain, nativeImage } from 'electron'
 import { MAX_PINS, MAX_PIN_PIXELS, MAX_TOTAL_PIN_PIXELS, pinBounds, type PinEditResult, type PinPayload, type PinResult } from '../shared/pin'
+import { lockAppNavigation } from './window-security'
 
 type Pin = {
   window: BrowserWindow
@@ -81,8 +82,7 @@ export class PinManager {
       target.on('closed', () => { this.pins.delete(senderId); pin.finish(false) })
       target.webContents.on('render-process-gone', () => target.destroy())
       target.on('unresponsive', () => { if (!pin.ready) target.destroy() })
-      target.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-      target.webContents.on('will-navigate', (event) => event.preventDefault())
+      lockAppNavigation(target)
       // The deadline also covers a load that never resolves.
       void this.options.load(target).catch(() => { if (!target.isDestroyed()) target.destroy() })
       return await ready ? { opened: true } : { opened: false, error: 'Capturo could not open the pinned screenshot.' }

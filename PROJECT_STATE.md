@@ -1,6 +1,44 @@
 # Project State
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
+
+## 0.42.4 local Windows rebuild: window isolation, temp cleanup, and drag painting
+
+Source version 0.42.4 now requires the owning main frame for Settings writes and capture-related
+IPC, blocks app-page navigation and renderer-created windows, and grants display media only to the
+active GIF/panoramic control window. Multi-monitor selection requires the exact selected monitor;
+one monitor may use its sole source when Electron omits a display id. A removed display fails the
+stream request rather than recording the first monitor. Windows capture temp PNGs older
+than one hour are removed on the next launch if an interrupted capture left them behind. The
+screenshot editor coalesces drag repaints to one animation frame; exports still render from the
+complete source and commands.
+
+`npm run build` passed type checking, 311 tests, and production bundling. The isolated Electron
+annotation smoke passed text/step drag and preview/export pixel checks. An isolated development
+Settings launch rendered its Global tab with the new navigation and IPC checks. An isolated
+screenshot launch loaded two overlays from a verified FP16 HDR frame and left no matching temp
+PNG; a three-second GIF smoke recorded through the new display-media grant and its temporary
+output was removed. These changes are in the local 0.42.4 Windows rebuild but not in the
+installed app or the earlier 0.42.3 packages.
+Full GIF/panoramic UI checks on a non-primary display and the user's multi-monitor HDR visual
+acceptance remain before publication. The 0.42.4 Setup and Portable packages are unsigned local
+test builds in `release-0.42.4/`; they have not been installed or published.
+
+The isolated Windows x64 packaging completed with Electron 43.3.0 and electron-builder 26.15.3.
+`app.asar` reports 0.42.4, and all 35 packaged production files match the tested `out/` bundle.
+The packaged native helper passed `--self-test` and matches the development binary byte-for-byte.
+An isolated packaged-app smoke opened screenshot overlays from a verified FP16 HDR frame at a
+queried 240-nit SDR white level without saving an image. Both artifacts report file/product
+version 0.42.4 and Authenticode `NotSigned`:
+
+- Setup: 99,975,231 bytes; SHA-256
+  `75e5a5048a0291be8aa725e14d6298b095ce797c105788c38264438b73c9e8eb`.
+- Portable: 99,723,901 bytes; SHA-256
+  `4eb79175335869a2f756c5ff0204ce4af59d92e293f3f2db1cb7091c6cc4ec8d`.
+
+`BUILD-INFO.txt` and `SHA256SUMS-0.42.4.txt` are alongside them. Icon regeneration hit a write
+denial on an existing tray PNG, so packaging used the checked-in generated icons; each packaged
+tray/taskbar icon matches the 0.42.3 package and the icon source/code did not change.
 
 ## 0.42.3 Windows HDR capture correction and local packages
 
@@ -236,10 +274,10 @@ These changes are included in the 0.40.0 Windows release preparation.
 
 ## Phase
 
-`0.42.3` is the current source version, with local Windows x64 Setup and Portable packages. It is
+`0.42.4` is the current source version, with local Windows x64 Setup and Portable test packages. It is
 not a published GitHub release.
 The latest published stable release is `0.31.0` (verified on GitHub on 2026-09-09).
-No 0.42.3 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
+No 0.42.4 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
 older macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS
 state.
 
