@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.42.3 - 2026-09-13
+
+### Fixed
+
+- After Windows lock/unlock or resume, screenshot and GIF selection refresh their cached display
+  capture before reading HDR color data. FP16 frames require a current SDR-white measurement and
+  HDR outputs require FP16; Capturo shows a retryable error instead of offering an unverified,
+  potentially over-saturated frozen image. The Windows Chromium 8-bit fallback is no longer used
+  for screenshot selection when the native helper fails.
+
 ## 0.42.2 - 2026-09-13
 
 ### Fixed

@@ -14,6 +14,7 @@
 //   Serve (how Capturo drives it): no arguments. Reads one request per line from stdin:
 //     "<originX>\t<originY>\t<outputPath>" captures a display and
 //     "sample-display\t<originX>\t<originY>\t<centerX>\t<centerY>\t<size>" reads a live grid and
+//     "reset-display-cache" drops duplicated frames and color metadata after a desktop transition,
 //     "window-border\t<nativeHandle>" suppresses DWM's frame border for recording chrome and
 //     "clipboard-file\t<absolutePath>" places that file on the clipboard as CF_HDROP.
 //     "ocr-png\t<base64Png>" recognizes text locally with Windows.Media.Ocr.
@@ -441,8 +442,12 @@ std::string SerializeResult(const CaptureResult& r) {
             r.hdrActive ? "true" : "false", r.sdrWhiteNits, r.whiteLevelQueried ? "true" : "false",
             r.whiteLevelSource, r.tSetup, r.tAcquire, r.tConvert, r.tEncode);
     } else {
-        std::snprintf(buf, sizeof(buf), "{\"ok\":false,\"stage\":\"%s\",\"hr\":\"0x%08lX\"}",
-            r.stage ? r.stage : "unknown", static_cast<unsigned long>(r.hr));
+        std::snprintf(buf, sizeof(buf),
+            "{\"ok\":false,\"stage\":\"%s\",\"hr\":\"0x%08lX\",\"hdrActive\":%s,"
+            "\"format\":\"%s\",\"sdrWhiteNits\":%.1f,\"whiteLevelSource\":\"%s\"}",
+            r.stage ? r.stage : "unknown", static_cast<unsigned long>(r.hr),
+            r.hdrActive ? "true" : "false", r.isFloat ? "R16G16B16A16_FLOAT" : "B8G8R8A8_UNORM",
+            r.sdrWhiteNits, r.whiteLevelSource);
     }
     return std::string(buf);
 }
@@ -511,15 +516,13 @@ float ResolveSdrWhiteNits(OutputCapture& oc, CaptureResult& r) {
     return kFallbackSdrWhiteNits;
 }
 
-bool OutputHdrActive(IDXGIOutput5* output5) {
+bool ReadOutputHdrActive(IDXGIOutput5* output5, bool& hdrActive) {
     ComPtr<IDXGIOutput6> output6;
-    if (SUCCEEDED(output5->QueryInterface(IID_PPV_ARGS(&output6)))) {
-        DXGI_OUTPUT_DESC1 desc1{};
-        if (SUCCEEDED(output6->GetDesc1(&desc1))) {
-            return desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-        }
-    }
-    return false;
+    if (FAILED(output5->QueryInterface(IID_PPV_ARGS(&output6)))) return false;
+    DXGI_OUTPUT_DESC1 desc1{};
+    if (FAILED(output6->GetDesc1(&desc1))) return false;
+    hdrActive = desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+    return true;
 }
 
 // Creates (or recreates) the duplication for one output: finds it by origin, gets-or-creates
@@ -694,6 +697,9 @@ Attempt ProcessToPng(ID3D11DeviceContext* context, OutputCapture& oc, float sdrW
 }
 
 Attempt CaptureAttempt(Capturer& cap, long ox, long oy, const std::wstring& output, float requestedNits, CaptureResult& r) {
+    // Output color characteristics can change across lock/unlock without the old duplication
+    // reporting ACCESS_LOST. Check factory freshness on every capture, not only on BuildOutput.
+    if (FAILED(EnsureFactory(cap))) { r.stage = "CreateDXGIFactory1"; return Attempt::Fatal; }
     OutputCapture& oc = cap.outputs[std::make_pair(ox, oy)];
     if (!oc.dup) {
         const Attempt a = BuildOutput(cap, ox, oy, oc, r);
@@ -705,19 +711,44 @@ Attempt CaptureAttempt(Capturer& cap, long ox, long oy, const std::wstring& outp
     ID3D11Device* device = it->second.device.Get();
     ID3D11DeviceContext* context = it->second.context.Get();
 
-    // HDR state and SDR white are re-read per capture; the user can toggle them any time.
-    r.hdrActive = OutputHdrActive(oc.output5.Get());
-    float nits = requestedNits;
-    if (nits <= 0.0f) nits = ResolveSdrWhiteNits(oc, r);
-    else r.whiteLevelSource = "requested";
-    r.sdrWhiteNits = nits;
-
     const long long ta0 = NowQpc();
     Attempt a = AcquireLatest(oc, device, context, r);
     if (a != Attempt::Ok) return a;
     r.tAcquire = MsBetween(ta0, NowQpc());
 
-    return ProcessToPng(context, oc, nits, output, r);
+    // A display transition can occur during AcquireLatest. Never pair a newly acquired FP16
+    // frame with an output description or white level read before that wait.
+    if (!cap.factory->IsCurrent()) return Attempt::Rebuild;
+    r.isFloat = oc.frameDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
+    if (!ReadOutputHdrActive(oc.output5.Get(), r.hdrActive)) {
+        r.stage = "OutputColorSpace";
+        return Attempt::Fatal;
+    }
+    if (r.hdrActive && !r.isFloat) { r.stage = "HDRFormat"; return Attempt::Fatal; }
+
+    float nits = requestedNits;
+    if (nits <= 0.0f) {
+        nits = ResolveSdrWhiteNits(oc, r);
+        // A guessed or pre-transition white level changes every pixel in an FP16 image.
+        // Give Windows a short chance to finish restoring its display configuration, then
+        // reject the frame if it still cannot supply a current measurement.
+        for (int retry = 0; r.isFloat && !r.whiteLevelQueried && retry < 3; ++retry) {
+            Sleep(20);
+            nits = ResolveSdrWhiteNits(oc, r);
+        }
+        if (r.isFloat && !r.whiteLevelQueried) {
+            r.hdrActive = true;
+            r.sdrWhiteNits = nits;
+            r.stage = "SdrWhiteLevel";
+            return Attempt::Fatal;
+        }
+    } else r.whiteLevelSource = "requested";
+    r.sdrWhiteNits = nits;
+
+    if (!cap.factory->IsCurrent()) return Attempt::Rebuild;
+    a = ProcessToPng(context, oc, nits, output, r);
+    if (a != Attempt::Ok) return a;
+    return cap.factory->IsCurrent() ? Attempt::Ok : Attempt::Rebuild;
 }
 
 // One capture, printing exactly one JSON result line. Retries once on a recoverable loss,
@@ -742,6 +773,7 @@ void CaptureOne(Capturer& cap, long ox, long oy, const std::wstring& output, flo
 
 Attempt SampleAttempt(Capturer& cap, long ox, long oy, long centerX, long centerY, UINT size,
                       CaptureResult& r, std::string& pixels) {
+    if (FAILED(EnsureFactory(cap))) { r.stage = "CreateDXGIFactory1"; return Attempt::Fatal; }
     OutputCapture& oc = cap.outputs[std::make_pair(ox, oy)];
     if (!oc.dup) {
         const Attempt a = BuildOutput(cap, ox, oy, oc, r);
@@ -752,14 +784,18 @@ Attempt SampleAttempt(Capturer& cap, long ox, long oy, long centerX, long center
     ID3D11Device* device = it->second.device.Get();
     ID3D11DeviceContext* context = it->second.context.Get();
 
-    r.hdrActive = OutputHdrActive(oc.output5.Get());
-    const float nits = ResolveSdrWhiteNits(oc, r);
-    r.sdrWhiteNits = nits;
-
     const long long ta0 = NowQpc();
     Attempt a = AcquireLatest(oc, device, context, r, kPickerAcquireBudgetMs);
     if (a != Attempt::Ok) return a;
     r.tAcquire = MsBetween(ta0, NowQpc());
+    if (!cap.factory->IsCurrent()) return Attempt::Rebuild;
+
+    if (!ReadOutputHdrActive(oc.output5.Get(), r.hdrActive)) {
+        r.stage = "OutputColorSpace";
+        return Attempt::Fatal;
+    }
+    const float nits = ResolveSdrWhiteNits(oc, r);
+    r.sdrWhiteNits = nits;
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
     HRESULT hr = context->Map(oc.readback.Get(), 0, D3D11_MAP_READ, 0, &mapped);
@@ -1015,6 +1051,16 @@ int wmain(int argc, wchar_t** argv) {
     while (std::getline(std::cin, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
+        if (line == "reset-display-cache") {
+            // A lock/unlock or resume can leave a valid-looking duplication holding the last
+            // pre-transition frame. Drop its surface and color metadata together.
+            cap.outputs.clear();
+            cap.devices.clear();
+            cap.factory.Reset();
+            std::fputs("{\"ok\":true}\n", stdout);
+            std::fflush(stdout);
+            continue;
+        }
         const size_t t1 = line.find('\t');
         if (t1 != std::string::npos && line.substr(0, t1) == "sample-display") {
             std::vector<std::string> fields;

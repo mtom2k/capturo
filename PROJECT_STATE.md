@@ -2,7 +2,49 @@
 
 Last updated: 2026-09-13
 
-## 0.42.2 Windows packages
+## 0.42.3 Windows HDR capture correction and local packages
+
+After a report of an intermittently over-saturated whole-screen selection following unlock on a
+multi-monitor HDR setup, code review found two paths that could silently return an invalid frozen
+image. Warm captures checked `IDXGIFactory::IsCurrent` only when building a new duplication, so
+an existing output could retain stale color metadata; and an FP16 frame could be converted with
+the cached or guessed SDR-white level when Windows' current query failed. The exact reported
+incident has no preserved frame or helper log, so its individual trigger is not proven.
+
+The native helper now checks factory freshness per capture, reads HDR state and SDR white after
+frame acquisition, and clears its duplication/readback cache on lock, unlock, and resume events.
+FP16 screenshots with no current white measurement and HDR outputs in 8-bit format are rejected.
+On Windows the main process refuses any failed or unverified native capture, showing a retry error
+instead of falling back to Chromium's HDR-unsafe 8-bit screenshot. GIF region selection uses the
+same frozen-image path. The installed 0.42.2 app remains unchanged, preserving the user's
+in-memory pins. The native build and self-test passed; `npm run build` passed type
+checking, all 303 automated tests, and production bundling. The new `reset-display-cache` command
+answered successfully in a native protocol smoke. Post-unlock visual acceptance on the user's
+multi-monitor HDR setup remains outstanding. An isolated development-app smoke with normal GPU
+rendering and desktop access loaded the selection overlay from the native FP16 HDR path at the
+current 240-nit SDR white level (`queried`); it did not save captured pixels or interrupt the
+installed app. The same smoke passed against the packaged 0.42.3 `win-unpacked` executable.
+In a restricted sandbox, DXGI returned `E_ACCESSDENIED` at `DuplicateOutput1`; the new guard
+rejected the frame instead of opening a fallback overlay. Repeating the smoke with normal desktop
+access succeeded.
+
+An isolated Windows x64 package build produced local 0.42.3 artifacts:
+
+- Setup: 99,974,760 bytes; SHA-256
+  `06e20bb851af763b7e727de94c6d69ac30958c7b7b335de22bb91dd1d582d829`.
+- Portable: 99,723,422 bytes; SHA-256
+  `9ee32ac76d6e7786607a8e5e609be68c4d25ba2c0f49df6a09626aa05b12a3f3`.
+
+Both EXEs report file/product version 0.42.3 and Authenticode status `NotSigned`. The packaged
+`app.asar` reports version 0.42.3, and all 35 production files match the tested `out/` bundle
+byte-for-byte. The packaged native helper matches the tested executable
+(SHA-256 `abeee43770d004a9b2cd2719c0b89e92c788cc2024d78a748a3a32f05e524174`).
+`release/` contains only the 0.42.3 Setup, Portable, blockmap, checksums, build manifest, and
+matching `win-unpacked/`; the 0.42.2 local packages and temporary staging were removed. No
+GitHub release or macOS package was made. First-capture-after-unlock visual acceptance on the
+multi-monitor HDR setup remains outstanding before publication.
+
+## 0.42.2 Windows packages (superseded by 0.42.3)
 
 The Windows Color Picker now has a desktop-wide input-only Win32 surface separate from its compact,
 content-protected Electron magnifier. The physical mouse can travel beyond the lens at the 1/4 and
@@ -30,8 +72,8 @@ An isolated Windows x64 package build produced local artifacts:
 Both EXEs report file/product version 0.42.2 and Authenticode status `NotSigned`. The packaged
 `app.asar` contains the 0.42.2 manifest and all 35 production files match the tested `out/`
 bundle byte-for-byte. The packaged native helper matches the rebuilt executable (SHA-256
-`2e4bd195641e148165f13e6d8af945f92015d5571e3552292a303a739d0923c4`). `release/` contains
-only the 0.42.2 Setup, Portable, blockmap, checksums, build manifest, and matching
+`2e4bd195641e148165f13e6d8af945f92015d5571e3552292a303a739d0923c4`). At that time,
+`release/` contained only the 0.42.2 Setup, Portable, blockmap, checksums, build manifest, and matching
 `win-unpacked/`; the 0.42.1 local packages were removed. No GitHub release or macOS package was
 made.
 
@@ -194,10 +236,10 @@ These changes are included in the 0.40.0 Windows release preparation.
 
 ## Phase
 
-`0.42.2` is the current source version, with local Windows x64 Setup and Portable packages. It is
+`0.42.3` is the current source version, with local Windows x64 Setup and Portable packages. It is
 not a published GitHub release.
 The latest published stable release is `0.31.0` (verified on GitHub on 2026-09-09).
-No 0.42.2 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
+No 0.42.3 macOS package was produced by this Windows build. Windows x64 remains the only *supported* platform; the
 older macOS artifacts are ad-hoc signed and carry the Gatekeeper warning described under macOS
 state.
 
@@ -840,11 +882,12 @@ Still blocked from *supported* macOS distribution by a certificate, not by code:
 
 ## Known constraints
 
-- A capture the native Windows helper cannot serve falls back to Chromium's 8-bit capture, which
-  cannot tone map an HDR display; that frame will look washed and over-saturated. The fallback is
-  necessary and stays, but it is now reported rather than silent. `CAPTURO_TIMING=1` names the
-  format, HDR state, SDR white level and its source per display, and main logs the failing helper
-  stage. See D-015 and D-038 and the diagnosis section in `TESTING.md`.
+- The 0.42.3 HDR fix prevents screenshot and GIF selection on Windows when any native display
+  frame cannot be verified; it presents a retry error instead of Chromium's 8-bit HDR-unsafe
+  fallback. The installed 0.42.2 build still has the older fallback behavior.
+  `CAPTURO_TIMING=1` names the format, HDR state, SDR white level and its source for successful
+  frames, and main logs the failing helper stage. Post-unlock multi-monitor visual acceptance is
+  outstanding. See D-038 and the diagnosis section in `TESTING.md`.
 
 - A drag must start inside the editor window, which covers the work area. A selection extends into the taskbar normally once it has begun, because the editor keeps pointer capture, but a drag cannot be started by pressing on the taskbar itself.
 - A selection cannot span two physical displays.

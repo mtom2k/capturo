@@ -98,18 +98,44 @@ level, and where that level came from, for example:
 [timing] helper display 1148328176: R16G16B16A16_FLOAT, hdr on, sdr white 240 nits (queried) [...]
 ```
 
-`R16G16B16A16_FLOAT` with `hdr on` is the tone-mapped path. Read the three failure signatures:
+`R16G16B16A16_FLOAT` with `hdr on` is the tone-mapped path. A Windows screenshot now stops
+with **Capture unavailable** rather than showing an unverified frame. Read these signatures:
 
-- A line saying the helper did not serve a display means the frame came from Chromium's 8-bit
-  capture, which cannot tone map HDR. The message names the helper's failing stage.
-- `(cached)` or `(fallback)` instead of `(queried)` means Windows would not report the white level
-  for that capture; `(fallback)` in particular means the frame was divided by a guess.
-- `B8G8R8A8_UNORM` with `hdr on` would mean DXGI declined the float format.
+- A line saying the helper did not serve a display means selection was stopped. The message names
+  the helper's failing stage; `SdrWhiteLevel` means Windows did not provide a current exposure.
+- `(cached)` or `(fallback)` may still occur in Color Picker's live samples, but a frozen FP16
+  screenshot must report `(queried)` or be rejected.
+- `B8G8R8A8_UNORM` with `hdr on` must be rejected; it means DXGI declined the float format.
 
-To compare against a reference, capture the same screen with
-`native/capturo-capture/build/capturo-capture.exe --output ref.png` and with any GDI-based tool.
-On a correctly tone-mapped display the two agree closely; a mean per-channel difference under about
-half a level is normal, and a systematic brightness or saturation offset is not.
+For the reported intermittent case, leave Capturo running, lock and unlock Windows on a
+multi-monitor HDR desktop, then invoke screenshot and GIF selection without resizing any window.
+Check each frozen monitor against the live desktop immediately after Escape. Repeat after resume
+and after changing the HDR/SDR content brightness setting. The first capture must be correctly
+colored or show the retry message, never an over-saturated overlay. Check a static desktop too:
+the first post-unlock frame must be current, not a pre-lock cached image. Retry after a temporary
+error and confirm capture recovers without restarting Capturo. Do not save diagnostic screenshots
+that include private desktop content.
+
+For a non-persistent desktop-path smoke on Windows, run
+`node tests/fixtures/hdr-capture-app-smoke.mjs` in a normal interactive session. It starts an
+isolated development app, waits for native HDR metadata and the selection overlay, then exits
+without saving the image. The smoke cannot judge visual color and can be blocked by a sandbox
+that denies DXGI duplication; run it with normal desktop access before treating that failure as
+an application defect.
+
+To test the packaged 0.42.3 build across lock/unlock while keeping an installed 0.42.2 app and its
+in-memory pins alive, start `release/win-unpacked/Capturo.exe` with
+`CAPTURO_CAPTURE_ON_START=1` and `CAPTURO_TIMING=1` in its environment. The smoke flag gives this
+instance a separate development profile. Cancel its first selection, lock and unlock Windows,
+then start the same executable with the same environment again: its `second-instance` handler
+starts a new selection in the already-running 0.42.3 process. Inspect the frozen image and
+metadata, then quit only that test instance from its tray menu. Do not install over the running
+0.42.2 app until its pins have been saved or intentionally discarded.
+
+For color accuracy, use a chart whose sRGB values are known (including greys at
+`0/32/64/96/128/160/192/255`) and inspect the Capturo overlay before saving. A GDI capture is
+not a reliable HDR reference; see D-015 and D-038. Do not persist a private desktop image merely
+to diagnose the capture path.
 
 ## Driving a build without a person at the keyboard
 
@@ -332,7 +358,7 @@ Verify on at least 100% and one scaled DPI setting:
 23. **Persistent capture helper (D-017).** With `CAPTURO_TIMING=1`, confirm warm captures report `setup 0` and that the first capture after a reboot is not slow (the helper warms at launch). Then exercise its resilience:
 
     - **Display change mid-session.** Between two captures, rotate a monitor, change its resolution, or unplug/replug one. Confirm the next capture still produces a correct, correctly-sized overlay because duplication is rebuilt on `DXGI_ERROR_ACCESS_LOST` rather than returning a black or stale frame. Lock the screen or trigger a UAC prompt, then capture again.
-    - **Dead helper.** Kill `capturo-capture.exe` from Task Manager mid-session; the next capture must still succeed (respawn, or `desktopCapturer` fallback) and a helper should be running again afterwards.
+    - **Dead helper.** Kill `capturo-capture.exe` from Task Manager mid-session; the next capture must respawn it and succeed. If it cannot, selection must show a retry message rather than a Chromium screenshot.
     - **No orphan.** Quit Capturo (and separately, force-kill it) and confirm no `capturo-capture.exe` is left behind.
     - **Idle then capture.** Leave the app resident for a while on a static desktop, then capture, and confirm it shows the current desktop, not a stale frame.
     - **OCR protocol (D-026).** Run `capturo-capture.exe --ocr <non-sensitive-image>` to isolate native recognition, then run the application smoke below to cover persistent serve mode and Electron's text clipboard. The one-shot command prints recognized text; the app smoke must log only counts. After any COM-apartment or C++/WinRT change, also rerun `--output` and decode the PNG so DXGI/WIC capture is proven alongside OCR.

@@ -6,7 +6,7 @@
 
 Capturo is a fast, local screenshot and GIF tool. It lives in the notification area or menu bar, opens straight into region selection, and gets out of the way when you finish. There is no dashboard, account, cloud storage, telemetry, or history database.
 
-![version](https://img.shields.io/badge/version-0.42.2-blue)
+![version](https://img.shields.io/badge/version-0.42.3-blue)
 ![platform](https://img.shields.io/badge/Windows-supported-brightgreen)
 ![macOS](https://img.shields.io/badge/macOS-preview-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -34,16 +34,22 @@ Download published packages from [GitHub Releases](https://github.com/mtom2k/cap
 | `Capturo-<version>-arm64-mac.zip` | Unsupported Apple Silicon macOS preview archive |
 
 The 0.22.3 release published all four artifacts. The local `release/` directory now keeps only the
-current 0.42.2 Windows packages, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A
+current 0.42.3 Windows packages, and `BUILD-INFO.txt` records their sizes and SHA-256 hashes. A
 local rebuild will not reproduce a release's checksums: electron-builder embeds build timestamps,
 so packaging is not byte-reproducible
 and a differing digest is not evidence of a source difference.
 
-Source is **0.42.2**. Local Windows x64 Setup and Portable packages include pin editing, consistent
+Source is **0.42.3**. Local Windows x64 Setup and Portable packages include pin editing, consistent
 action buttons, and fixes for overlapping capture launches and Color Picker cursor tracking. These
 packages are local builds; they have not been published as a GitHub release. Local packages and
-drafts are not offered by the in-app update checker. No 0.42.2 macOS package was produced. Windows
+drafts are not offered by the in-app update checker. No 0.42.3 macOS package was produced. Windows
 x64 remains the only supported platform — see [macOS](#-macos) before downloading an older preview.
+
+Version 0.42.3 addresses intermittent color distortion in the frozen selection image
+after Windows unlock. It refreshes the HDR capture state and refuses a frame if Windows cannot
+provide a current SDR-white level. Affected captures show a retry message instead of an image
+whose colors could be wrong. Local 0.42.3 packages contain the fix; the installed 0.42.2 app has
+not been replaced, and a first-capture-after-unlock visual check remains before publication.
 
 Windows may show an unknown-publisher warning because current builds are not Authenticode-signed. Choose **More info**, then **Run anyway** if you trust the downloaded checksum.
 

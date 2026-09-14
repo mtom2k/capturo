@@ -291,7 +291,11 @@ Three failure modes shape the design:
 
 **Duplication goes invalid.** Desktop duplication is lost (`DXGI_ERROR_ACCESS_LOST`) whenever the display setup changes, including resolution, rotation, monitor plug/unplug, the secure desktop, or a full-screen exclusive app. Each output's duplication is cached by desktop origin and, on a loss, dropped and rebuilt; a removed device (`DXGI_ERROR_DEVICE_REMOVED`) rebuilds everything, and a stale factory (`IsCurrent()` false) re-enumerates. A capture retries once through a rebuild before giving up. HDR state and SDR white are re-read per capture, never cached, since the user can toggle them.
 
-**A hung or dead helper must never hang or break a capture.** The main side keeps a single batch in flight with a timeout; on timeout or process death it rejects, and the caller falls back to `desktopCapturer` (the same fallback used on non-Windows). A dead helper is respawned on the next capture.
+**A hung or dead helper must never hang a capture.** The main side keeps a single batch in flight with a timeout; on timeout or process death it rejects. Before the 2026-09-13 amendment below, the caller fell back to `desktopCapturer` (the path used on non-Windows). A dead helper is respawned on the next capture.
+
+**Amended 2026-09-13:** Windows no longer uses the Chromium screenshot fallback after a native
+failure. It can make an HDR frame look valid while clipping its colors. Selection instead reports
+the failed capture and allows a retry; a dead helper is still respawned on the next attempt.
 
 **Orphaned processes.** The serve loop exits on stdin EOF, so the helper self-terminates when its parent dies even on a hard kill, in addition to being killed on a normal quit (`before-quit`). Verified: force-killing the app leaves no `capturo-capture.exe` behind.
 
@@ -719,10 +723,10 @@ broken. The query is now retried, an implausible level (outside 40-1000 nits) is
 and the level is resolved in descending order of trust — measured now, last measured for this
 output, then the guess. Each capture reports which of the three it used.
 
-A capture that the helper cannot serve falls back to Chromium's 8-bit capture, which is the path
-that cannot tone map HDR at all. That fallback is real and must stay, but it is no longer silent:
-main logs the display, the helper's failing stage, and the fact that HDR cannot be tone mapped, and
-it logs separately whenever an HDR frame's white level was not measured for that capture.
+A capture that the helper could not serve previously fell back to Chromium's 8-bit capture, which
+cannot tone map HDR at all. That fallback was logged but remained able to return wrong pixels;
+the 2026-09-13 amendment below supersedes it on Windows. At this stage the app logged the display,
+the helper's failing stage, and any HDR frame whose white level was not measured for that capture.
 `CAPTURO_TIMING=1` now names the pixel format, HDR state, white level, and its source per display,
 which is the first thing to read when a capture looks washed.
 
@@ -736,6 +740,18 @@ observed, resolve the point through `MonitorFromPoint` rather than widening the 
 The native helper's `--self-test` pins four load-bearing properties: SDR values are untouched, HDR
 component ratios survive, neutral HDR white stays neutral, and invalid/negative FP16 values cannot
 reach the PNG conversion. `native/capturo-capture/build.cmd` runs that test after every native build.
+
+**Amended 2026-09-13:** A whole-screen, intermittent over-saturation was reported in the frozen
+selection following Windows unlock on multiple monitors. The actual display returned to normal as
+soon as Capturo was cancelled. Code review found that warm captures did not check factory
+freshness, and FP16 screenshots could still use a cached or guessed white level if a current query
+failed. The exact reported occurrence lacks a saved frame or helper log, so neither path can be
+assigned as its proven individual trigger. Warm captures now check `IsCurrent` before and after
+acquisition; lock, unlock, and resume invalidate the helper's frame/color cache; and screenshot
+exposure is read after acquisition. An FP16 screenshot without a current white measurement, or an
+HDR output in 8-bit format, is rejected after a short retry. Windows stops selection with a
+retryable error if any display fails verification, preserving image quality over a false success.
+The picker still uses the cached/guessed level for low-latency live sampling.
 
 ## D-039: A selected screenshot can detach into one normal editor window
 

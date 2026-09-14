@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage,
   Notification,
+  powerMonitor,
   screen,
   session as electronSession,
   shell,
@@ -93,6 +94,7 @@ import {
   copyFileToClipboard,
   MAX_OCR_PNG_BYTES,
   recognizeTextFromPng,
+  resetCaptureDisplays,
   sampleDisplayColor,
   startCaptureHelper,
   stopCaptureHelper,
@@ -556,10 +558,13 @@ function sourceForDisplay(
 // the frame in FP16 scRGB, normalises against the live SDR white level, tone maps, turns a
 // rotated surface back to the desktop orientation, and only then encodes sRGB. Chromium's own
 // 8-bit capture does none of this correctly on an HDR display. It also excludes the mouse
-// pointer. See D-014, D-015, D-017. Returns one DisplayImage per display, null where the
-// helper could not serve it (the caller falls back to desktopCapturer for those).
+// pointer. See D-014, D-015, D-017. Windows refuses a failed or unverified frame; other
+// platforms return null for the desktopCapturer path.
 async function captureWithHelper(displays: Electron.Display[]): Promise<(DisplayImage | null)[]> {
-  if (!captureHelperAvailable()) return displays.map(() => null)
+  if (!captureHelperAvailable()) {
+    if (process.platform === 'win32') throw new Error('The HDR-aware Windows capture helper is unavailable.')
+    return displays.map(() => null)
+  }
 
   // DXGI enumerates outputs in its own order, so each monitor is identified by its physical
   // desktop origin. dipToScreenRect performs the per-monitor scaling conversion.
@@ -573,29 +578,35 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
   try {
     results = await captureDisplays(requests)
   } catch (error) {
-    console.error('capture helper failed, falling back to desktopCapturer', error)
+    console.error('capture helper failed', error)
   }
 
   const images = await Promise.all(
     displays.map(async (display, index) => {
       const result = results[index]
       if (!result?.ok || !result.width || !result.height) {
-        // Never let this pass quietly. The fallback is Chromium's 8-bit capture, which cannot tone
-        // map an HDR display, so a silent fallback is indistinguishable from a broken HDR fix.
         console.error(
           `capture helper did not serve display ${display.id}` +
-          `${result?.stage ? ` (stage ${result.stage}${result.hr ? ` hr ${result.hr}` : ''})` : ''}` +
-          '; falling back to desktopCapturer, which cannot tone map HDR'
+          `${result?.stage ? ` (stage ${result.stage}${result.hr ? ` hr ${result.hr}` : ''})` : ''}`
         )
         return null
       }
-      // An HDR frame whose white level was not measured for this capture is the one case that
-      // produces a plausible-looking but over-exposed image, so say so even when it succeeded.
-      if (result.hdrActive && result.whiteLevelSource && result.whiteLevelSource !== 'queried') {
+      if (result.format !== 'R16G16B16A16_FLOAT' && result.format !== 'B8G8R8A8_UNORM') {
+        console.error(`display ${display.id} has an unknown native pixel format (${result.format ?? 'missing'})`)
+        return null
+      }
+      if (result.format === 'R16G16B16A16_FLOAT' &&
+        (result.whiteLevelSource !== 'queried' || result.whiteLevelQueried !== true ||
+          !Number.isFinite(result.sdrWhiteNits) || result.sdrWhiteNits! < 40 || result.sdrWhiteNits! > 1000)) {
         console.error(
-          `display ${display.id} is HDR but Windows did not report its SDR white level; ` +
-          `used ${result.sdrWhiteNits} nits from the ${result.whiteLevelSource}`
+          `display ${display.id} has an FP16 frame without a measured SDR white level ` +
+          `(${result.whiteLevelSource ?? 'unknown'})`
         )
+        return null
+      }
+      if (result.hdrActive && result.format !== 'R16G16B16A16_FLOAT') {
+        console.error(`display ${display.id} is HDR but the helper returned ${result.format ?? 'an unknown format'}`)
+        return null
       }
       try {
         // Trust the helper's reported dimensions rather than re-decoding, so nothing can
@@ -609,6 +620,19 @@ async function captureWithHelper(displays: Electron.Display[]): Promise<(Display
   )
 
   for (const output of outputs) void fs.rm(output, { force: true }).catch(() => {})
+  // Chromium's 8-bit fallback is known to clip HDR desktop pixels before Capturo can correct
+  // them. On Windows, an unverified display must stop the whole capture instead of creating a
+  // plausible-looking frozen overlay that could be copied or saved as a damaged image.
+  if (process.platform === 'win32') {
+    const failedIndex = images.findIndex((image) => !image)
+    if (failedIndex >= 0) {
+      const result = results[failedIndex]
+      throw new Error(
+        `Display ${displays[failedIndex].id} could not be captured with verified color` +
+        `${result?.stage ? ` (stage ${result.stage}${result.hr ? `, ${result.hr}` : ''})` : ''}.`
+      )
+    }
+  }
   if (timingEnabled) {
     results.forEach((result, index) => {
       if (!result?.timings) return
@@ -1163,10 +1187,21 @@ async function openSelectionOverlays(mode: CaptureMode): Promise<void> {
   const started = performance.now()
 
   // The persistent native helper serves the frame on Windows, handling rotated and HDR
-  // displays. desktopCapturer is only the fallback for platforms without the helper or the
-  // rare display it cannot serve; grabbing every screen that way is expensive, so it is
-  // fetched once, afterwards, and sized only to the displays that came back empty.
-  const images = await captureWithHelper(displays)
+  // displays. Other platforms use desktopCapturer. On Windows an unverified native frame
+  // aborts the capture, because Chromium's 8-bit source can silently damage HDR colors.
+  let images: (DisplayImage | null)[]
+  try {
+    images = await captureWithHelper(displays)
+  } catch (error) {
+    console.error('Could not capture a color-safe desktop frame', error)
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Capture unavailable',
+      message: 'Capturo could not verify the display colors. Please try the capture again.',
+      detail: error instanceof Error ? error.message : undefined
+    })
+    return
+  }
 
   const missing = displays.filter((_display, index) => !images[index])
   if (missing.length > 0) {
@@ -2842,6 +2877,14 @@ if (!app.requestSingleInstanceLock()) {
     // Warm the persistent capture helper now so the first capture pays no device/duplication
     // setup and no cold DLL load. See D-017.
     startCaptureHelper()
+    if (process.platform === 'win32') {
+      const resetDisplays = (): void => {
+        void resetCaptureDisplays().catch((error) => console.error('Could not reset capture displays', error))
+      }
+      powerMonitor.on('lock-screen', resetDisplays)
+      powerMonitor.on('unlock-screen', resetDisplays)
+      powerMonitor.on('resume', resetDisplays)
+    }
     registerIpc()
     registerDisplayMediaHandler()
     registerInitialShortcuts()

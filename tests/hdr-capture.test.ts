@@ -37,17 +37,38 @@ describe('HDR white level resolution', () => {
   })
 })
 
-describe('HDR capture fallback visibility', () => {
-  it('never falls back to Chromium capture silently', () => {
-    // The fallback cannot tone map an HDR display, so an unreported fallback is indistinguishable
-    // from the HDR handling having broken.
-    expect(main).toContain('capture helper did not serve display')
-    expect(main).toContain('cannot tone map HDR')
+describe('HDR capture safety after display transitions', () => {
+  it('refreshes the DXGI factory for warm captures and again after acquiring the frame', () => {
+    expect(helper).toMatch(/Attempt CaptureAttempt\([^]*?if \(FAILED\(EnsureFactory\(cap\)\)\)/)
+    expect(helper).toMatch(/Attempt CaptureAttempt\([^]*?AcquireLatest\([^]*?if \(!cap\.factory->IsCurrent\(\)\) return Attempt::Rebuild/)
   })
 
-  it('flags an HDR frame whose white level was not measured for that capture', () => {
+  it('clears cached frames on Windows desktop-session transitions', () => {
+    expect(helper).toContain('line == "reset-display-cache"')
+    expect(helper).toContain('cap.outputs.clear()')
+    expect(helperBridge).toContain('export async function resetCaptureDisplays()')
+    expect(main).toContain("powerMonitor.on('unlock-screen', resetDisplays)")
+    expect(main).toContain("powerMonitor.on('resume', resetDisplays)")
+  })
+
+  it('does not show a Windows frame if the native capture path fails', () => {
+    expect(main).toContain('capture helper did not serve display')
+    expect(main).toContain("if (process.platform === 'win32')")
+    expect(main).toContain('could not be captured with verified color')
+    expect(main).toContain('Capturo could not verify the display colors')
+  })
+
+  it('rejects FP16 frames without a current SDR white measurement', () => {
+    expect(helper).toContain('if (r.isFloat && !r.whiteLevelQueried)')
+    expect(helper).toContain('r.stage = "SdrWhiteLevel"')
     expect(main).toContain("result.whiteLevelSource !== 'queried'")
-    expect(main).toContain('did not report its SDR white level')
+    expect(main).toContain('result.whiteLevelQueried !== true')
+    expect(main).toContain('has an FP16 frame without a measured SDR white level')
+  })
+
+  it('rejects an HDR output that arrives in an 8-bit format', () => {
+    expect(helper).toContain('if (r.hdrActive && !r.isFloat)')
+    expect(main).toContain("result.hdrActive && result.format !== 'R16G16B16A16_FLOAT'")
   })
 
   it('logs the colour path alongside the timings', () => {

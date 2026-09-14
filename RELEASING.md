@@ -2,15 +2,19 @@
 
 ## Version and state
 
-The 0.42.2 source and local Windows Setup and Portable packages include pin editing, shared action
-icons, a single live-capture launch gate, and the desktop-wide Windows Color Picker input fix. They
-have not been published.
+The 0.42.3 local Windows Setup and Portable packages include pin editing, shared action
+icons, the live-capture launch gate, the desktop-wide Windows Color Picker input fix, and the HDR
+post-unlock capture correction. They have not been published.
 The documented 0.41.0 and 0.40.0 draft artifacts are older builds; verify their remote state before
-any upload. Before creating or publishing a 0.42.2 release, complete the installed and portable
+any upload. Before creating or publishing a 0.42.3 release, complete the installed and portable
 desktop acceptance in `TESTING.md`, especially
 fast Color Picker movement and cursor visibility at every zoom, cancellation, pin editing, and
 compact action buttons. The scripted native and Electron desktop smokes in `TESTING.md` verify
 input routing and teardown, but visual acceptance on installed/portable builds remains required.
+
+The local 0.42.3 package passed the unsaved HDR selection smoke with normal GPU rendering. Run
+the first-capture-after-unlock multi-monitor HDR checks in `TESTING.md` before calling this build
+ready for publication. The installed 0.42.2 app remains running to preserve in-memory pins.
 
 When preparing a new draft, target the exact pushed release commit and attach both executables with
 their SHA-256 checksums. Verify `isDraft` after uploading. Publishing is a separate action;

@@ -12,7 +12,8 @@
 // Protocol: one request per line on stdin. Capture requests are
 // "<originX>\t<originY>\t<outputPath>"; live colour samples are
 // "sample-display\t<originX>\t<originY>\t<centerX>\t<centerY>\t<size>"; window-border requests are
-// "window-border\t<nativeHandle>"; clipboard requests are "clipboard-file\t<absolutePath>";
+// "window-border\t<nativeHandle>"; "reset-display-cache" clears Windows capture state after a
+// lock/unlock or resume; clipboard requests are "clipboard-file\t<absolutePath>";
 // OCR requests are "ocr-png\t<base64Png>" and keep captured pixels in memory. That request is
 // the one both helpers implement, which is what lets this module drive either unchanged.
 // The helper writes one JSON result per request, in order.
@@ -246,6 +247,13 @@ export function captureDisplays(requests: HelperRequest[]): Promise<HelperResult
       (request) => `${Math.round(request.originX)}\t${Math.round(request.originY)}\t${request.output}`
     )
   )
+}
+
+/** Discard DXGI frames and color metadata after a Windows display-session transition. */
+export async function resetCaptureDisplays(): Promise<void> {
+  if (!captureHelperAvailable()) return
+  const [result] = await sendRequests(['reset-display-cache'])
+  if (!result?.ok) throw new Error(`capture helper could not reset displays (${result?.stage ?? 'unknown'})`)
 }
 
 export type DisplayColorSampleRequest = {
